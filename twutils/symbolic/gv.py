@@ -29,7 +29,7 @@ kg = knowledge_graph.KnowledgeGraph()
 try:
     nlp = spacy.load('en_core_web_lg')
 except Exception as e:
-    print("Failed to load \'en\' with exception {}. Try: python -m spacy download en".format(e))
+    print("Failed to load \'en\' with exception {}. Try: python -m spacy download en_core_web_lg".format(e))
     sys.exit(1)
 
 # Global Action Definitions

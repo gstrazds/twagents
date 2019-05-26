@@ -268,6 +268,7 @@ class CustomAgent:
         request_infos.entities = True
         request_infos.verbs = True
         request_infos.extras = ["recipe"]
+        request_infos.facts = True
         return request_infos
 
     def init(self, obs: List[str], infos: Dict[str, List[Any]]):

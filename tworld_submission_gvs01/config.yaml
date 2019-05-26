@@ -15,10 +15,10 @@ general:
   epsilon_anneal_to: 0.2
 
 checkpoint:
-  experiment_tag: 'lstm-dqn-baseline'
+  experiment_tag: 'gvs-symbolic-baseline'
   model_checkpoint_path: 'saved_models'
   load_pretrained: False  # during test, enable this so that the agent loads your pretrained model
-  pretrained_experiment_tag: 'lstm-dqn-baseline_episode_k'
+  pretrained_experiment_tag: 'gvs-symbolic-baseline_episode_k'
   save_frequency: 100
 
 training:

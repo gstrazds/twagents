@@ -37,6 +37,8 @@ def train(game_files):
     requested_infos = agent.select_additional_infos()
     _validate_requested_infos(requested_infos)
 
+    requested_infos.facts = True  # initially use ground truth facts about the world (since this is an 'oracle')
+
     env_id = textworld.gym.register_games(game_files, requested_infos,
                                           max_episode_steps=agent.max_nb_steps_per_episode,
                                           name="training")
