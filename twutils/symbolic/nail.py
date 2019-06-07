@@ -1,6 +1,6 @@
 import os
 import logging
-# from symbolic.decision_modules import Examiner, Interactor, Navigator, Hoarder, YesNo, YouHaveTo, Darkness, Idler
+from symbolic.decision_modules import Idler #Examiner, Interactor, Navigator, Hoarder, YesNo, YouHaveTo, Darkness
 from symbolic.knowledge_graph import *
 from symbolic.gv import kg, event_stream, dbg, rng
 from symbolic.util import clean, action_recognized
@@ -23,9 +23,9 @@ class NailAgent():
         self.knowledge_graph  = gv.kg
         self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         gv.event_stream.clear()
-        self.modules = []
-                       # [Examiner(True), Hoarder(True), Navigator(True), Interactor(True),
-                       # Idler(True), YesNo(True), YouHaveTo(True), Darkness(True)]
+        self.modules = [  # Explorer(True),
+                          # Examiner(True), Hoarder(True), Navigator(True), Interactor(True),
+                        Idler(True)]  # YesNo(True), YouHaveTo(True), Darkness(True)]
         self.active_module    = None
         self.action_generator = None
         self.first_step       = True
@@ -120,14 +120,14 @@ class NailAgent():
         return next_action
 
 
-    def observe(self, obs, action, score, new_obs, terminal):
+    def observe(self, prev_obs, action, score, new_obs, terminal):
         """ Observe will be used for learning from rewards. """
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
 #        dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 #        if kg.player_location:
 #            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
-        event_stream.push(NewTransitionEvent(obs, action, score, new_obs, terminal))
-        action_recognized(action, new_obs) # Update the unrecognized words
+        event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
+        action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
             kg.reset()
 

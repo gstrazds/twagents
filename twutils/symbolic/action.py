@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from symbolic import gv
+from symbolic.gv import GameInstance
 from symbolic.entity import Entity
 
 
@@ -26,7 +26,7 @@ class Action(ABC):
         """
         return None
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         """
         Apply the action to the knowledge_graph. The effects of applying
         depend on which action being applied.
@@ -34,10 +34,10 @@ class Action(ABC):
         """
         pass
 
-    def recognized(self):
+    def recognized(self, gi: GameInstance):
         """ Returns true if action doesn't contain unrecognized words. """
         for word in self.text().split(' '):
-            if word in gv.kg._unrecognized_words:
+            if word in gi.kg._unrecognized_words:
                 return False
         return True
 
@@ -96,10 +96,10 @@ class NavAction(StandaloneAction):
     def __init__(self, verb):
         super().__init__(verb)
 
-    def apply(self):
-        to_loc = gv.kg.connections.navigate(gv.kg.player_location, self)
+    def apply(self, gi: GameInstance):
+        to_loc = gi.kg.connections.navigate(gi.kg.player_location, self)
         assert to_loc, "Error: Unknown connection"
-        gv.kg.player_location = to_loc
+        gi.kg.player_location = to_loc
 
 
 class ExamineAction(Action):
@@ -110,22 +110,22 @@ class ExamineAction(Action):
     def text(self):
         return "{} {}".format(self.verb, self.entity_name)
 
-    def apply(self):
-        entity = Entity(self.entity, response)
-        gv.kg.player_location.add_entity(entity)
+    def apply(self, gi:GameInstance):
+        entity = Entity(self.entity_name, response)
+        gi.entity_at_location(entity, gi.kg.player_location)
 
 
 class TakeAction(SingleAction):
     def __init__(self, entity):
         super().__init__("take", entity)
 
-    def apply(self):
-        player_loc = gv.kg.player_location
+    def apply(self, gi: GameInstance):
+        player_loc = gi.kg.player_location
         if player_loc.has_entity(self.entity):
             player_loc.del_entity(self.entity)
         else:
-            gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
-        gv.kg.inventory.add_entity(self.entity)
+            logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
+        gi.kg.inventory.add_entity(self.entity)
         self.entity.add_attribute(gv.Portable)
 
     def validate(self, response_text):
@@ -145,7 +145,7 @@ class DropAction(SingleAction):
     def __init__(self, entity):
         super().__init__("drop", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         assert self.entity in gv.kg.inventory
         gv.kg.inventory.remove(self.entity)
         gv.kg.player_location.add_entity(self.entity)

@@ -1,7 +1,7 @@
+from typing import Optional
 from symbolic import event
-from symbolic import gv
+from symbolic.gv import GameInstance
 from symbolic import util
-
 
 class Entity:
     """
@@ -57,22 +57,25 @@ class Entity:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text):
+    def add_action_record(self, action, p_valid, result_text) -> Optional[event.NewActionRecordEvent]:
         """
         Record an action that was applied to this object and the
         resulting game text.
 
         """
-        if action not in self._action_records and p_valid > .5:
-            gv.event_stream.push(event.NewActionRecordEvent(self, action, result_text))
         self._action_records[action] = (p_valid, result_text)
+        if action not in self._action_records and p_valid > .5:
+            return event.NewActionRecordEvent(self, action, result_text)
+        else:
+            return None
 
     def has_action_record(self, action):
         return action in self._action_records
 
-    def add_entity(self, entity):
-        gv.event_stream.push(event.NewEntityEvent(entity))
+    def add_entity(self, entity) -> event.NewEntityEvent:
         self._entities.append(entity)
+        # gi.event_stream.push(event.NewEntityEvent(entity))
+        return event.NewEntityEvent(entity)
 
     def del_entity(self, entity):
         self._entities.remove(entity)
@@ -81,9 +84,9 @@ class Entity:
     def attributes(self):
         return self._failures
 
-    def add_attribute(self, attribute):
+    def add_attribute(self, attribute, gi: GameInstance):
         if attribute not in self._attributes:
-            gv.event_stream.push(event.NewAttributeEvent(self, attribute))
+            gi.event_stream.push(event.NewAttributeEvent(self, attribute))
             self._attributes.append(attribute)
 
     @property
@@ -131,7 +134,7 @@ class EntityState:
         self.exists = True
 
     def openable(self):
-        return has_attr(self, 'is_open')
+        return hasattr(self, 'is_open')
 
     def open(self):
         self.is_open = True
@@ -140,7 +143,7 @@ class EntityState:
         self.is_open = False
 
     def lockable(self):
-        return has_attr(self, 'is_locked')
+        return hasattr(self, 'is_locked')
 
     def lock(self):
         self.is_locked = True
@@ -149,7 +152,7 @@ class EntityState:
         self.is_locked = False
 
     def switchable(self):
-        return has_attr(self, 'is_on')
+        return hasattr(self, 'is_on')
 
     def turn_on(self):
         self.is_on = True

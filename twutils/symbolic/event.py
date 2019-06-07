@@ -1,4 +1,4 @@
-from symbolic import gv
+from symbolic.gv import dbg
 from symbolic import util
 
 class EventStream:
@@ -10,7 +10,7 @@ class EventStream:
         self._stream = []
 
     def push(self, event):
-        gv.dbg("[LOG]({}) {}".format(type(event).__name__, event.message))
+        dbg("[LOG]({}) {}".format(type(event).__name__, event.message))
         self._stream.append(event)
 
     def clear(self):

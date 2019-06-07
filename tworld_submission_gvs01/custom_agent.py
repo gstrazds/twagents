@@ -150,7 +150,43 @@ class CustomAgent:
         self.update_per_k_game_steps = self.config['general']['update_per_k_game_steps']
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
-        self.nlp = spacy.load('en', disable=['ner', 'parser', 'tagger'])
+        self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
+        # FROM extras.command_templates:
+        #   'inventory',
+        #   'look',
+
+        #   'prepare meal',
+
+        #   'go east', 'go north', 'go south', 'go west',
+
+        #   'cook {f} with {oven}',
+        #   'cook {f} with {stove}',
+        #   'cook {f} with {toaster}',
+
+        #   'chop {f} with {o}',
+        #   'dice {f} with {o}',
+        #   'slice {f} with {o}',
+
+        #   'lock {c|d} with {k}',
+        #   'unlock {c|d} with {k}',
+
+        #   'close {c|d}',
+        #   'open {c|d}',
+
+        #   'take {o} from {c|s}',
+
+        #   'insert {o} into {c}',
+        #   'put {o} on {s}',
+
+        #   'drop {o}',
+        #   'take {o}',
+
+        #   'drink {f}',
+        #   'eat {f}',
+
+        #   'examine {o|t}',
+
+
         self.preposition_map = {"take": "from",
                                 "chop": "with",
                                 "slice": "with",
@@ -268,7 +304,7 @@ class CustomAgent:
         request_infos.entities = True
         request_infos.verbs = True
         request_infos.extras = ["recipe"]
-        request_infos.facts = True
+#        request_infos.facts = True
         return request_infos
 
     def init(self, obs: List[str], infos: Dict[str, List[Any]]):

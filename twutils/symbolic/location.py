@@ -1,5 +1,7 @@
+from typing import Optional
 # from fuzzywuzzy import fuzz
-from symbolic import gv
+# from symbolic import gv
+from symbolic.gv import logger, GameInstance
 from symbolic.action import Action
 from symbolic.event import NewEntityEvent, NewActionRecordEvent
 
@@ -40,10 +42,12 @@ class Location:
     def entities(self):
         return self._entities
 
-    def add_entity(self, entity):
+    def add_entity(self, entity) -> Optional[NewEntityEvent]:
         if not self.has_entity_with_name(entity.name):
-            gv.event_stream.push(NewEntityEvent(entity))
+            # gv.event_stream.push(NewEntityEvent(entity))
             self._entities.append(entity)
+            return NewEntityEvent(entity)
+        return None
 
     def get_entity_by_name(self, entity_name):
         """
@@ -60,7 +64,7 @@ class Location:
         if entity in self._entities:
             self._entities.remove(entity)
         else:
-            gv.logger.warning("WARNING Location.del_entity could not find entity {}".format(entity.name))
+            logger.warning("WARNING Location.del_entity could not find entity {}".format(entity.name))
 
     def has_entity(self, entity):
         return self.has_entity_with_name(entity.name) or \
@@ -87,12 +91,12 @@ class Location:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text):
+    def add_action_record(self, action, p_valid, result_text) -> NewActionRecordEvent:
         """ Records an action, the probability it succeeded, and the text response. """
         if not isinstance(action, Action):
             raise ValueError("Expected Action. Got {}".format(type(action)))
         self._action_records[action] = (p_valid, result_text)
-        gv.event_stream.push(NewActionRecordEvent(self, action, result_text))
+        return NewActionRecordEvent(self, action, result_text)
 
     def has_action_record(self, action):
         if not isinstance(action, Action):
@@ -105,7 +109,7 @@ class Location:
             raise ValueError("Expected Action. Got {}".format(type(action)))
         return self.action_records[action] if self.has_action_record(action) else None
 
-    def reset(self):
+    def reset(self, gi: GameInstance):
         """ Reset to a state resembling start of game. """
         # Move all the entities back to their original locations
         to_remove = []
@@ -114,7 +118,7 @@ class Location:
             init_loc = entity._init_loc
             if init_loc == self:
                 continue
-            init_loc.add_entity(entity)
+            gi.entity_at_location(entity, init_loc)
             to_remove.append(entity)
         for entity in to_remove:
             self.entities.remove(entity)
