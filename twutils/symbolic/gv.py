@@ -177,7 +177,6 @@ Support    = attribute.Attribute('support',    [PutOn, TakeFrom])  #, Search])
 # Person     = attribute.Attribute('person',     [Ask, Talk, SayTo, Kiss, Bribe, GiveTo, BuyFrom])
 # Enemy      = attribute.Attribute('enemy',      [Attack, AttackWith, Kill, KillWith])
 
-
 Cutable    = attribute.Attribute('cutable',   [SliceWith, ChopWith, DiceWith])
 Cookable   = attribute.Attribute('cookable',   [CookWith])
 

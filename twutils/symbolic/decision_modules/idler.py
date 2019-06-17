@@ -114,7 +114,7 @@ class Idler(DecisionModule):
             return StandaloneAction('look')
         n = rng.random()
         if n < .1:
-            return self.get_standalone_action(gi)
+            return self.get_standalone_action()
         elif n < .8:
             return self.get_single_object_action(gi)
         else:
@@ -124,7 +124,7 @@ class Idler(DecisionModule):
         obs = yield
         action = self.get_action(gi)
         while action is None or not action.recognized(gi):
-            action = self.get_action()
+            action = self.get_action(gi)
         response = yield action
         p_valid = self._valid_detector.action_valid(action, first_sentence(response))
         ent = None

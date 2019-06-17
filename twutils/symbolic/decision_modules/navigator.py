@@ -35,7 +35,7 @@ class Navigator(DecisionModule):
         return [act for act in self._nav_actions if act.text() in tokens]
 
 
-    def process_event(self, event):
+    def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         pass
 
@@ -59,9 +59,9 @@ class Navigator(DecisionModule):
         return [c.action for c in gi.kg.connections.outgoing(location) if c.action.recognized()]
 
 
-    def get_failed_nav_actions(self, location):
+    def get_failed_nav_actions(self, location, gi: GameInstance):
         """ Returns a list of nav actions that have failed from the location. """
-        successful_actions = self.get_successful_nav_actions(location)
+        successful_actions = self.get_successful_nav_actions(location, gi)
         return [act for act in self._nav_actions if act in location.action_records \
                 and act not in successful_actions and act.recognized()]
 
@@ -89,7 +89,7 @@ class Navigator(DecisionModule):
                 return act
 
         # Then try something new
-        unexplored = self.get_unexplored_actions(loc)
+        unexplored = self.get_unexplored_actions(loc, gi)
         if unexplored:
             act = rng.choice(unexplored)
             dbg("[NAV] Trying unexplored action: {}".format(act))
@@ -97,7 +97,7 @@ class Navigator(DecisionModule):
 
         # Try a previously successful action
         if rng.random() > self._p_retry:
-            successful_actions = self.get_successful_nav_actions(loc)
+            successful_actions = self.get_successful_nav_actions(loc, gi)
             if successful_actions:
                 act = rng.choice(successful_actions)
                 dbg("[NAV] Trying previously successful action: {}".format(act))
@@ -210,6 +210,6 @@ class Navigator(DecisionModule):
 
                 # Finally, create a new location
                 new_loc = Location(look)
-                to_loc = gi.kg.add_location(new_loc)
+                gi.kg.add_location(new_loc)
                 gi.kg.add_connection(Connection(curr_loc, action, new_loc))
                 gi.kg.player_location = new_loc

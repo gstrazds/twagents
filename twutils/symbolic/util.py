@@ -1,6 +1,8 @@
 import re
 from symbolic import gv, event
+from symbolic.gv import GameInstance
 from symbolic.action import Action
+from symbolic.location import Location
 
 
 def first_sentence(text):
@@ -20,14 +22,18 @@ def clean(s):
     return s.replace('\n', ' ').strip()
 
 
-def move_entity(entity, origin, dest):
+def move_entity(entity, origin: Location, dest: Location, gi: GameInstance):
     """ Moves entity from origin to destination. """
     assert origin.has_entity(entity), \
         "Can't move entity {} that isn't present at origin {}" \
         .format(entity, origin)
     origin.del_entity(entity)
-    dest.add_entity(entity)
-    gv.event_stream.push(event.EntityMovedEvent(entity, origin, dest))
+    ev0 = dest.add_entity(entity)
+    if ev0 is not None:
+        msg = "unexpected NewEntityEvent from dest.add_entity() dest={} event={}".format(dest, ev0)
+        print("!!!WARNING: "+msg)
+        assert False, msg
+    gi.event_stream.push(event.EntityMovedEvent(entity, origin, dest))
 
 
 # This list covers the common paterns. However, some games like
@@ -71,7 +77,7 @@ def get_unrecognized(action, response):
     return ''
 
 
-def action_recognized(action, response):
+def action_recognized(action, response, gi: GameInstance):
     """
     Returns True if the action was recognized based on the response.
     Returns False if the action is not recognized and appends it to
@@ -80,8 +86,8 @@ def action_recognized(action, response):
     """
     unrecognized_word = get_unrecognized(action, response)
     if unrecognized_word:
-        if unrecognized_word not in gv.kg._unrecognized_words:
+        if unrecognized_word not in gi.kg._unrecognized_words:
             gv.dbg("[UTIL] Added unrecognized word \"{}\"".format(unrecognized_word))
-            gv.kg._unrecognized_words.append(unrecognized_word)
+            gi.kg._unrecognized_words.append(unrecognized_word)
         return False
     return True

@@ -11,7 +11,7 @@ class Hoarder(DecisionModule):
         self._active = active
 
 
-    def process_event(self, event):
+    def process_event(self, event, gi: GameInstance):
         if not self._active:
             return
         if type(event) is NewLocationEvent and gv.TakeAll.recognized():
@@ -36,7 +36,7 @@ class Hoarder(DecisionModule):
                     # Create the entity at the current location
                     entity = Entity(entity_name, here)
                     entity.add_name(short_name)
-                    gi.entity_at_location(entity, here)
+                    gi.entity_at_location(entity, here) # FORMERLY: here.add_entity(entity)
 
                 take_action = gv.Take(entity)
                 p_valid = take_action.validate(resp)

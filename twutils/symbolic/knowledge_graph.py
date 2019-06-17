@@ -1,6 +1,7 @@
 # import os, sys
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from symbolic import gv
+from symbolic.gv import GameInstance
 from symbolic.event import *
 from symbolic.action import Action
 from symbolic.location import Location, Inventory
@@ -24,25 +25,25 @@ class KnowledgeGraph:
     def locations(self):
         return self._locations
 
-    def add_location(self, new_location):
+    def add_location(self, new_location: Location, gi: GameInstance):
         """ Adds a new location object and broadcasts a NewLocation event. """
         self._locations.append(new_location)
-        gv.event_stream.push(NewLocationEvent(new_location))
+        gi.event_stream.push()
 
-    # def most_similar_location(self, description):
-    #     """ Returns the location with the highest similarity to the given description. """
-    #     possible_name = Location.extract_name(description)
-    #     existing_locs = self.locations_with_name(possible_name)
-    #     if not existing_locs:
-    #         existing_locs = self._locations
-    #     most_similar = None
-    #     best_similarity = 0
-    #     for loc in existing_locs:
-    #         similarity = fuzz.partial_ratio(loc.description, description)
-    #         if similarity > best_similarity:
-    #             best_similarity = similarity
-    #             most_similar = loc
-    #     return most_similar
+    def most_similar_location(self, description):
+        """ Returns the location with the highest similarity to the given description. """
+        possible_name = Location.extract_name(description)
+        existing_locs = self.locations_with_name(possible_name)
+        if not existing_locs:
+            existing_locs = self._locations
+        most_similar = None
+        best_similarity = 0
+        for loc in existing_locs:
+            similarity = fuzz.partial_ratio(loc.description, description)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                most_similar = loc
+        return most_similar
 
     def locations_with_name(self, location_name):
         """ Returns all locations with a particular name. """

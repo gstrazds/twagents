@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from symbolic import gv
+from symbolic.gv import GameInstance
 
 class DecisionModule(ABC):
     """
@@ -17,12 +17,12 @@ class DecisionModule(ABC):
         self._succ_cnt = 0
         self._fail_cnt = 0
 
-    def process_event_stream(self):
-        for event in gv.event_stream.read():
-            self.process_event(event)
+    def process_event_stream(self, gi: GameInstance):
+        for event in gi.event_stream.read():
+            self.process_event(event, gi)
 
 
-    def get_eagerness(self):
+    def get_eagerness(self, gi: GameInstance):
         """ Returns a float in [0,1] indicating how eager this module is to take
         control. """
         return self._eagerness
@@ -45,12 +45,12 @@ class DecisionModule(ABC):
 
 
     @abstractmethod
-    def process_event(self, event):
+    def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         pass
 
 
     @abstractmethod
-    def take_control(self):
+    def take_control(self, gi: GameInstance):
         """ Generates a sequence of actions. """
         pass

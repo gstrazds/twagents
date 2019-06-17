@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from symbolic import gv   # global constants
 from symbolic.gv import GameInstance
 from symbolic.entity import Entity
 
@@ -110,7 +111,7 @@ class ExamineAction(Action):
     def text(self):
         return "{} {}".format(self.verb, self.entity_name)
 
-    def apply(self, gi:GameInstance):
+    def apply(self, gi: GameInstance):
         entity = Entity(self.entity_name, response)
         gi.entity_at_location(entity, gi.kg.player_location)
 
@@ -124,8 +125,9 @@ class TakeAction(SingleAction):
         if player_loc.has_entity(self.entity):
             player_loc.del_entity(self.entity)
         else:
-            logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
-        gi.kg.inventory.add_entity(self.entity)
+            gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
+        # gi.kg.inventory.add_entity(self.entity)
+        gi.entity_at_location(self.entity, gi.kg.inventory)
         self.entity.add_attribute(gv.Portable)
 
     def validate(self, response_text):
@@ -146,9 +148,9 @@ class DropAction(SingleAction):
         super().__init__("drop", entity)
 
     def apply(self, gi: GameInstance):
-        assert self.entity in gv.kg.inventory
-        gv.kg.inventory.remove(self.entity)
-        gv.kg.player_location.add_entity(self.entity)
+        assert self.entity in gi.kg.inventory
+        gi.kg.inventory.remove(self.entity)
+        gi.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
         self.entity.add_attribute(gv.Portable)
 
     def validate(self, response_text):
@@ -162,7 +164,7 @@ class OpenAction(SingleAction):
     def __init__(self, entity):
         super().__init__("open", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.open()
         self.entity.add_attribute(gv.Openable)
 
@@ -171,7 +173,7 @@ class CloseAction(SingleAction):
     def __init__(self, entity):
         super().__init__("close", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.close()
         self.entity.add_attribute(gv.Openable)
 
@@ -180,7 +182,7 @@ class LockAction(SingleAction):
     def __init__(self, entity):
         super().__init__("lock", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.lock()
         self.entity.add_attribute(gv.Lockable)
 
@@ -188,7 +190,7 @@ class LockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
         super().__init__("lock", entity1, "with", entity2)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity1.state.lock()
         self.entity1.add_attribute(gv.Lockable)
 
@@ -196,7 +198,7 @@ class UnlockAction(SingleAction):
     def __init__(self, entity):
         super().__init__("unlock", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.unlock()
         self.entity.add_attribute(gv.Lockable)
 
@@ -204,7 +206,7 @@ class UnlockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
         super().__init__("unlock", entity1, "with", entity2)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity1.state.unlock()
         self.entity1.add_attribute(gv.Lockable)
 
@@ -212,7 +214,7 @@ class TurnOnAction(SingleAction):
     def __init__(self, entity):
         super().__init__("turn on", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.turn_on()
         self.entity.add_attribute(gv.Switchable)
 
@@ -221,7 +223,7 @@ class TurnOffAction(SingleAction):
     def __init__(self, entity):
         super().__init__("turn off", entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.turn_off()
         self.entity.add_attribute(gv.Switchable)
 
@@ -231,7 +233,7 @@ class ConsumeAction(SingleAction):
     def __init__(self, verb, entity):
         super().__init__(verb, entity)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         self.entity.state.remove()
         self.entity.add_attribute(gv.Edible)
 
@@ -241,7 +243,7 @@ class MoveItemAction(DoubleAction):
     def __init__(self, verb, entity1, prep, entity2):
         super().__init__(verb, entity1, prep, entity2)
 
-    def apply(self):
+    def apply(self, gi: GameInstance):
         # TODO: Should entity contain a reference to its own container?
-        # move_entity(self.entity1, source_container, self.entity2)
+        # move_entity(self.entity1, source_container, self.entity2, gi)
         pass
