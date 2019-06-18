@@ -94,6 +94,25 @@ except Exception as e:
 #
 #   'examine {o|t}',
 
+# Entity types for TextWorld CodaLab challenge #1 (recipe games)
+OBJECT = 'o'
+THING = 't'
+SUPPORT = 's'
+CONTAINER = 'c'
+FOOD = 'f'
+KEY = 'k'
+PERSON = 'P'
+ROOM = 'r'
+DOOR = 'd'
+OVEN = 'oven'
+STOVE = 'stove'
+TOASTER = 'toaster'
+BBQ = 'bbq'
+MEAL = 'meal'
+
+RECIPE = 'RECIPE'
+INGREDIENT = 'ingredient'
+SLOT = 'slot'
 
 # Global Action Definitions
 DoNothing  = action.StandaloneAction('do nothing')

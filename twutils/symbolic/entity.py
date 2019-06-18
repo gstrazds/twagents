@@ -1,6 +1,9 @@
 from typing import Optional
 from symbolic import event
 from symbolic.gv import GameInstance
+from symbolic.gv import OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM
+from symbolic.gv import FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ
+from symbolic.gv import MEAL, RECIPE, INGREDIENT, SLOT
 from symbolic import util
 
 class Entity:
@@ -13,7 +16,15 @@ class Entity:
     description: A long form description of the entity
 
     """
-    def __init__(self, name, location, description=''):
+    entity_types = [
+        OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM,
+        FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ,
+        MEAL, RECIPE, INGREDIENT,
+        # NORTH, WEST, EAST, SOUTH,
+        SLOT,
+    ]
+
+    def __init__(self, name, location, description='', type=''):
         self._names       = [name] # List of names for the entity
         self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
@@ -21,6 +32,7 @@ class Entity:
         self._state       = EntityState()
         self._attributes  = []
         self._init_loc    = location
+        self._type        = type
 
     @property
     def name(self):
