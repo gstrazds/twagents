@@ -1,7 +1,8 @@
 from ..decision_module import DecisionModule
 from ..knowledge_graph import *
 from ..action import *
-from ..gv import GameInstance, dbg
+from ..game import GameInstance
+from .. import gv
 
 
 class Hoarder(DecisionModule):
@@ -40,7 +41,7 @@ class Hoarder(DecisionModule):
 
                 take_action = gv.Take(entity)
                 p_valid = take_action.validate(resp)
-                dbg("[Take] p={:.2f} {} --> {}".format(p_valid, entity_name, resp))
+                gv.dbg("[Take] p={:.2f} {} --> {}".format(p_valid, entity_name, resp))
                 gi.act_on_entity(take_action, entity, p_valid, resp)
                 if p_valid > 0.5:
                     take_action.apply(gi)

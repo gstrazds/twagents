@@ -1,9 +1,21 @@
 import math
+import os
 from ..affordance_extractor import AffordanceExtractor
-from ..gv import Take, Drop, Eat, Drink, Open, Close, Lock, Unlock, Search
-from ..gv import TakeFrom, PutIn, PutOn, SliceWith, ChopWith, DiceWith, CookWith
 from ..gv import rng
 from ..action import SingleAction, DoubleAction
+from ..action import Take, Drop, Eat, Drink, Open, Close, Lock, Unlock, Search
+from ..action import TakeFrom, PutIn, PutOn, SliceWith, ChopWith, DiceWith, CookWith
+
+LANGUAGE_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'language_model')
+LM_READER_PATH = os.path.join(LANGUAGE_MODEL_DIR, 'lm_reader.so')
+FORWARD_LM_PATH = os.path.join(LANGUAGE_MODEL_DIR, 'nail_agent_lm/st')
+
+LM_AFFORDANCE_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'lm_affordance_data')
+ATTR_DET_VERBS_PATH = os.path.join(LM_AFFORDANCE_DATA_DIR, 'attribute_detection_verbs.csv')
+TARG_ATTR_SCORES_PATH = os.path.join(LM_AFFORDANCE_DATA_DIR, 'target_attribute_scores.csv')
+TARG_CMD_SCORES_PATH = os.path.join(LM_AFFORDANCE_DATA_DIR, 'target_command_scores.csv')
+CALIBRATION_THRESHOLDS_PATH = os.path.join(LM_AFFORDANCE_DATA_DIR, 'calibration_thresholds.tsv')
+ACTION_PRIORS_PATH = os.path.join(LM_AFFORDANCE_DATA_DIR, 'action_priors.csv')
 
 #### TextWorld: extras.command_templates:
 #
@@ -43,10 +55,10 @@ from ..action import SingleAction, DoubleAction
 
 complex_verbs = [
     ('insert', 'into'),
-    ('put','on'),
-    ('unlock','with'),
-    ('open','with'),
-    ('cook','with'),
+    ('put', 'on'),
+    ('unlock', 'with'),
+    ('open', 'with'),
+    ('cook', 'with'),
     ('chop', 'with'),
     ('dice', 'with'),
     ('slice', 'with'),
@@ -252,17 +264,17 @@ class TWAffordanceExtractor(AffordanceExtractor):
         affordable_attribute.known_actions_to_try = [Eat, Drink]
         affordable_attribute.unknown_actions_to_exclude = ["eat", "drink", "swallow", "consume"]
 
-        affordable_attribute = self.affordable_attributes_by_name["moveable"]
-        affordable_attribute.known_actions_to_try = [Move, Push, Pull, Lift]
-        affordable_attribute.unknown_actions_to_exclude = ["move", "push", "pull", "drag", "lift"]
-
-        affordable_attribute = self.affordable_attributes_by_name["switchable"]
-        affordable_attribute.known_actions_to_try = [TurnOn]
-        affordable_attribute.unknown_actions_to_exclude = ["turn on", "switch on", "turn off", "switch off", "start", "stop"]
-
-        affordable_attribute = self.affordable_attributes_by_name["flammable"]
-        affordable_attribute.known_actions_to_try = [Light]
-        affordable_attribute.unknown_actions_to_exclude = ["light", "ignite", "extinguish"]
+        # affordable_attribute = self.affordable_attributes_by_name["moveable"]
+        # affordable_attribute.known_actions_to_try = [Move, Push, Pull, Lift]
+        # affordable_attribute.unknown_actions_to_exclude = ["move", "push", "pull", "drag", "lift"]
+        #
+        # affordable_attribute = self.affordable_attributes_by_name["switchable"]
+        # affordable_attribute.known_actions_to_try = [TurnOn]
+        # affordable_attribute.unknown_actions_to_exclude = ["turn on", "switch on", "turn off", "switch off", "start", "stop"]
+        #
+        # affordable_attribute = self.affordable_attributes_by_name["flammable"]
+        # affordable_attribute.known_actions_to_try = [Light]
+        # affordable_attribute.unknown_actions_to_exclude = ["light", "ignite", "extinguish"]
 
         affordable_attribute = self.affordable_attributes_by_name["openable"]
         affordable_attribute.known_actions_to_try = [Open]
@@ -276,13 +288,13 @@ class TWAffordanceExtractor(AffordanceExtractor):
         affordable_attribute.known_actions_to_try = [Search]
         affordable_attribute.unknown_actions_to_exclude = ["look in", "search", "search in", "empty", "fill", "fill up"]
 
-        affordable_attribute = self.affordable_attributes_by_name["person"]
-        affordable_attribute.known_actions_to_try = [Talk]
-        affordable_attribute.unknown_actions_to_exclude = ["ask", "talk to", "help", "hug", "kiss", "bribe", "pay"]
-
-        affordable_attribute = self.affordable_attributes_by_name["enemy"]
-        affordable_attribute.known_actions_to_try = [Attack, Kill]
-        affordable_attribute.unknown_actions_to_exclude = ["attack", "hit", "kill", "stab", "slay", "strangle", "fight", "strike", "shoot"]
+        # affordable_attribute = self.affordable_attributes_by_name["person"]
+        # affordable_attribute.known_actions_to_try = [Talk]
+        # affordable_attribute.unknown_actions_to_exclude = ["ask", "talk to", "help", "hug", "kiss", "bribe", "pay"]
+        #
+        # affordable_attribute = self.affordable_attributes_by_name["enemy"]
+        # affordable_attribute.known_actions_to_try = [Attack, Kill]
+        # affordable_attribute.unknown_actions_to_exclude = ["attack", "hit", "kill", "stab", "slay", "strangle", "fight", "strike", "shoot"]
 
         # Prepare the set of unknown actions to promote.
         self.unknown_actions_to_promote = {}

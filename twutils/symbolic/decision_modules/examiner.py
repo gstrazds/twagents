@@ -1,10 +1,11 @@
 from ..entity_detectors.spacy_entity_detector import SpacyEntityDetector
-from ..valid_detectors.learned_valid_detector import LearnedValidDetector
+# from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..event import *
 from ..knowledge_graph import *
 from ..action import *
-from ..gv import GameInstance, dbg, rng
+from ..game import GameInstance
+from .. import gv
 from ..util import clean, first_sentence
 
 class Examiner(DecisionModule):
@@ -16,7 +17,7 @@ class Examiner(DecisionModule):
     def __init__(self, active=False):
         super().__init__()
         self._active = active
-        self._valid_detector = LearnedValidDetector()
+        self._valid_detector = None  # LearnedValidDetector()
         self._entity_detector = SpacyEntityDetector()
         self._to_examine = {} # Location : ['entity1', 'entity2']
         self._validation_threshold = 0.5  # Best threshold over 16 seeds, but not very sensitive.
@@ -53,7 +54,7 @@ class Examiner(DecisionModule):
         if not message:
             return
         candidate_entities = self.detect_entities(message)
-        dbg("[EXM](detect) {} --> {}".format(clean(message), candidate_entities))
+        gv.dbg("[EXM](detect) {} --> {}".format(clean(message), candidate_entities))
         self.filter(candidate_entities)
 
 
@@ -79,7 +80,7 @@ class Examiner(DecisionModule):
         """ Filters candidate entities. """
         curr_loc = gi.kg.player_location
         for entity_name in candidate_entities:
-            action = gv.Examine(entity_name)
+            action = Examine(entity_name)
             if curr_loc.has_entity_with_name(entity_name) or \
                action in curr_loc.action_records or \
                not action.recognized() or \
@@ -99,20 +100,20 @@ class Examiner(DecisionModule):
         undescribed_entities = self.get_descriptionless_entities()
         if undescribed_entities:
             entity = undescribed_entities[0]
-            action = gv.Examine(entity.name)
+            action = Examine(entity.name)
             response = yield action
             entity.description = response
             p_valid = self._valid_detector.action_valid(action, response)
-            dbg("[EXM] p={:.2f} {} --> {}".format(p_valid, action, clean(response)))
+            gv.dbg("[EXM] p={:.2f} {} --> {}".format(p_valid, action, clean(response)))
             gi.action_at_location(action, curr_loc, 1., response)
         else:
             entity_name = self._to_examine[curr_loc].pop()
-            action = gv.Examine(entity_name)
+            action = Examine(entity_name)
             response = yield action
-            p_valid = self._valid_detector.action_valid(action, first_sentence(response))
+            p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
             success = (p_valid > self._validation_threshold)
             self.record(success)
-            dbg("[EXM]({}) p={:.2f} {} --> {}".format(
+            gv.dbg("[EXM]({}) p={:.2f} {} --> {}".format(
                 "val" if success else "inv", p_valid, action, clean(response)))
             gi.action_at_location(action, curr_loc, p_valid, response)
             if success:
@@ -122,7 +123,7 @@ class Examiner(DecisionModule):
                     # TODO: incorrect for entities discovered inside other entities
                     gi.entity_at_location(entity, curr_loc)
                 else:
-                    dbg("[EXM](val) Discovered alternate name "\
+                    gv.dbg("[EXM](val) Discovered alternate name "\
                         "\'{}\' for \'{}\'".format(entity_name, entity.name))
                     entity.add_name(entity_name)
             if success:
@@ -135,10 +136,10 @@ class Examiner(DecisionModule):
                     # curr_loc.add_entity(entity)
                 else:
                     if entity:
-                        dbg("[EXM](val) Discovered alternate name " \
+                        gv.dbg("[EXM](val) Discovered alternate name " \
                             "\'{}\' for \'{}\'".format(entity_name, entity.name))
                         entity.add_name(entity_name)
                     if inv_entity:
-                        dbg("[EXM](val) Discovered alternate name " \
+                        gv.dbg("[EXM](val) Discovered alternate name " \
                             "\'{}\' for inventory item \'{}\'".format(entity_name, inv_entity.name))
                         inv_entity.add_name(entity_name)

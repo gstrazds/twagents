@@ -1,7 +1,8 @@
-from ..valid_detectors.learned_valid_detector import LearnedValidDetector
+# from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..affordance_extractors.tw_affordance_extractor import TWAffordanceExtractor
 from ..decision_module import DecisionModule
-from ..gv import GameInstance, dbg
+from ..game import GameInstance
+from .. import gv
 from ..util import clean, first_sentence
 from ..action import SingleAction, DoubleAction
 
@@ -14,7 +15,7 @@ class Interactor(DecisionModule):
     def __init__(self, active=False):
         super().__init__()
         self._active = active
-        self._valid_detector = LearnedValidDetector()
+        # self._valid_detector = LearnedValidDetector()
         self._affordance_extractor = TWAffordanceExtractor()
         self.best_action = None
         self._eagerness = 0.
@@ -92,7 +93,7 @@ class Interactor(DecisionModule):
         self.record(success)
         if success:
             action.apply(gi)
-        dbg("[INT]({}) p={:.2f} {} --> {}".format(
+        gv.dbg("[INT]({}) p={:.2f} {} --> {}".format(
             "val" if success else "inv", p_valid, action, response))
 
         if ('RESTART' in response and 'RESTORE' in response and 'QUIT' in response) or ('You have died' in response):

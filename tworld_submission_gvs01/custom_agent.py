@@ -16,6 +16,7 @@ from textworld import EnvInfos
 from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences, max_len
 
+from symbolic.nail import NailAgent
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
@@ -108,15 +109,16 @@ class CustomAgent:
         self.nb_epochs = self.config['training']['nb_epochs']
 
         # Set the random seed manually for reproducibility.
-        np.random.seed(self.config['general']['random_seed'])
-        torch.manual_seed(self.config['general']['random_seed'])
+        seedval = self.config['general']['random_seed']
+        np.random.seed(seedval)
+        torch.manual_seed(seedval)
         if torch.cuda.is_available():
             if not self.config['general']['use_cuda']:
                 print("WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
             else:
                 torch.backends.cudnn.deterministic = True
-                torch.cuda.manual_seed(self.config['general']['random_seed'])
+                torch.cuda.manual_seed(seedval)
                 self.use_cuda = True
         else:
             self.use_cuda = False
@@ -319,6 +321,13 @@ class CustomAgent:
         self.scores = []
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
+        self.agents = [
+            NailAgent(
+                self.config['general']['random_seed'],
+                "TW", #env
+                "n_{}".format(idx),
+
+            ) for idx in range(len(obs))]
         # get word masks
         batch_size = len(infos["verbs"])
         verbs_word_list = infos["verbs"]
@@ -574,50 +583,61 @@ class CustomAgent:
             # append scores / dones from previous step into memory
             self.scores.append(scores)
             self.dones.append(dones)
-            # compute previous step's rewards and masks
-            rewards_np, rewards, mask_np, mask = self.compute_reward()
+            if self.mode == "eval":
+                if all(dones):
+                    self._end_episode(obs, scores, infos)
+                    return  # Nothing to return.
+            else:
+                # compute previous step's rewards and masks
+                rewards_np, rewards, mask_np, mask = self.compute_reward()
 
         input_description, description_id_list = self.get_game_step_info(obs, infos)
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
         word_ranks = self.get_ranks(input_description)  # list of batch x vocab
         _, word_indices_maxq = self.choose_maxQ_command(word_ranks, self.word_masks_np)
-        _, word_indices_random = self.choose_random_command(word_ranks, self.word_masks_np)
-        # random number for epsilon greedy
-        rand_num = np.random.uniform(low=0.0, high=1.0, size=(input_description.size(0), 1))
-        less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
-        greater_than_epsilon = 1.0 - less_than_epsilon
-        less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='float')
-        greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='float')
-        less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
 
-        chosen_indices = [less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
+        if self.mode == "eval":
+            chosen_indices = word_indices_maxq
+        else:  # self.mode != "eval"
+            _, word_indices_random = self.choose_random_command(word_ranks, self.word_masks_np)
+            # random number for epsilon greedy
+            rand_num = np.random.uniform(low=0.0, high=1.0, size=(input_description.size(0), 1))
+            less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
+            greater_than_epsilon = 1.0 - less_than_epsilon
+            less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='float')
+            greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='float')
+            less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+            chosen_indices = [
+                less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
+
         chosen_indices = [item.detach() for item in chosen_indices]
         chosen_strings = self.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
-        # push info from previous game step into replay memory
-        if self.current_step > 0:
-            for b in range(len(obs)):
-                if mask_np[b] == 0:
-                    continue
-                is_prior = rewards_np[b] > 0.0
-                self.replay_memory.push(is_prior, self.cache_description_id_list[b], [item[b] for item in self.cache_chosen_indices], rewards[b], mask[b], dones[b], description_id_list[b], [item[b] for item in self.word_masks_np])
+        if self.mode != "eval":
+            # push info from previous game step into replay memory
+            if self.current_step > 0:
+                for b in range(len(obs)):
+                    if mask_np[b] == 0:
+                        continue
+                    is_prior = rewards_np[b] > 0.0
+                    self.replay_memory.push(is_prior, self.cache_description_id_list[b], [item[b] for item in self.cache_chosen_indices], rewards[b], mask[b], dones[b], description_id_list[b], [item[b] for item in self.word_masks_np])
 
-        # cache new info in current game step into caches
-        self.cache_description_id_list = description_id_list
-        self.cache_chosen_indices = chosen_indices
+            # cache new info in current game step into caches
+            self.cache_description_id_list = description_id_list
+            self.cache_chosen_indices = chosen_indices
 
-        # update neural model by replaying snapshots in replay memory
-        if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-            loss = self.update()
-            if loss is not None:
-                # Backpropagate
-                self.optimizer.zero_grad()
-                loss.backward(retain_graph=True)
-                # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
-                self.optimizer.step()  # apply gradients
+            # update neural model by replaying snapshots in replay memory
+            if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
+                loss = self.update()
+                if loss is not None:
+                    # Backpropagate
+                    self.optimizer.zero_grad()
+                    loss.backward(retain_graph=True)
+                    # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+                    self.optimizer.step()  # apply gradients
 
         self.current_step += 1
 

@@ -1,11 +1,9 @@
 # import os, sys
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from symbolic import gv
-from symbolic.gv import GameInstance
 from symbolic.event import *
 from symbolic.action import Action
 from symbolic.location import Location, Inventory
-# from fuzzywuzzy import fuzz
+from fuzzywuzzy import fuzz
 
 
 class KnowledgeGraph:
@@ -19,16 +17,15 @@ class KnowledgeGraph:
         self._init_loc           = None
         self._inventory          = Inventory()
         self._connections        = ConnectionGraph()
-        self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]
 
     @property
     def locations(self):
         return self._locations
 
-    def add_location(self, new_location: Location, gi: GameInstance):
+    def add_location(self, new_location: Location) -> NewLocationEvent:
         """ Adds a new location object and broadcasts a NewLocation event. """
         self._locations.append(new_location)
-        gi.event_stream.push()
+        return NewLocationEvent(new_location)
 
     def most_similar_location(self, description):
         """ Returns the location with the highest similarity to the given description. """

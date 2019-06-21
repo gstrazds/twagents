@@ -2,8 +2,8 @@ import os, sys
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..knowledge_graph import *
-# from ..fuzzywuzzy import fuzz
-from ..gv import *
+from ..action import *
+from ..gv import rng, dbg
 from ..util import tokenize
 
 
@@ -210,6 +210,8 @@ class Navigator(DecisionModule):
 
                 # Finally, create a new location
                 new_loc = Location(look)
-                gi.kg.add_location(new_loc)
+                ev = gi.kg.add_location(new_loc)
                 gi.kg.add_connection(Connection(curr_loc, action, new_loc))
                 gi.kg.player_location = new_loc
+                gi.event_stream.push(ev)
+

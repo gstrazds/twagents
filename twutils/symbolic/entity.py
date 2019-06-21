@@ -1,6 +1,5 @@
 from typing import Optional
 from symbolic import event
-from symbolic.gv import GameInstance
 from symbolic.gv import OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM
 from symbolic.gv import FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ
 from symbolic.gv import MEAL, RECIPE, INGREDIENT, SLOT
@@ -96,10 +95,10 @@ class Entity:
     def attributes(self):
         return self._failures
 
-    def add_attribute(self, attribute, gi: GameInstance):
+    def add_attribute(self, attribute) -> event.NewEntityEvent:
         if attribute not in self._attributes:
-            gi.event_stream.push(event.NewAttributeEvent(self, attribute))
-            self._attributes.append(attribute)
+            return event.NewAttributeEvent(self, attribute)
+        return None
 
     @property
     def state(self):

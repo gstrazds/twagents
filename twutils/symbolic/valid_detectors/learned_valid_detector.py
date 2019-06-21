@@ -1,12 +1,9 @@
-import os, sys
-import fastText
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from valid_detector import ValidDetector
-import gv
-import util
+# import fastText
+from ..valid_detector import ValidDetector
+from .. import util
 
-model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "valid_model.bin")
+# model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+#                           "valid_model.bin")
 
 class LearnedValidDetector(ValidDetector):
     """
@@ -15,11 +12,13 @@ class LearnedValidDetector(ValidDetector):
     """
     def __init__(self):
         super().__init__()
-        self.model = fastText.load_model(model_path)
-
-    def action_valid(self, action, response_text):
-        if not util.action_recognized(action, response_text):
+        # self.model = fastText.load_model(model_path)
+    #
+    def action_valid(self, action, response_text, gi):  #gi: GameInstance):
+        if not gi.action_recognized(action, response_text):
             return 0.
+        else:
+            return 0.8
         label, proba = self.model.predict(util.clean(response_text))
         p_valid = 0
         if label[0] == '__label__invalid':

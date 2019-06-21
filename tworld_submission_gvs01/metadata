@@ -1,1 +1,2 @@
 description: symbolic oracle initially based on LSTM-DQN example.
+nb_processes: 1

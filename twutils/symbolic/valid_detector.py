@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from symbolic.game import GameInstance
 
 class ValidDetector(ABC):
     """
@@ -12,7 +13,7 @@ class ValidDetector(ABC):
 
 
     @abstractmethod
-    def action_valid(self, action, response_text):
+    def action_valid(self, action, response_text, gi: GameInstance):
         """
         Returns p(Valid), the probability that the action was valid.
 

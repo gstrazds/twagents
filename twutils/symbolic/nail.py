@@ -1,11 +1,13 @@
 import os
 import logging
+from symbolic.game import GameInstance
+from symbolic import gv
 from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent
 from symbolic.location import Location
-from symbolic.gv import GameInstance, dbg, rng
-from symbolic.util import clean, action_recognized
+from symbolic import knowledge_graph
+# from symbolic.util import clean
 # from symbolic.valid_detectors.learned_valid_detector import LearnedValidDetector
 
 class NailAgent():
@@ -19,9 +21,10 @@ class NailAgent():
     """
     def __init__(self, seed, env, rom_name, output_subdir='.'):
         self.setup_logging(rom_name, output_subdir)
-        rng.seed(seed)
-        dbg("RandomSeed: {}".format(seed))
-        # self.knowledge_graph  = gv.kg
+        gv.rng.seed(seed)
+        gv.dbg("RandomSeed: {}".format(seed))
+        self.knowledge_graph  = knowledge_graph.KnowledgeGraph()
+        self.gi = GameInstance(self.knowledge_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.modules = [
@@ -63,7 +66,7 @@ class NailAgent():
             if eagerness >= most_eager:
                 self.active_module = module
                 most_eager = eagerness
-        dbg("[NAIL](elect): {} Eagerness: {}"\
+        gv.dbg("[NAIL](elect): {} Eagerness: {}"\
             .format(type(self.active_module).__name__, most_eager))
         self.action_generator = self.active_module.take_control(gi)
         self.action_generator.send(None)
@@ -84,19 +87,19 @@ class NailAgent():
         return next_action.text()
 
 
-    def consume_event_stream(self, gi: GameInstance):
+    def consume_event_stream(self):
         """ Each module processes stored events then the stream is cleared. """
         for module in self.modules:
-            module.process_event_stream(gi)
-        gi.event_stream.clear()
+            module.process_event_stream(self.gi)
+        self.gi.event_stream.clear()
 
 
-    def take_action(self, observation, gi: GameInstance):
-        if self.env:
+    def take_action(self, observation):
+        if self.env and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
             if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
-                dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
+                gv.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
 
             # Output a snapshot of the kg.
             # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
@@ -105,35 +108,36 @@ class NailAgent():
 
         observation = observation.strip()
         if self.first_step:
-            dbg("[NAIL] {}".format(observation))
+            gv.dbg("[NAIL] {}".format(observation))
             self.first_step = False
             return 'look' # Do a look to get rid of intro text
 
-        if not gi.kg.player_location:
+        if not self.gi.kg.player_location:
             loc = Location(observation)
-            gi.kg.add_location(loc)
-            gi.kg.player_location = loc
-            gi.kg._init_loc = loc
+            ev = self.gi.kg.add_location(loc)
+            self.gi.kg.player_location = loc
+            self.gi.kg._init_loc = loc
+            # self.gi.event_stream.push(ev)
 
-        self.consume_event_stream(gi)
+        self.consume_event_stream()
 
         if not self.active_module:
-            self.elect_new_active_module(gi)
+            self.elect_new_active_module()
 
-        next_action = self.generate_next_action(observation, gi)
+        next_action = self.generate_next_action(observation)
         return next_action
 
 
-    def observe(self, prev_obs, action, score, new_obs, terminal, gi: GameInstance):
+    def observe(self, prev_obs, action, score, new_obs, terminal):
         """ Observe will be used for learning from rewards. """
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
-#        dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
+#        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 #        if kg.player_location:
 #            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
-        gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
-        action_recognized(action, new_obs, gi)  # Update the unrecognized words
+        self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
+        self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
-            gi.kg.reset()
+            self.gi.kg.reset()
 
 
     def finalize(self):

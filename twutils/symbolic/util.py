@@ -1,8 +1,8 @@
 import re
-from symbolic import gv, event
-from symbolic.gv import GameInstance
-from symbolic.action import Action
-from symbolic.location import Location
+# from symbolic import gv, event
+# from symbolic.game import GameInstance
+# from symbolic.action import Action
+# from symbolic.location import Location
 
 
 def first_sentence(text):
@@ -22,20 +22,6 @@ def clean(s):
     return s.replace('\n', ' ').strip()
 
 
-def move_entity(entity, origin: Location, dest: Location, gi: GameInstance):
-    """ Moves entity from origin to destination. """
-    assert origin.has_entity(entity), \
-        "Can't move entity {} that isn't present at origin {}" \
-        .format(entity, origin)
-    origin.del_entity(entity)
-    ev0 = dest.add_entity(entity)
-    if ev0 is not None:
-        msg = "unexpected NewEntityEvent from dest.add_entity() dest={} event={}".format(dest, ev0)
-        print("!!!WARNING: "+msg)
-        assert False, msg
-    gi.event_stream.push(event.EntityMovedEvent(entity, origin, dest))
-
-
 # This list covers the common paterns. However, some games like
 # loose.z5 and lostpig.z8 write custom responses that aren't included.
 REGEXPS = [
@@ -50,44 +36,6 @@ REGEXPS = [
     ".*Sorry, but the word \"(\w+)\" is not in the vocabulary you can use.*",
     ".*Sorry, but this story doesn't recognize the word \"(\w+)\.?\".*",
 ]
-COMPILED_REGEXPS = [re.compile(regexp) for regexp in REGEXPS]
+COMPILED_UNRECOGNIZED_REGEXPS = [re.compile(regexp) for regexp in REGEXPS]
 
 
-def get_unrecognized(action, response):
-    """
-    Returns an unrecognized word based on the response or empty string.
-
-    Args:
-      action: The action that was taken
-      response: The textual response from the game
-
-    Returns: string containing the unrecognized word or
-    empty string if recognized.
-
-    """
-    if isinstance(action, Action):
-        action = action.text()
-    for p in COMPILED_REGEXPS:
-        match = p.match(response)
-        if match:
-            if match.groups():
-                return match.group(1)
-            else:
-                return action.split(' ')[0]
-    return ''
-
-
-def action_recognized(action, response, gi: GameInstance):
-    """
-    Returns True if the action was recognized based on the response.
-    Returns False if the action is not recognized and appends it to
-    the list of unrecognized_words.
-
-    """
-    unrecognized_word = get_unrecognized(action, response)
-    if unrecognized_word:
-        if unrecognized_word not in gi.kg._unrecognized_words:
-            gv.dbg("[UTIL] Added unrecognized word \"{}\"".format(unrecognized_word))
-            gi.kg._unrecognized_words.append(unrecognized_word)
-        return False
-    return True

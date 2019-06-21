@@ -1,9 +1,10 @@
 from typing import Optional
 # from fuzzywuzzy import fuzz
 # from symbolic import gv
-from symbolic.gv import logger, GameInstance
-from symbolic.action import Action
-from symbolic.event import NewEntityEvent, NewActionRecordEvent
+from .gv import logger
+from .game import GameInstance
+from .action import Action
+from .event import NewEntityEvent, NewActionRecordEvent
 
 
 class Location:

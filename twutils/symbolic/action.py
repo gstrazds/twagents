@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from symbolic import gv   # global constants
-from symbolic.gv import GameInstance
+from symbolic.game import GameInstance
 from symbolic.entity import Entity
+from symbolic import attribute
 
 
 class Action(ABC):
@@ -37,9 +38,8 @@ class Action(ABC):
 
     def recognized(self, gi: GameInstance):
         """ Returns true if action doesn't contain unrecognized words. """
-        for word in self.text().split(' '):
-            if word in gi.kg._unrecognized_words:
-                return False
+        if gi.includes_unrecognized_words(self.text()):
+            return False
         return True
 
     def __str__(self):
@@ -128,7 +128,7 @@ class TakeAction(SingleAction):
             gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
         # gi.kg.inventory.add_entity(self.entity)
         gi.entity_at_location(self.entity, gi.kg.inventory)
-        self.entity.add_attribute(gv.Portable)
+        gi.add_entity_attribute(self.entity, gv.Portable)
 
     def validate(self, response_text):
         if 'taken' in response_text.lower() or \
@@ -151,7 +151,7 @@ class DropAction(SingleAction):
         assert self.entity in gi.kg.inventory
         gi.kg.inventory.remove(self.entity)
         gi.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
-        self.entity.add_attribute(gv.Portable)
+        gi.add_entity_attribute(self.entity, gv.Portable)
 
     def validate(self, response_text):
         if 'dropped' in response_text.lower():
@@ -166,7 +166,7 @@ class OpenAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.open()
-        self.entity.add_attribute(gv.Openable)
+        gi.add_entity_attribute(self.entity, gv.Openable)
 
 
 class CloseAction(SingleAction):
@@ -175,7 +175,7 @@ class CloseAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.close()
-        self.entity.add_attribute(gv.Openable)
+        gi.add_entity_attribute(self.entity, gv.Openable)
 
 
 class LockAction(SingleAction):
@@ -184,7 +184,7 @@ class LockAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.lock()
-        self.entity.add_attribute(gv.Lockable)
+        gi.add_entity_attribute(self.entity, gv.Lockable)
 
 class LockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
@@ -192,7 +192,7 @@ class LockWithAction(DoubleAction):
 
     def apply(self, gi: GameInstance):
         self.entity1.state.lock()
-        self.entity1.add_attribute(gv.Lockable)
+        gi.add_entity_attribute(self.entity1, gv.Lockable)
 
 class UnlockAction(SingleAction):
     def __init__(self, entity):
@@ -200,7 +200,7 @@ class UnlockAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.unlock()
-        self.entity.add_attribute(gv.Lockable)
+        gi.add_entity_attribute(self.entity, gv.Lockable)
 
 class UnlockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
@@ -208,7 +208,7 @@ class UnlockWithAction(DoubleAction):
 
     def apply(self, gi: GameInstance):
         self.entity1.state.unlock()
-        self.entity1.add_attribute(gv.Lockable)
+        gi.add_entity_attribute(self.entity1, gv.Lockable)
 
 class TurnOnAction(SingleAction):
     def __init__(self, entity):
@@ -216,7 +216,7 @@ class TurnOnAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.turn_on()
-        self.entity.add_attribute(gv.Switchable)
+        gi.add_entity_attribute(self.entity, gv.Switchable)
 
 
 class TurnOffAction(SingleAction):
@@ -225,7 +225,7 @@ class TurnOffAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.turn_off()
-        self.entity.add_attribute(gv.Switchable)
+        gi.add_entity_attribute(self.entity, gv.Switchable)
 
 
 class ConsumeAction(SingleAction):
@@ -235,7 +235,7 @@ class ConsumeAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.remove()
-        self.entity.add_attribute(gv.Edible)
+        gi.add_entity_attribute(self.entity, gv.Edible)
 
 
 class MoveItemAction(DoubleAction):
@@ -247,3 +247,90 @@ class MoveItemAction(DoubleAction):
         # TODO: Should entity contain a reference to its own container?
         # move_entity(self.entity1, source_container, self.entity2, gi)
         pass
+
+
+# Global Action Definitions
+DoNothing  = StandaloneAction('do nothing')
+Look       = StandaloneAction('look')
+Inventory  = StandaloneAction('inventory')
+North      = NavAction('north')
+South      = NavAction('south')
+East       = NavAction('east')
+West       = NavAction('west')
+# NorthWest  = NavAction('northwest')
+# SouthWest  = NavAction('southwest')
+# NorthEast  = NavAction('northeast')
+# SouthEast  = NavAction('southeast')
+# Up         = NavAction('up')
+# Down       = NavAction('down')
+# Enter      = NavAction('enter')
+# Exit       = NavAction('exit')
+# Climb      = NavAction('climb')
+# In         = NavAction('in')
+# Out        = NavAction('out')
+# GetUp      = StandaloneAction('get up')
+TakeAll    = StandaloneAction('take all')
+# Yes        = StandaloneAction('yes')
+# No         = StandaloneAction('no')
+Take       = lambda x: TakeAction(x)
+Drop       = lambda x: DropAction(x)
+Examine    = lambda x: ExamineAction(x)
+Eat        = lambda x: ConsumeAction('eat', x)
+Drink      = lambda x: ConsumeAction('drink', x)
+# Swallow    = lambda x: ConsumeAction('swallow', x)
+# Consume    = lambda x: ConsumeAction('consume', x)
+Open       = lambda x: OpenAction(x)
+Close      = lambda x: CloseAction(x)
+Lock       = lambda x: LockAction(x)
+Unlock     = lambda x: UnlockAction(x)
+LockWith   = lambda x,y: LockWithAction(x)
+UnlockWith = lambda x,y: UnlockWithAction(x)
+TurnOn     = lambda x: TurnOnAction(x)
+TurnOff    = lambda x: TurnOffAction(x)
+# Light      = lambda x: TurnOnAction(x)
+# Extinguish = lambda x: TurnOffAction(x)
+# Move       = lambda x: SingleAction('move', x)
+# Push       = lambda x: SingleAction('push', x)
+# Pull       = lambda x: SingleAction('pull', x)
+# Drag       = lambda x: SingleAction('drag', x)
+# Lift       = lambda x: SingleAction('lift', x)
+# GiveTo     = lambda x,y: MoveItemAction('give', x, 'to', y)
+#PutIn      = lambda x,y: MoveItemAction('put', x, 'in', y)
+PutIn      = lambda x,y: MoveItemAction('insert', x, 'into', y)
+PutOn      = lambda x,y: MoveItemAction('put', x, 'on', y)
+TakeFrom   = lambda x,y: MoveItemAction('take', x, 'from', y)
+Search     = lambda x: SingleAction('search', x) # TODO: Create informative action
+# Ask        = lambda x: SingleAction('ask', x)
+# Talk       = lambda x: SingleAction('talk to', x)
+# SayTo      = lambda x,y: DoubleAction('say', x, 'to', y)
+# Kiss       = lambda x: SingleAction('kiss', x)
+# Bribe      = lambda x: SingleAction('bribe', x)
+# BuyFrom    = lambda x,y: MoveItemAction('buy', x, 'from', y)
+# Attack     = lambda x: SingleAction('attack', x)
+# AttackWith = lambda x,y: DoubleAction('attack', x, 'with', y)
+# Kill       = lambda x: SingleAction('kill', x)
+# KillWith   = lambda x,y: DoubleAction('kill', x, 'with', y)
+
+SliceWith   = lambda x,y: DoubleAction('slice', x, 'with', y)
+ChopWith    = lambda x,y: DoubleAction('chop', x, 'with', y)
+DiceWith    = lambda x,y: DoubleAction('dice', x, 'with', y)
+CookWith    = lambda x,y: DoubleAction('cook', x, 'with', y)
+Prepare     = lambda x: SingleAction('prepare', x)  # x='meal'
+
+# Global Entity Attributes
+Portable   = attribute.Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,
+Edible     = attribute.Attribute('edible',     [Eat, Drink])  # Swallow, Consume])
+# Moveable   = attribute.Attribute('moveable',   [Move, Push, Pull, Drag, Lift])
+# Switchable = attribute.Attribute('switchable', [TurnOn, TurnOff])
+# Flammable  = attribute.Attribute('flammable',  [Light, Extinguish])
+Openable   = attribute.Attribute('openable',   [Open, Close])
+Lockable   = attribute.Attribute('lockable',   [Lock, Unlock, LockWith, UnlockWith])
+# TODO: An Openable object may be a container. We should have logic to check for containment
+Container  = attribute.Attribute('container',  [PutIn, TakeFrom])  #, Search])
+Support    = attribute.Attribute('support',    [PutOn, TakeFrom])  #, Search])
+# Person     = attribute.Attribute('person',     [Ask, Talk, SayTo, Kiss, Bribe, GiveTo, BuyFrom])
+# Enemy      = attribute.Attribute('enemy',      [Attack, AttackWith, Kill, KillWith])
+
+Cutable    = attribute.Attribute('cutable',   [SliceWith, ChopWith, DiceWith])
+Cookable   = attribute.Attribute('cookable',   [CookWith])
+

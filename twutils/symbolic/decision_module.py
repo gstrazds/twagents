@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from symbolic.gv import GameInstance
+from symbolic.game import GameInstance
 
 class DecisionModule(ABC):
     """
