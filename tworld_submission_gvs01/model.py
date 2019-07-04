@@ -18,7 +18,7 @@ class LSTM_DQN(torch.nn.Module):
         self.enable_cuda = enable_cuda
         self.word_vocab_size = len(word_vocab)
         self.id2word = word_vocab
-        self.generate_length = generate_length
+        self.generate_length = generate_length  # how many (max) output words we want to produce
         self.read_config()
         self._def_layers()
         self.init_weights()

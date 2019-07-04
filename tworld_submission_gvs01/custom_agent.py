@@ -150,26 +150,32 @@ class AgentDQN:
             print("Failed to load checkpoint...")
 
 
-
 def _choose_random_command(word_ranks, word_masks_np, use_cuda):
     """
     Generate a command randomly, for epsilon greedy.
 
     Arguments:
         word_ranks: Q values for each word by model.action_scorer.
-        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
+        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun, adj2, noun2).
     """
+
     batch_size = word_ranks[0].size(0)
-    word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
+    # print("batch_size=", batch_size, len(word_masks_np))
+    assert len(word_ranks) == len(word_masks_np)
+
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list of (batch x n_vocab) arrays, len=5 (5 word output phrases)
+    # word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
     word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+
     word_indices = []
-    for i in range(len(word_ranks_np)):
+    for i in range(len(word_ranks_np)):  # len=5 (verb, adj1, noun1, adj2, noun2)
         indices = []
         for j in range(batch_size):
-            msk = word_masks_np[i][j]  # vocab
-            indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))
+            msk = word_masks_np[i][j]  # msk is of len = vocab, j is index into batch
+            indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))  # choose from non-zero entries of msk
         word_indices.append(np.array(indices))
     # word_indices: list of batch
+
     word_qvalues = [[] for _ in word_masks_np]
     for i in range(batch_size):
         for j in range(len(word_qvalues)):
@@ -189,11 +195,14 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
         word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
     """
     batch_size = word_ranks[0].size(0)
-    word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
-    word_ranks_np = [r - np.min(r) for r in word_ranks_np] # minus the min value, so that all values are non-negative
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list of arrays, batch_len x n_vocab
+    word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
     word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
-    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of batch
+
+    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of arrays of len = batch
+
     word_qvalues = [[] for _ in word_masks_np]
+    print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=1, len(word_qvalues)=5.
     for i in range(batch_size):
         for j in range(len(word_qvalues)):
             word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
@@ -201,7 +210,6 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     word_indices = [to_pt(item, use_cuda) for item in word_indices]
     word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
     return word_qvalues, word_indices
-
 
 
 class CustomAgent:
@@ -566,7 +574,6 @@ class CustomAgent:
         input_description, _ = self.get_game_step_info(obs, infos)
         word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
         _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.word_masks_np, self.use_cuda)
-
         chosen_indices = word_indices_maxq
         chosen_indices = [item.detach() for item in chosen_indices]
         chosen_strings = self.get_chosen_strings(chosen_indices)
@@ -652,7 +659,7 @@ class CustomAgent:
                                             mask[b],
                                             dones[b],
                                             description_id_list[b],
-                                            [item[b] for item in self.word_masks_np])
+                                            [word_mask[b] for word_mask in self.word_masks_np])
 
             # cache new info in current game step into caches
             self.cache_description_id_list = description_id_list
