@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from textworld import EnvInfos
 
 from model import LSTM_DQN
-from generic import to_np, to_pt, preproc, _words_to_ids, pad_sequences, max_len
+from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.nail import NailAgent
 
@@ -88,6 +88,122 @@ class PrioritizedReplayMemory(object):
         return len(self.alpha_memory) + len(self.beta_memory)
 
 
+class AgentDQN:
+    def __init__(self, config, vocab, use_cuda):
+        self.model_config = config['model']
+        self.experiment_tag = config['checkpoint']['experiment_tag']
+        self.model_checkpoint_path = config['checkpoint']['model_checkpoint_path']
+        self.use_cuda = use_cuda
+        self.word_vocab = vocab
+        self.model = LSTM_DQN(model_config=self.model_config,
+                              word_vocab=self.word_vocab,
+                              enable_cuda=self.use_cuda)
+        if config['checkpoint']['load_pretrained']:
+            self.load_pretrained_model(self.model_checkpoint_path + '/' +
+                                       config['checkpoint']['pretrained_experiment_tag'] + '.pt')
+        if self.use_cuda:
+            self.model.cuda()
+
+        self.replay_batch_size = config['general']['replay_batch_size']
+        self.replay_memory = PrioritizedReplayMemory(
+                                config['general']['replay_memory_capacity'],
+                                priority_fraction=config['general']['replay_memory_priority_fraction'])
+        # optimizer
+        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
+        self.optimizer = torch.optim.Adam(parameters, lr=config['training']['optimizer']['learning_rate'])
+
+
+    def get_ranks(self, input_description):
+        """
+        Given input description tensor, call model forward, to get Q values of words.
+
+        Arguments:
+            input_description: Input tensors, which include all the information chosen in
+            select_additional_infos() concatenated together.
+        """
+        state_representation = self.model.representation_generator(input_description)
+        word_ranks = self.model.action_scorer(state_representation)  # each element in list has batch x n_vocab size
+        return word_ranks
+
+    def save_checkpoint(self, episode_num):
+        save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
+        if not os.path.isdir(self.model_checkpoint_path):
+            os.mkdir(self.model_checkpoint_path)
+        torch.save(self.model.state_dict(), save_to)
+        print("========= saved checkpoint =========")
+
+    def load_pretrained_model(self, load_from):
+        """
+        Load pretrained checkpoint from file.
+
+        Arguments:
+            load_from: File name of the pretrained model checkpoint.
+        """
+        print("loading model from %s\n" % (load_from))
+        try:
+            if self.use_cuda:
+                state_dict = torch.load(load_from)
+            else:
+                state_dict = torch.load(load_from, map_location='cpu')
+            self.model.load_state_dict(state_dict)
+        except:
+            print("Failed to load checkpoint...")
+
+
+
+def _choose_random_command(word_ranks, word_masks_np, use_cuda):
+    """
+    Generate a command randomly, for epsilon greedy.
+
+    Arguments:
+        word_ranks: Q values for each word by model.action_scorer.
+        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
+    """
+    batch_size = word_ranks[0].size(0)
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
+    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+    word_indices = []
+    for i in range(len(word_ranks_np)):
+        indices = []
+        for j in range(batch_size):
+            msk = word_masks_np[i][j]  # vocab
+            indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))
+        word_indices.append(np.array(indices))
+    # word_indices: list of batch
+    word_qvalues = [[] for _ in word_masks_np]
+    for i in range(batch_size):
+        for j in range(len(word_qvalues)):
+            word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
+    word_qvalues = [torch.stack(item) for item in word_qvalues]
+    word_indices = [to_pt(item, use_cuda) for item in word_indices]
+    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
+    return word_qvalues, word_indices
+
+
+def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
+    """
+    Generate a command by maximum q values, for epsilon greedy.
+
+    Arguments:
+        word_ranks: Q values for each word by model.action_scorer.
+        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
+    """
+    batch_size = word_ranks[0].size(0)
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
+    word_ranks_np = [r - np.min(r) for r in word_ranks_np] # minus the min value, so that all values are non-negative
+    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of batch
+    word_qvalues = [[] for _ in word_masks_np]
+    for i in range(batch_size):
+        for j in range(len(word_qvalues)):
+            word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
+    word_qvalues = [torch.stack(item) for item in word_qvalues]
+    word_indices = [to_pt(item, use_cuda) for item in word_indices]
+    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
+    return word_qvalues, word_indices
+
+
+
 class CustomAgent:
     def __init__(self):
         """
@@ -123,26 +239,10 @@ class CustomAgent:
         else:
             self.use_cuda = False
 
-        self.model = LSTM_DQN(model_config=self.config["model"],
-                              word_vocab=self.word_vocab,
-                              enable_cuda=self.use_cuda)
+        self.agentNN = AgentDQN(self.config, self.word_vocab, self.use_cuda)
 
-        self.experiment_tag = self.config['checkpoint']['experiment_tag']
-        self.model_checkpoint_path = self.config['checkpoint']['model_checkpoint_path']
         self.save_frequency = self.config['checkpoint']['save_frequency']
 
-        if self.config['checkpoint']['load_pretrained']:
-            self.load_pretrained_model(self.model_checkpoint_path + '/' + self.config['checkpoint']['pretrained_experiment_tag'] + '.pt')
-        if self.use_cuda:
-            self.model.cuda()
-
-        self.replay_batch_size = self.config['general']['replay_batch_size']
-        self.replay_memory = PrioritizedReplayMemory(self.config['general']['replay_memory_capacity'],
-                                                     priority_fraction=self.config['general']['replay_memory_priority_fraction'])
-
-        # optimizer
-        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
-        self.optimizer = torch.optim.Adam(parameters, lr=self.config['training']['optimizer']['learning_rate'])
 
         # epsilon greedy
         self.epsilon_anneal_episodes = self.config['general']['epsilon_anneal_episodes']
@@ -209,14 +309,15 @@ class CustomAgent:
         Tell the agent that it's training phase.
         """
         self.mode = "train"
-        self.model.train()
+        self.agentNN.model.train()
+
 
     def eval(self):
         """
         Tell the agent that it's evaluation phase.
         """
         self.mode = "eval"
-        self.model.eval()
+        self.agentNN.model.eval()
 
     def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
         """
@@ -240,23 +341,6 @@ class CustomAgent:
         """
         self.finish()
         self._epsiode_has_started = False
-
-    def load_pretrained_model(self, load_from):
-        """
-        Load pretrained checkpoint from file.
-
-        Arguments:
-            load_from: File name of the pretrained model checkpoint.
-        """
-        print("loading model from %s\n" % (load_from))
-        try:
-            if self.use_cuda:
-                state_dict = torch.load(load_from)
-            else:
-                state_dict = torch.load(load_from, map_location='cpu')
-            self.model.load_state_dict(state_dict)
-        except:
-            print("Failed to load checkpoint...")
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -330,6 +414,8 @@ class CustomAgent:
             ) for idx in range(len(obs))]
         # get word masks
         batch_size = len(infos["verbs"])
+        # print("batch_size=", batch_size)
+
         verbs_word_list = infos["verbs"]
         noun_word_list, adj_word_list = [], []
         for entities in infos["entities"]:
@@ -366,6 +452,7 @@ class CustomAgent:
         self.cache_chosen_indices = None
         self.current_step = 0
 
+
     def get_game_step_info(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
         Get all the available information, and concat them together to be tensor for
@@ -375,24 +462,22 @@ class CustomAgent:
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
-        inventory_token_list = [preproc(item, tokenizer=self.nlp) for item in infos["inventory"]]
-        inventory_id_list = [_words_to_ids(tokens, self.word2id) for tokens in inventory_token_list]
+        inventory_id_list = get_token_ids_for_items(infos["inventory"], self.word2id, tokenizer=self.nlp)
 
-        feedback_token_list = [preproc(item, str_type='feedback', tokenizer=self.nlp) for item in obs]
-        feedback_id_list = [_words_to_ids(tokens, self.word2id) for tokens in feedback_token_list]
+        feedback_id_list = get_token_ids_for_items(obs, self.word2id, tokenizer=self.nlp)
 
-        quest_token_list = [preproc(item, tokenizer=self.nlp) for item in infos["extra.recipe"]]
-        quest_id_list = [_words_to_ids(tokens, self.word2id) for tokens in quest_token_list]
+        quest_id_list = get_token_ids_for_items(infos["extra.recipe"], self.word2id, tokenizer=self.nlp)
 
-        prev_action_token_list = [preproc(item, tokenizer=self.nlp) for item in self.prev_actions]
-        prev_action_id_list = [_words_to_ids(tokens, self.word2id) for tokens in prev_action_token_list]
+        prev_action_id_list = get_token_ids_for_items(self.prev_actions, self.word2id, tokenizer=self.nlp)
 
-        description_token_list = [preproc(item, tokenizer=self.nlp) for item in infos["description"]]
-        for i, d in enumerate(description_token_list):
-            if len(d) == 0:
-                description_token_list[i] = ["end"]  # if empty description, insert word "end"
-        description_id_list = [_words_to_ids(tokens, self.word2id) for tokens in description_token_list]
-        description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list, inventory_id_list, quest_id_list, feedback_id_list, prev_action_id_list)]
+        description_id_list = get_token_ids_for_items(infos["description"],
+                                                      self.word2id, tokenizer=self.nlp, subst_if_empty=['end'])
+
+        description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
+                                                                                        inventory_id_list,
+                                                                                        quest_id_list,
+                                                                                        feedback_id_list,
+                                                                                        prev_action_id_list)]
 
         input_description = pad_sequences(description_id_list, maxlen=max_len(description_id_list)).astype('int32')
         input_description = to_pt(input_description, self.use_cuda)
@@ -425,7 +510,7 @@ class CustomAgent:
         if adj_2 == self.EOS_id:
             res = res + " " + prep + " " + self.word_vocab[noun_2]
         else:
-            res =  res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
+            res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
         return res
 
     def get_chosen_strings(self, chosen_indices):
@@ -446,68 +531,6 @@ class CustomAgent:
                                              chosen_indices_np[4][i]
             res_str.append(self.word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
         return res_str
-
-    def choose_random_command(self, word_ranks, word_masks_np):
-        """
-        Generate a command randomly, for epsilon greedy.
-
-        Arguments:
-            word_ranks: Q values for each word by model.action_scorer.
-            word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
-        """
-        batch_size = word_ranks[0].size(0)
-        word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
-        word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
-        word_indices = []
-        for i in range(len(word_ranks_np)):
-            indices = []
-            for j in range(batch_size):
-                msk = word_masks_np[i][j]  # vocab
-                indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))
-            word_indices.append(np.array(indices))
-        # word_indices: list of batch
-        word_qvalues = [[] for _ in word_masks_np]
-        for i in range(batch_size):
-            for j in range(len(word_qvalues)):
-                word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
-        word_qvalues = [torch.stack(item) for item in word_qvalues]
-        word_indices = [to_pt(item, self.use_cuda) for item in word_indices]
-        word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
-        return word_qvalues, word_indices
-
-    def choose_maxQ_command(self, word_ranks, word_masks_np):
-        """
-        Generate a command by maximum q values, for epsilon greedy.
-
-        Arguments:
-            word_ranks: Q values for each word by model.action_scorer.
-            word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
-        """
-        batch_size = word_ranks[0].size(0)
-        word_ranks_np = [to_np(item) for item in word_ranks]  # list of batch x n_vocab
-        word_ranks_np = [r - np.min(r) for r in word_ranks_np] # minus the min value, so that all values are non-negative
-        word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
-        word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of batch
-        word_qvalues = [[] for _ in word_masks_np]
-        for i in range(batch_size):
-            for j in range(len(word_qvalues)):
-                word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
-        word_qvalues = [torch.stack(item) for item in word_qvalues]
-        word_indices = [to_pt(item, self.use_cuda) for item in word_indices]
-        word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
-        return word_qvalues, word_indices
-
-    def get_ranks(self, input_description):
-        """
-        Given input description tensor, call model forward, to get Q values of words.
-
-        Arguments:
-            input_description: Input tensors, which include all the information chosen in
-            select_additional_infos() concatenated together.
-        """
-        state_representation = self.model.representation_generator(input_description)
-        word_ranks = self.model.action_scorer(state_representation)  # each element in list has batch x n_vocab size
-        return word_ranks
 
     def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
         """
@@ -541,8 +564,8 @@ class CustomAgent:
             return  # Nothing to return.
 
         input_description, _ = self.get_game_step_info(obs, infos)
-        word_ranks = self.get_ranks(input_description)  # list of batch x vocab
-        _, word_indices_maxq = self.choose_maxQ_command(word_ranks, self.word_masks_np)
+        word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
+        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.word_masks_np, self.use_cuda)
 
         chosen_indices = word_indices_maxq
         chosen_indices = [item.detach() for item in chosen_indices]
@@ -595,12 +618,12 @@ class CustomAgent:
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
         word_ranks = self.get_ranks(input_description)  # list of batch x vocab
-        _, word_indices_maxq = self.choose_maxQ_command(word_ranks, self.word_masks_np)
+        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.word_masks_np, self.use_cuda)
 
         if self.mode == "eval":
             chosen_indices = word_indices_maxq
         else:  # self.mode != "eval"
-            _, word_indices_random = self.choose_random_command(word_ranks, self.word_masks_np)
+            _, word_indices_random = _choose_random_command(word_ranks, self.word_masks_np, self.use_cuda)
             # random number for epsilon greedy
             rand_num = np.random.uniform(low=0.0, high=1.0, size=(input_description.size(0), 1))
             less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
@@ -622,7 +645,14 @@ class CustomAgent:
                     if mask_np[b] == 0:
                         continue
                     is_prior = rewards_np[b] > 0.0
-                    self.replay_memory.push(is_prior, self.cache_description_id_list[b], [item[b] for item in self.cache_chosen_indices], rewards[b], mask[b], dones[b], description_id_list[b], [item[b] for item in self.word_masks_np])
+                    self.replay_memory.push(is_prior,
+                                            self.cache_description_id_list[b],
+                                            [item[b] for item in self.cache_chosen_indices],
+                                            rewards[b],
+                                            mask[b],
+                                            dones[b],
+                                            description_id_list[b],
+                                            [item[b] for item in self.word_masks_np])
 
             # cache new info in current game step into caches
             self.cache_description_id_list = description_id_list
@@ -697,7 +727,7 @@ class CustomAgent:
         next_word_ranks = self.get_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
         next_word_masks = list(list(zip(*batch.next_word_masks)))
         next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_qvalues, _ = self.choose_maxQ_command(next_word_ranks, next_word_masks)
+        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
         next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
         next_q_value = next_q_value.detach()
 
@@ -732,11 +762,7 @@ class CustomAgent:
             if avg_score > self.best_avg_score_so_far:
                 self.best_avg_score_so_far = avg_score
 
-                save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(self.current_episode) + ".pt"
-                if not os.path.isdir(self.model_checkpoint_path):
-                    os.mkdir(self.model_checkpoint_path)
-                torch.save(self.model.state_dict(), save_to)
-                print("========= saved checkpoint =========")
+                self.agentNN.save_checkpoint(self.current_episode)
 
         self.current_episode += 1
         # annealing

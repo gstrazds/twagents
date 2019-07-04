@@ -17,7 +17,7 @@ general:
 checkpoint:
   experiment_tag: 'gvs-symbolic-baseline'
   model_checkpoint_path: 'saved_models'
-  load_pretrained: True  # during test, enable this so that the agent loads your pretrained model
+  load_pretrained: False  # during test, enable this so that the agent loads your pretrained model
   pretrained_experiment_tag: 'lstm-dqn-baseline_episode_37700'
   save_frequency: 100
 
