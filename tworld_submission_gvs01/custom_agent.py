@@ -94,9 +94,9 @@ class AgentDQN:
         self.experiment_tag = config['checkpoint']['experiment_tag']
         self.model_checkpoint_path = config['checkpoint']['model_checkpoint_path']
         self.use_cuda = use_cuda
-        self.word_vocab = vocab
+        self.vocab = vocab
         self.model = LSTM_DQN(model_config=self.model_config,
-                              word_vocab=self.word_vocab,
+                              word_vocab=self.vocab.word_vocab,
                               enable_cuda=self.use_cuda)
         if config['checkpoint']['load_pretrained']:
             self.load_pretrained_model(self.model_checkpoint_path + '/' +
@@ -212,6 +212,117 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     return word_qvalues, word_indices
 
 
+class WordVocab:
+    def __init__(self, vocab_file="./vocab.txt"):
+        with open(vocab_file) as f:
+            self.word_vocab = f.read().split("\n")
+        self.word2id = {}
+        for i, w in enumerate(self.word_vocab):
+            self.word2id[w] = i
+        self.EOS_id = self.word2id["</S>"]
+        self.single_word_verbs = set(["inventory", "look"])
+        self.preposition_map = {"take": "from",
+                                "chop": "with",
+                                "slice": "with",
+                                "dice": "with",
+                                "cook": "with",
+                                "insert": "into",
+                                "put": "on"}
+        # FROM extras.command_templates:
+        #   'inventory',
+        #   'look',
+        #   'prepare meal',
+        #   'go east', 'go north', 'go south', 'go west',
+        #   'cook {f} with {oven}',
+        #   'cook {f} with {stove}',
+        #   'cook {f} with {toaster}',
+        #   'chop {f} with {o}',
+        #   'dice {f} with {o}',
+        #   'slice {f} with {o}',
+        #   'lock {c|d} with {k}',
+        #   'unlock {c|d} with {k}',
+        #   'close {c|d}',
+        #   'open {c|d}',
+        #   'take {o} from {c|s}',
+        #   'insert {o} into {c}',
+        #   'put {o} on {s}',
+        #   'drop {o}',
+        #   'take {o}',
+        #   'drink {f}',
+        #   'eat {f}',
+        #   'examine {o|t}',
+
+        # self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
+        self.word_masks_np = []  # will be a list of np.array (x5), one for each potential output word
+
+    def init_with_infos(self, infos):
+        # get word masks
+        batch_size = len(infos["verbs"])
+        # print("batch_size=", batch_size)
+        mask_shape = (batch_size, len(self.word_vocab))
+        verb_mask = np.zeros(mask_shape, dtype="float32")
+        noun_mask = np.zeros(mask_shape, dtype="float32")
+        adj_mask = np.zeros(mask_shape, dtype="float32")
+
+        verbs_word_list = infos["verbs"]
+        noun_word_list, adj_word_list = [], []
+        for entities in infos["entities"]:
+            tmp_nouns, tmp_adjs = [], []
+            for name in entities:
+                split = name.split()
+                tmp_nouns.append(split[-1])
+                if len(split) > 1:
+                    tmp_adjs += split[:-1]
+            noun_word_list.append(list(set(tmp_nouns)))
+            adj_word_list.append(list(set(tmp_adjs)))
+
+        for i in range(batch_size):
+            for w in verbs_word_list[i]:
+                if w in self.word2id:
+                    verb_mask[i][self.word2id[w]] = 1.0
+            for w in noun_word_list[i]:
+                if w in self.word2id:
+                    noun_mask[i][self.word2id[w]] = 1.0
+            for w in adj_word_list[i]:
+                if w in self.word2id:
+                    adj_mask[i][self.word2id[w]] = 1.0
+        second_noun_mask = copy.copy(noun_mask)
+        second_adj_mask = copy.copy(adj_mask)
+        second_noun_mask[:, self.EOS_id] = 1.0
+        adj_mask[:, self.EOS_id] = 1.0
+        second_adj_mask[:, self.EOS_id] = 1.0
+        self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
+
+    def word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
+        """
+        Turn the 5 indices into actual command strings.
+
+        Arguments:
+            verb: Index of the guessing verb in vocabulary
+            adj: Index of the guessing adjective in vocabulary
+            noun: Index of the guessing noun in vocabulary
+            adj_2: Index of the second guessing adjective in vocabulary
+            noun_2: Index of the second guessing noun in vocabulary
+        """
+        # turns 5 indices into actual command strings
+        if self.word_vocab[verb] in self.single_word_verbs:
+            return self.word_vocab[verb]
+        if adj == self.EOS_id:
+            res = self.word_vocab[verb] + " " + self.word_vocab[noun]
+        else:
+            res = self.word_vocab[verb] + " " + self.word_vocab[adj] + " " + self.word_vocab[noun]
+        if self.word_vocab[verb] not in self.preposition_map:
+            return res
+        if noun_2 == self.EOS_id:
+            return res
+        prep = self.preposition_map[self.word_vocab[verb]]
+        if adj_2 == self.EOS_id:
+            res = res + " " + prep + " " + self.word_vocab[noun_2]
+        else:
+            res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
+        return res
+
+
 class CustomAgent:
     def __init__(self):
         """
@@ -219,15 +330,9 @@ class CustomAgent:
             word_vocab: List of words supported.
         """
         self.mode = "train"
-        with open("./vocab.txt") as f:
-            self.word_vocab = f.read().split("\n")
         with open("config.yaml") as reader:
             self.config = yaml.safe_load(reader)
-        self.word2id = {}
-        for i, w in enumerate(self.word_vocab):
-            self.word2id[w] = i
-        self.EOS_id = self.word2id["</S>"]
-
+        self.vocab = WordVocab(vocab_file="./vocab.txt")
         self.batch_size = self.config['training']['batch_size']
         self.max_nb_steps_per_episode = self.config['training']['max_nb_steps_per_episode']
         self.nb_epochs = self.config['training']['nb_epochs']
@@ -247,7 +352,7 @@ class CustomAgent:
         else:
             self.use_cuda = False
 
-        self.agentNN = AgentDQN(self.config, self.word_vocab, self.use_cuda)
+        self.agentNN = AgentDQN(self.config, self.vocab, self.use_cuda)
 
         self.save_frequency = self.config['checkpoint']['save_frequency']
 
@@ -261,50 +366,6 @@ class CustomAgent:
         self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
         self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
-        # FROM extras.command_templates:
-        #   'inventory',
-        #   'look',
-
-        #   'prepare meal',
-
-        #   'go east', 'go north', 'go south', 'go west',
-
-        #   'cook {f} with {oven}',
-        #   'cook {f} with {stove}',
-        #   'cook {f} with {toaster}',
-
-        #   'chop {f} with {o}',
-        #   'dice {f} with {o}',
-        #   'slice {f} with {o}',
-
-        #   'lock {c|d} with {k}',
-        #   'unlock {c|d} with {k}',
-
-        #   'close {c|d}',
-        #   'open {c|d}',
-
-        #   'take {o} from {c|s}',
-
-        #   'insert {o} into {c}',
-        #   'put {o} on {s}',
-
-        #   'drop {o}',
-        #   'take {o}',
-
-        #   'drink {f}',
-        #   'eat {f}',
-
-        #   'examine {o|t}',
-
-
-        self.preposition_map = {"take": "from",
-                                "chop": "with",
-                                "slice": "with",
-                                "dice": "with",
-                                "cook": "with",
-                                "insert": "into",
-                                "put": "on"}
-        self.single_word_verbs = set(["inventory", "look"])
         self.discount_gamma = self.config['general']['discount_gamma']
         self.current_episode = 0
         self.current_step = 0
@@ -335,7 +396,7 @@ class CustomAgent:
             obs: Initial feedback for each game.
             infos: Additional information for each game.
         """
-        self.init(obs, infos)
+        self.init_with_infos(obs, infos)
         self._epsiode_has_started = True
 
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
@@ -401,7 +462,7 @@ class CustomAgent:
 #        request_infos.facts = True
         return request_infos
 
-    def init(self, obs: List[str], infos: Dict[str, List[Any]]):
+    def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
         Prepare the agent for the upcoming games.
 
@@ -420,42 +481,8 @@ class CustomAgent:
                 "n_{}".format(idx),
 
             ) for idx in range(len(obs))]
-        # get word masks
-        batch_size = len(infos["verbs"])
-        # print("batch_size=", batch_size)
 
-        verbs_word_list = infos["verbs"]
-        noun_word_list, adj_word_list = [], []
-        for entities in infos["entities"]:
-            tmp_nouns, tmp_adjs = [], []
-            for name in entities:
-                split = name.split()
-                tmp_nouns.append(split[-1])
-                if len(split) > 1:
-                    tmp_adjs += split[:-1]
-            noun_word_list.append(list(set(tmp_nouns)))
-            adj_word_list.append(list(set(tmp_adjs)))
-
-        verb_mask = np.zeros((batch_size, len(self.word_vocab)), dtype="float32")
-        noun_mask = np.zeros((batch_size, len(self.word_vocab)), dtype="float32")
-        adj_mask = np.zeros((batch_size, len(self.word_vocab)), dtype="float32")
-        for i in range(batch_size):
-            for w in verbs_word_list[i]:
-                if w in self.word2id:
-                    verb_mask[i][self.word2id[w]] = 1.0
-            for w in noun_word_list[i]:
-                if w in self.word2id:
-                    noun_mask[i][self.word2id[w]] = 1.0
-            for w in adj_word_list[i]:
-                if w in self.word2id:
-                    adj_mask[i][self.word2id[w]] = 1.0
-        second_noun_mask = copy.copy(noun_mask)
-        second_adj_mask = copy.copy(adj_mask)
-        second_noun_mask[:, self.EOS_id] = 1.0
-        adj_mask[:, self.EOS_id] = 1.0
-        second_adj_mask[:, self.EOS_id] = 1.0
-        self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
-
+        self.vocab.init_with_infos(infos)
         self.cache_description_id_list = None
         self.cache_chosen_indices = None
         self.current_step = 0
@@ -492,34 +519,6 @@ class CustomAgent:
 
         return input_description, description_id_list
 
-    def word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
-        """
-        Turn the 5 indices into actual command strings.
-
-        Arguments:
-            verb: Index of the guessing verb in vocabulary
-            adj: Index of the guessing adjective in vocabulary
-            noun: Index of the guessing noun in vocabulary
-            adj_2: Index of the second guessing adjective in vocabulary
-            noun_2: Index of the second guessing noun in vocabulary
-        """
-        # turns 5 indices into actual command strings
-        if self.word_vocab[verb] in self.single_word_verbs:
-            return self.word_vocab[verb]
-        if adj == self.EOS_id:
-            res = self.word_vocab[verb] + " " + self.word_vocab[noun]
-        else:
-            res = self.word_vocab[verb] + " " + self.word_vocab[adj] + " " + self.word_vocab[noun]
-        if self.word_vocab[verb] not in self.preposition_map:
-            return res
-        if noun_2 == self.EOS_id:
-            return res
-        prep = self.preposition_map[self.word_vocab[verb]]
-        if adj_2 == self.EOS_id:
-            res = res + " " + prep + " " + self.word_vocab[noun_2]
-        else:
-            res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
-        return res
 
     def get_chosen_strings(self, chosen_indices):
         """
@@ -537,7 +536,7 @@ class CustomAgent:
                                              chosen_indices_np[2][i],\
                                              chosen_indices_np[3][i],\
                                              chosen_indices_np[4][i]
-            res_str.append(self.word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
+            res_str.append(self.word_vocab.word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
         return res_str
 
     def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
