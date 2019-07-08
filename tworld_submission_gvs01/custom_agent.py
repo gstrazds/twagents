@@ -58,19 +58,21 @@ class PrioritizedReplayMemory(object):
         self.alpha_memory, self.beta_memory = [], []
         self.alpha_position, self.beta_position = 0, 0
 
-    def push(self, is_prior=False, *args):
+    def push(self, is_prior=False, transition:Transition=None):
         """Saves a transition."""
+        assert transition is not None
+
         if self.priority_fraction == 0.0:
             is_prior = False
         if is_prior:
             if len(self.alpha_memory) < self.alpha_capacity:
                 self.alpha_memory.append(None)
-            self.alpha_memory[self.alpha_position] = Transition(*args)
+            self.alpha_memory[self.alpha_position] = transition #Transition(*args)
             self.alpha_position = (self.alpha_position + 1) % self.alpha_capacity
         else:
             if len(self.beta_memory) < self.beta_capacity:
                 self.beta_memory.append(None)
-            self.beta_memory[self.beta_position] = Transition(*args)
+            self.beta_memory[self.beta_position] = transition
             self.beta_position = (self.beta_position + 1) % self.beta_capacity
 
     def sample(self, batch_size):
@@ -149,6 +151,50 @@ class AgentDQN:
         except:
             print("Failed to load checkpoint...")
 
+    def update(self):
+        """
+        Update neural model in agent. In this example we follow algorithm
+        of updating model in dqn with replay memory.
+
+        """
+        if len(self.replay_memory) < self.replay_batch_size:
+            return None
+        transitions = self.replay_memory.sample(self.replay_batch_size)
+        batch = Transition(*zip(*transitions))
+
+        observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
+        input_observation = to_pt(observation_id_list, self.use_cuda)
+        next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
+        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
+        chosen_indices = list(list(zip(*batch.word_indices)))
+        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
+
+        word_ranks = self.get_ranks(input_observation)  # list of batch x vocab
+        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
+        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
+
+        next_word_ranks = self.get_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
+        next_word_masks = list(list(zip(*batch.next_word_masks)))
+        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
+        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
+        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
+        next_q_value = next_q_value.detach()
+
+        rewards = torch.stack(batch.reward)  # batch
+        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
+        not_done = to_pt(not_done, self.use_cuda, type='float')
+        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
+        mask = torch.stack(batch.mask)  # batch
+        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
+        return loss
+
+    def backpropagate(self, loss):
+        self.optimizer.zero_grad()
+        loss.backward(retain_graph=True)
+        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+        self.optimizer.step()  # apply gradients
+
 
 def _choose_random_command(word_ranks, word_masks_np, use_cuda):
     """
@@ -210,6 +256,28 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     word_indices = [to_pt(item, use_cuda) for item in word_indices]
     word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
     return word_qvalues, word_indices
+
+
+def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
+    batch_size = word_ranks[0].size(0)
+    assert batch_size == word_masks_np[0].size(0)  #input_description.size(0)
+    word_qvalues, word_indices_maxq = _choose_maxQ_command(word_ranks, word_masks_np, use_cuda)
+    if epsilon > 0.0:
+        _, word_indices_random = _choose_random_command(word_ranks, word_masks_np, use_cuda)
+        # random number for epsilon greedy
+        rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size, 1))
+        less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
+        greater_than_epsilon = 1.0 - less_than_epsilon
+        less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
+        greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
+        less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+        chosen_indices = [
+            less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in
+            zip(word_indices_random, word_indices_maxq)]
+    else:
+        chosen_indices = word_indices_maxq
+    chosen_indices = [item.detach() for item in chosen_indices]
+    return word_qvalues, chosen_indices
 
 
 class WordVocab:
@@ -293,7 +361,7 @@ class WordVocab:
         second_adj_mask[:, self.EOS_id] = 1.0
         self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
 
-    def word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
+    def _word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
         """
         Turn the 5 indices into actual command strings.
 
@@ -321,6 +389,25 @@ class WordVocab:
         else:
             res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
         return res
+
+    def get_chosen_strings(self, chosen_indices):
+        """
+        Turns list of word indices into actual command strings.
+
+        Arguments:
+            chosen_indices: Word indices chosen by model.
+        """
+        chosen_indices_np = [to_np(item)[:, 0] for item in chosen_indices]
+        res_str = []
+        batch_size = chosen_indices_np[0].shape[0]
+        for i in range(batch_size):
+            verb, adj, noun, adj_2, noun_2 = chosen_indices_np[0][i],\
+                                             chosen_indices_np[1][i],\
+                                             chosen_indices_np[2][i],\
+                                             chosen_indices_np[3][i],\
+                                             chosen_indices_np[4][i]
+            res_str.append(self._word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
+        return res_str
 
 
 class CustomAgent:
@@ -519,26 +606,6 @@ class CustomAgent:
 
         return input_description, description_id_list
 
-
-    def get_chosen_strings(self, chosen_indices):
-        """
-        Turns list of word indices into actual command strings.
-
-        Arguments:
-            chosen_indices: Word indices chosen by model.
-        """
-        chosen_indices_np = [to_np(item)[:, 0] for item in chosen_indices]
-        res_str = []
-        batch_size = chosen_indices_np[0].shape[0]
-        for i in range(batch_size):
-            verb, adj, noun, adj_2, noun_2 = chosen_indices_np[0][i],\
-                                             chosen_indices_np[1][i],\
-                                             chosen_indices_np[2][i],\
-                                             chosen_indices_np[3][i],\
-                                             chosen_indices_np[4][i]
-            res_str.append(self.word_vocab.word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
-        return res_str
-
     def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
         """
         Acts upon the current list of observations, during evaluation.
@@ -572,7 +639,7 @@ class CustomAgent:
 
         input_description, _ = self.get_game_step_info(obs, infos)
         word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
-        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.word_masks_np, self.use_cuda)
+        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
         chosen_indices = word_indices_maxq
         chosen_indices = [item.detach() for item in chosen_indices]
         chosen_strings = self.get_chosen_strings(chosen_indices)
@@ -605,7 +672,7 @@ class CustomAgent:
         if not self._epsiode_has_started:
             self._start_episode(obs, infos)
 
-        if self.mode == "eval":
+        if False and self.mode == "eval":
             return self.act_eval(obs, scores, dones, infos)
 
         if self.current_step > 0:
@@ -616,49 +683,47 @@ class CustomAgent:
                 if all(dones):
                     self._end_episode(obs, scores, infos)
                     return  # Nothing to return.
-            else:
-                # compute previous step's rewards and masks
-                rewards_np, rewards, mask_np, mask = self.compute_reward()
 
         input_description, description_id_list = self.get_game_step_info(obs, infos)
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
-        word_ranks = self.get_ranks(input_description)  # list of batch x vocab
-        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.word_masks_np, self.use_cuda)
+        word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
+        assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
 
-        if self.mode == "eval":
-            chosen_indices = word_indices_maxq
-        else:  # self.mode != "eval"
-            _, word_indices_random = _choose_random_command(word_ranks, self.word_masks_np, self.use_cuda)
-            # random number for epsilon greedy
-            rand_num = np.random.uniform(low=0.0, high=1.0, size=(input_description.size(0), 1))
-            less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
-            greater_than_epsilon = 1.0 - less_than_epsilon
-            less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='float')
-            greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='float')
-            less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
-            chosen_indices = [
-                less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)]
-
-        chosen_indices = [item.detach() for item in chosen_indices]
-        chosen_strings = self.get_chosen_strings(chosen_indices)
+        _, chosen_indices = choose_command(word_ranks,
+                                           self.vocab.word_masks_np,
+                                           self.use_cuda,
+                                           epsilon=(0.0 if self.mode == "eval" else self.epsilon))
+        chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
         if self.mode != "eval":
+            # compute previous step's rewards and masks
+            rewards_np, mask_np = self.compute_reward()
+            mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+            rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+
             # push info from previous game step into replay memory
             if self.current_step > 0:
                 for b in range(len(obs)):
                     if mask_np[b] == 0:
                         continue
                     is_prior = rewards_np[b] > 0.0
-                    self.replay_memory.push(is_prior,
+                    # Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
+                    #                                        'reward', 'mask', 'done',
+                    #                                        'next_observation_id_list',
+                    #                                        'next_word_masks'))
+
+                    transition = Transition(
                                             self.cache_description_id_list[b],
                                             [item[b] for item in self.cache_chosen_indices],
-                                            rewards[b],
-                                            mask[b],
+                                            rewards_pt[b],
+                                            mask_pt[b],
                                             dones[b],
                                             description_id_list[b],
                                             [word_mask[b] for word_mask in self.word_masks_np])
+
+                    self.agentNN.replay_memory.push(is_prior=is_prior, transition=transition)
 
             # cache new info in current game step into caches
             self.cache_description_id_list = description_id_list
@@ -666,14 +731,10 @@ class CustomAgent:
 
             # update neural model by replaying snapshots in replay memory
             if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-                loss = self.update()
+                loss = self.agentNN.update()
                 if loss is not None:
                     # Backpropagate
-                    self.optimizer.zero_grad()
-                    loss.backward(retain_graph=True)
-                    # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
-                    self.optimizer.step()  # apply gradients
+                    self.agentNN.backpropagate(loss)
 
         self.current_step += 1
 
@@ -696,7 +757,6 @@ class CustomAgent:
             assert len(self.dones) > 1
             mask = [1.0 if not self.dones[-2][i] else 0.0 for i in range(len(self.dones[-1]))]
         mask = np.array(mask, dtype='float32')
-        mask_pt = to_pt(mask, self.use_cuda, type='float')
         # rewards returned by game engine are always accumulated value the
         # agent have recieved. so the reward it gets in the current game step
         # is the new value minus values at previous step.
@@ -704,46 +764,7 @@ class CustomAgent:
         if len(self.scores) > 1:
             prev_rewards = np.array(self.scores[-2], dtype='float32')
             rewards = rewards - prev_rewards
-        rewards_pt = to_pt(rewards, self.use_cuda, type='float')
-
-        return rewards, rewards_pt, mask, mask_pt
-
-    def update(self):
-        """
-        Update neural model in agent. In this example we follow algorithm
-        of updating model in dqn with replay memory.
-
-        """
-        if len(self.replay_memory) < self.replay_batch_size:
-            return None
-        transitions = self.replay_memory.sample(self.replay_batch_size)
-        batch = Transition(*zip(*transitions))
-
-        observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
-        input_observation = to_pt(observation_id_list, self.use_cuda)
-        next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
-        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
-        chosen_indices = list(list(zip(*batch.word_indices)))
-        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
-
-        word_ranks = self.get_ranks(input_observation)  # list of batch x vocab
-        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
-        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
-
-        next_word_ranks = self.get_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
-        next_word_masks = list(list(zip(*batch.next_word_masks)))
-        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
-        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
-        next_q_value = next_q_value.detach()
-
-        rewards = torch.stack(batch.reward)  # batch
-        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
-        not_done = to_pt(not_done, self.use_cuda, type='float')
-        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
-        mask = torch.stack(batch.mask)  # batch
-        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
-        return loss
+        return rewards, mask
 
     def finish(self) -> None:
         """
