@@ -95,6 +95,11 @@ class AgentDQN:
         self.model_config = config['model']
         self.experiment_tag = config['checkpoint']['experiment_tag']
         self.model_checkpoint_path = config['checkpoint']['model_checkpoint_path']
+        self.discount_gamma = config['general']['discount_gamma']
+        self.clip_grad_norm = config['training']['optimizer']['clip_grad_norm']
+
+        self.replay_batch_size = config['general']['replay_batch_size']
+
         self.use_cuda = use_cuda
         self.vocab = vocab
         self.model = LSTM_DQN(model_config=self.model_config,
@@ -106,7 +111,6 @@ class AgentDQN:
         if self.use_cuda:
             self.model.cuda()
 
-        self.replay_batch_size = config['general']['replay_batch_size']
         self.replay_memory = PrioritizedReplayMemory(
                                 config['general']['replay_memory_capacity'],
                                 priority_fraction=config['general']['replay_memory_priority_fraction'])
@@ -115,7 +119,7 @@ class AgentDQN:
         self.optimizer = torch.optim.Adam(parameters, lr=config['training']['optimizer']['learning_rate'])
 
 
-    def get_ranks(self, input_description):
+    def infer_word_ranks(self, input_description):
         """
         Given input description tensor, call model forward, to get Q values of words.
 
@@ -169,11 +173,11 @@ class AgentDQN:
         chosen_indices = list(list(zip(*batch.word_indices)))
         chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
 
-        word_ranks = self.get_ranks(input_observation)  # list of batch x vocab
+        word_ranks = self.infer_word_ranks(input_observation)  # list of batch x vocab, len=5 (one per potential output word)
         word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
         q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
 
-        next_word_ranks = self.get_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
+        next_word_ranks = self.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
         next_word_masks = list(list(zip(*batch.next_word_masks)))
         next_word_masks = [np.stack(item, 0) for item in next_word_masks]
         next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
@@ -248,7 +252,7 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of arrays of len = batch
 
     word_qvalues = [[] for _ in word_masks_np]
-    print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=1, len(word_qvalues)=5.
+    # print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=[16 or 24], len(word_qvalues)=5.
     for i in range(batch_size):
         for j in range(len(word_qvalues)):
             word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
@@ -260,7 +264,6 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
 
 def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
     batch_size = word_ranks[0].size(0)
-    assert batch_size == word_masks_np[0].size(0)  #input_description.size(0)
     word_qvalues, word_indices_maxq = _choose_maxQ_command(word_ranks, word_masks_np, use_cuda)
     if epsilon > 0.0:
         _, word_indices_random = _choose_random_command(word_ranks, word_masks_np, use_cuda)
@@ -450,13 +453,11 @@ class CustomAgent:
         self.epsilon_anneal_to = self.config['general']['epsilon_anneal_to']
         self.epsilon = self.epsilon_anneal_from
         self.update_per_k_game_steps = self.config['general']['update_per_k_game_steps']
-        self.clip_grad_norm = self.config['training']['optimizer']['clip_grad_norm']
 
         self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
-        self.discount_gamma = self.config['general']['discount_gamma']
         self.current_episode = 0
         self.current_step = 0
-        self._epsiode_has_started = False
+        self._episode_has_started = False
         self.history_avg_scores = HistoryScoreCache(capacity=1000)
         self.best_avg_score_so_far = 0.0
 
@@ -484,7 +485,7 @@ class CustomAgent:
             infos: Additional information for each game.
         """
         self.init_with_infos(obs, infos)
-        self._epsiode_has_started = True
+        self._episode_has_started = True
 
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
         """
@@ -496,7 +497,7 @@ class CustomAgent:
             infos: Additional information for each game.
         """
         self.finish()
-        self._epsiode_has_started = False
+        self._episode_has_started = False
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -562,12 +563,13 @@ class CustomAgent:
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
         self.agents = [
-            NailAgent(
-                self.config['general']['random_seed'],
-                "TW", #env
-                "n_{}".format(idx),
-
-            ) for idx in range(len(obs))]
+            # NailAgent(
+            #     self.config['general']['random_seed'],
+            #     "TW", #env
+            #     "n_{}".format(idx),
+            #
+            # ) for idx in range(len(obs))
+        ]
 
         self.vocab.init_with_infos(infos)
         self.cache_description_id_list = None
@@ -584,16 +586,17 @@ class CustomAgent:
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
-        inventory_id_list = get_token_ids_for_items(infos["inventory"], self.word2id, tokenizer=self.nlp)
+        word2id = self.vocab.word2id
+        inventory_id_list = get_token_ids_for_items(infos["inventory"], word2id, tokenizer=self.nlp)
 
-        feedback_id_list = get_token_ids_for_items(obs, self.word2id, tokenizer=self.nlp)
+        feedback_id_list = get_token_ids_for_items(obs, word2id, tokenizer=self.nlp)
 
-        quest_id_list = get_token_ids_for_items(infos["extra.recipe"], self.word2id, tokenizer=self.nlp)
+        quest_id_list = get_token_ids_for_items(infos["extra.recipe"], word2id, tokenizer=self.nlp)
 
-        prev_action_id_list = get_token_ids_for_items(self.prev_actions, self.word2id, tokenizer=self.nlp)
+        prev_action_id_list = get_token_ids_for_items(self.prev_actions, word2id, tokenizer=self.nlp)
 
         description_id_list = get_token_ids_for_items(infos["description"],
-                                                      self.word2id, tokenizer=self.nlp, subst_if_empty=['end'])
+                                                      word2id, tokenizer=self.nlp, subst_if_empty=['end'])
 
         description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
                                                                                         inventory_id_list,
@@ -638,7 +641,7 @@ class CustomAgent:
             return  # Nothing to return.
 
         input_description, _ = self.get_game_step_info(obs, infos)
-        word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
+        word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
         _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
         chosen_indices = word_indices_maxq
         chosen_indices = [item.detach() for item in chosen_indices]
@@ -669,7 +672,7 @@ class CustomAgent:
             games are done, in which case `CustomAgent.finish()` is called
             instead.
         """
-        if not self._epsiode_has_started:
+        if not self._episode_has_started:
             self._start_episode(obs, infos)
 
         if False and self.mode == "eval":
@@ -683,11 +686,16 @@ class CustomAgent:
                 if all(dones):
                     self._end_episode(obs, scores, infos)
                     return  # Nothing to return.
+            elif self.mode == "train":
+                # compute previous step's rewards and masks
+                rewards_np, mask_np = self.compute_reward()
+                mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+                rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
 
         input_description, description_id_list = self.get_game_step_info(obs, infos)
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
-        word_ranks = self.agentNN.get_ranks(input_description)  # list of batch x vocab
+        word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
         assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
 
         _, chosen_indices = choose_command(word_ranks,
@@ -697,12 +705,7 @@ class CustomAgent:
         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
-        if self.mode != "eval":
-            # compute previous step's rewards and masks
-            rewards_np, mask_np = self.compute_reward()
-            mask_pt = to_pt(mask_np, self.use_cuda, type='float')
-            rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
-
+        if self.mode == "train":
             # push info from previous game step into replay memory
             if self.current_step > 0:
                 for b in range(len(obs)):
@@ -721,7 +724,7 @@ class CustomAgent:
                                             mask_pt[b],
                                             dones[b],
                                             description_id_list[b],
-                                            [word_mask[b] for word_mask in self.word_masks_np])
+                                            [word_mask[b] for word_mask in self.vocab.word_masks_np])
 
                     self.agentNN.replay_memory.push(is_prior=is_prior, transition=transition)
 
