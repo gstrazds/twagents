@@ -145,7 +145,7 @@ class AgentDQN:
         Arguments:
             load_from: File name of the pretrained model checkpoint.
         """
-        print("loading model from %s\n" % (load_from))
+        # print("loading model from %s\n" % (load_from))
         try:
             if self.use_cuda:
                 state_dict = torch.load(load_from)
@@ -563,12 +563,12 @@ class CustomAgent:
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
         self.agents = [
-            # NailAgent(
-            #     self.config['general']['random_seed'],
-            #     "TW", #env
-            #     "n_{}".format(idx),
-            #
-            # ) for idx in range(len(obs))
+            NailAgent(
+                self.config['general']['random_seed'],
+                "TW", #env
+                "n_{}".format(idx),
+
+            ) for idx in range(len(obs))
         ]
 
         self.vocab.init_with_infos(infos)
@@ -645,7 +645,7 @@ class CustomAgent:
         _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
         chosen_indices = word_indices_maxq
         chosen_indices = [item.detach() for item in chosen_indices]
-        chosen_strings = self.get_chosen_strings(chosen_indices)
+        chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
         self.current_step += 1
 
