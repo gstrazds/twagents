@@ -127,7 +127,7 @@ class Idler(DecisionModule):
         while action is None or not action.recognized(gi):
             action = self.get_action(gi)
         response = yield action
-        p_valid = self._valid_detector.action_valid(action, first_sentence(response))
+        p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
         ent = None
         if isinstance(action, StandaloneAction):
             gi.action_at_location(action, gi.kg.player_location, p_valid, response)

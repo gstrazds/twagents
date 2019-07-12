@@ -48,21 +48,21 @@ class Examiner(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        location, message = self.get_event_info(event)
+        location, message = self.get_event_info(event, gi)
         if location not in self._to_examine:
             self._to_examine[location] = []
         if not message:
             return
         candidate_entities = self.detect_entities(message)
         gv.dbg("[EXM](detect) {} --> {}".format(clean(message), candidate_entities))
-        self.filter(candidate_entities)
+        self.filter(candidate_entities, gi)
 
 
     def get_eagerness(self, gi: GameInstance):
         """ If we are located at an unexamined location, this module is very eager."""
         if not self._active:
             return 0.
-        if self.get_descriptionless_entities():
+        if self.get_descriptionless_entities(gi):
             return self._high_eagerness
         elif self._to_examine[gi.kg.player_location]:
             return self._low_eagerness
@@ -83,11 +83,17 @@ class Examiner(DecisionModule):
             action = Examine(entity_name)
             if curr_loc.has_entity_with_name(entity_name) or \
                action in curr_loc.action_records or \
-               not action.recognized() or \
+               not action.recognized(gi) or \
                entity_name in self._to_examine[curr_loc]:
                 continue
             self._to_examine[curr_loc].append(entity_name)
 
+    def _estimate_action_validity(self, action, response, gi: GameInstance):
+        if self._valid_detector:
+            p_valid = self._valid_detector.action_valid(action, response, gi)
+        else:
+            p_valid = 1.0
+        return p_valid
 
     def take_control(self, gi: GameInstance):
         """
@@ -97,20 +103,20 @@ class Examiner(DecisionModule):
         """
         obs = yield
         curr_loc = gi.kg.player_location
-        undescribed_entities = self.get_descriptionless_entities()
+        undescribed_entities = self.get_descriptionless_entities(gi)
         if undescribed_entities:
             entity = undescribed_entities[0]
             action = Examine(entity.name)
             response = yield action
             entity.description = response
-            p_valid = self._valid_detector.action_valid(action, response)
+            p_valid = self._estimate_action_validity(action, response, gi)
             gv.dbg("[EXM] p={:.2f} {} --> {}".format(p_valid, action, clean(response)))
             gi.action_at_location(action, curr_loc, 1., response)
         else:
             entity_name = self._to_examine[curr_loc].pop()
             action = Examine(entity_name)
             response = yield action
-            p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
+            p_valid = self._estimate_action_validity(action, first_sentence(response), gi)
             success = (p_valid > self._validation_threshold)
             self.record(success)
             gv.dbg("[EXM]({}) p={:.2f} {} --> {}".format(

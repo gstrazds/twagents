@@ -1,5 +1,5 @@
 from typing import Optional
-# from fuzzywuzzy import fuzz
+from fuzzywuzzy import fuzz
 # from symbolic import gv
 from .gv import logger
 from .game import GameInstance
@@ -74,19 +74,19 @@ class Location:
     def has_entity_with_name(self, entity_name):
         return self.get_entity_by_name(entity_name) is not None
 
-    # def get_entity_by_description(self, entity_description):
-    #     """
-    #     Returns an entity with the given description if it exists at this
-    #     location or None if no such entity exists.
-    #
-    #     """
-    #     for entity in self.entities:
-    #         if fuzz.partial_ratio(entity.description, entity_description) > 95:
-    #             return entity
-    #     return None
-    #
-    # def has_entity_with_description(self, entity_description):
-    #     return self.get_entity_by_description(entity_description) is not None
+    def get_entity_by_description(self, entity_description):
+        """
+        Returns an entity with the given description if it exists at this
+        location or None if no such entity exists.
+
+        """
+        for entity in self.entities:
+            if fuzz.partial_ratio(entity.description, entity_description) > 95:
+                return entity
+        return None
+
+    def has_entity_with_description(self, entity_description):
+        return self.get_entity_by_description(entity_description) is not None
 
     @property
     def action_records(self):

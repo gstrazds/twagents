@@ -80,7 +80,7 @@ class Interactor(DecisionModule):
         p_valid = action.validate(response)
         ent = None
         if p_valid is None:
-            p_valid = self._valid_detector.action_valid(action, first_sentence(response))
+            p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
         if isinstance(action, SingleAction):
             ent = action.entity
         elif isinstance(action, DoubleAction):

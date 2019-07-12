@@ -43,15 +43,15 @@ class Navigator(DecisionModule):
     def get_eagerness(self, gi: GameInstance):
         if not self._active:
             return 0.
-        if self.get_unexplored_actions(gi.kg.player_location):
+        if self.get_unexplored_actions(gi.kg.player_location, gi):
             return self._default_eagerness
         return rng.choice([self._low_eagerness, self._default_eagerness])
 
 
-    def get_unexplored_actions(self, location):
+    def get_unexplored_actions(self, location, gi: GameInstance):
         """ Returns a list of nav actions not yet attempted from a given location. """
         return [act for act in self._nav_actions if act not in location.action_records \
-                and act.recognized()]
+                and act.recognized(gi)]
 
 
     def get_successful_nav_actions(self, location, gi: GameInstance):
@@ -127,7 +127,7 @@ class Navigator(DecisionModule):
         loc = gi.kg.most_similar_location(description)
         if loc:
             dbg("[NAV](relocalizing) \"{}\" to {}".format(description, loc))
-            gi.kg.player_location = loc
+            gi.kg.set_player_location(loc, gi)
         else:
             dbg("[NAV](relocalizing aborted) \"{}\" to {}".format(description, loc))
 
@@ -138,9 +138,9 @@ class Navigator(DecisionModule):
         """
         obs = yield
         curr_loc = gi.kg.player_location
-        action = self.get_action()
+        action = self.get_action(gi)
         response = yield action
-        p_valid = self._valid_detector.action_valid(action, response)
+        p_valid = self._valid_detector.action_valid(action, response, gi)
 
         # Check if we've tried this action before
         tried_before = False
@@ -167,8 +167,8 @@ class Navigator(DecisionModule):
             else:
                 existing_loc = existing_locs[0]
             dbg("[NAV](revisited-location) {}".format(existing_loc.name))
-            gi.kg.add_connection(Connection(curr_loc, action, existing_loc))
-            gi.kg.player_location = existing_loc
+            gi.kg.add_connection(Connection(curr_loc, action, existing_loc), gi)
+            gi.kg.set_player_location(existing_loc, gi)
             return
 
         # This is either a new location or a failed action
@@ -204,14 +204,14 @@ class Navigator(DecisionModule):
                     else:
                         existing_loc = existing_locs[0]
                     dbg("[NAV](revisited-location) {}".format(existing_loc.name))
-                    gi.kg.add_connection(Connection(curr_loc, action, existing_loc))
-                    gi.kg.player_location = existing_loc
+                    gi.kg.add_connection(Connection(curr_loc, action, existing_loc), gi)
+                    gi.kg.set_player_location(existing_loc, gi)
                     return
 
                 # Finally, create a new location
                 new_loc = Location(look)
                 ev = gi.kg.add_location(new_loc)
-                gi.kg.add_connection(Connection(curr_loc, action, new_loc))
-                gi.kg.player_location = new_loc
+                gi.kg.add_connection(Connection(curr_loc, action, new_loc), gi)
+                gi.kg.set_player_location(new_loc, gi)
                 gi.event_stream.push(ev)
 

@@ -100,7 +100,7 @@ class NavAction(StandaloneAction):
     def apply(self, gi: GameInstance):
         to_loc = gi.kg.connections.navigate(gi.kg.player_location, self)
         assert to_loc, "Error: Unknown connection"
-        gi.kg.player_location = to_loc
+        gi.kg.set_player_location(to_loc, gi)
 
 
 class ExamineAction(Action):

@@ -50,12 +50,12 @@ class KnowledgeGraph:
     def player_location(self):
         return self._player_location
 
-    @player_location.setter
-    def player_location(self, new_location):
+    # @player_location.setter
+    def set_player_location(self, new_location, gi):
         """ Changes player location and broadcasts a LocationChangedEvent. """
         if new_location == self._player_location:
             return
-        gv.event_stream.push(LocationChangedEvent(new_location))
+        gi.event_stream.push(LocationChangedEvent(new_location))
         self._player_location = new_location
 
     @property
@@ -66,14 +66,14 @@ class KnowledgeGraph:
     def connections(self):
         return self._connections
 
-    def add_connection(self, new_connection):
+    def add_connection(self, new_connection, gi):
         """ Adds a connection object. """
-        self._connections.add(new_connection)
+        self._connections.add(new_connection, gi)
 
-    def reset(self):
+    def reset(self, gi):
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
-        self.player_location = self._init_loc
+        self.set_player_location(self._init_loc, gi)
         self.inventory.reset()
         for location in self.locations:
             location.reset()
@@ -107,11 +107,11 @@ class ConnectionGraph:
         self._out_graph = {} # Location : [Outgoing Connections]
         self._in_graph  = {} # Location : [Incoming Connections]
 
-    def add(self, connection):
+    def add(self, connection, gi):
         """ Adds a new connection to the graph if it doesn't already exist. """
         from_location = connection.from_location
         to_location = connection.to_location
-        gv.event_stream.push(NewConnectionEvent(connection))
+        gi.event_stream.push(NewConnectionEvent(connection))
         if from_location in self._out_graph:
             if connection in self._out_graph[from_location]:
                 return

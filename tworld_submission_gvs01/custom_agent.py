@@ -630,6 +630,7 @@ class CustomAgent:
             games are done, in which case `CustomAgent.finish()` is called
             instead.
         """
+        use_nail_agent = True
 
         if self.current_step > 0:
             # append scores / dones from previous step into memory
@@ -640,12 +641,21 @@ class CustomAgent:
             self._end_episode(obs, scores, infos)
             return  # Nothing to return.
 
-        input_description, _ = self.get_game_step_info(obs, infos)
-        word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
-        _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-        chosen_indices = word_indices_maxq
-        chosen_indices = [item.detach() for item in chosen_indices]
-        chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
+        if use_nail_agent:
+            chosen_strings = []
+            agent_id = 0
+            for desctext, agent in zip(obs, self.agents):
+                print(agent_id, "NAIL: observation=[", desctext, ']')
+                actiontxt = agent.take_action(desctext)
+                print(agent_id, "agent.take_action ->", actiontxt)
+                chosen_strings.append(actiontxt)
+        else:
+            input_description, _ = self.get_game_step_info(obs, infos)
+            word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
+            _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+            chosen_indices = word_indices_maxq
+            chosen_indices = [item.detach() for item in chosen_indices]
+            chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
         self.current_step += 1
 
@@ -675,7 +685,7 @@ class CustomAgent:
         if not self._episode_has_started:
             self._start_episode(obs, infos)
 
-        if False and self.mode == "eval":
+        if self.mode == "eval":
             return self.act_eval(obs, scores, dones, infos)
 
         if self.current_step > 0:

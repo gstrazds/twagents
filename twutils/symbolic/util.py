@@ -1,5 +1,6 @@
 import re
-# from symbolic import gv, event
+from symbolic import gv
+# from symbolic import event
 # from symbolic.game import GameInstance
 # from symbolic.action import Action
 # from symbolic.location import Location

@@ -58,21 +58,21 @@ class NailAgent():
                             level=logging.DEBUG, filemode='w')
 
 
-    def elect_new_active_module(self, gi: GameInstance):
+    def elect_new_active_module(self):
         """ Selects the most eager module to take control. """
         most_eager = 0.
         for module in self.modules:
-            eagerness = module.get_eagerness(gi)
+            eagerness = module.get_eagerness(self.gi)
             if eagerness >= most_eager:
                 self.active_module = module
                 most_eager = eagerness
         gv.dbg("[NAIL](elect): {} Eagerness: {}"\
             .format(type(self.active_module).__name__, most_eager))
-        self.action_generator = self.active_module.take_control(gi)
+        self.action_generator = self.active_module.take_control(self.gi)
         self.action_generator.send(None)
 
 
-    def generate_next_action(self, observation, gi: GameInstance):
+    def generate_next_action(self, observation):
         """Returns the action selected by the current active module and
         selects a new active module if the current one is finished.
 
@@ -82,8 +82,8 @@ class NailAgent():
             try:
                 next_action = self.action_generator.send(observation)
             except StopIteration:
-                self.consume_event_stream(gi)
-                self.elect_new_active_module(gi)
+                self.consume_event_stream()
+                self.elect_new_active_module()
         return next_action.text()
 
 
@@ -115,7 +115,7 @@ class NailAgent():
         if not self.gi.kg.player_location:
             loc = Location(observation)
             ev = self.gi.kg.add_location(loc)
-            self.gi.kg.player_location = loc
+            self.gi.kg.set_player_location(loc, self.gi)
             self.gi.kg._init_loc = loc
             # self.gi.event_stream.push(ev)
 
@@ -137,7 +137,7 @@ class NailAgent():
         self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
-            self.gi.kg.reset()
+            self.gi.kg.reset(self.gi)
 
 
     def finalize(self):
