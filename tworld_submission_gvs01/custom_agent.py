@@ -17,6 +17,7 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.nail import NailAgent
+from twutils.twlogic import filter_observables
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
@@ -329,14 +330,15 @@ class WordVocab:
     def init_with_infos(self, infos):
         # get word masks
         batch_size = len(infos["verbs"])
-        # print("batch_size=", batch_size)
         mask_shape = (batch_size, len(self.word_vocab))
         verb_mask = np.zeros(mask_shape, dtype="float32")
         noun_mask = np.zeros(mask_shape, dtype="float32")
         adj_mask = np.zeros(mask_shape, dtype="float32")
 
-        verbs_word_list = infos["verbs"]
-        noun_word_list, adj_word_list = [], []
+        verbs_word_lists = infos["verbs"]
+        # print("batch_size=", batch_size)
+        # print('verbs_word_list:', verbs_word_list)
+        noun_word_lists, adj_word_lists = [], []
         for entities in infos["entities"]:
             tmp_nouns, tmp_adjs = [], []
             for name in entities:
@@ -344,17 +346,17 @@ class WordVocab:
                 tmp_nouns.append(split[-1])
                 if len(split) > 1:
                     tmp_adjs += split[:-1]
-            noun_word_list.append(list(set(tmp_nouns)))
-            adj_word_list.append(list(set(tmp_adjs)))
+            noun_word_lists.append(list(set(tmp_nouns)))
+            adj_word_lists.append(list(set(tmp_adjs)))
 
         for i in range(batch_size):
-            for w in verbs_word_list[i]:
+            for w in verbs_word_lists[i]:
                 if w in self.word2id:
                     verb_mask[i][self.word2id[w]] = 1.0
-            for w in noun_word_list[i]:
+            for w in noun_word_lists[i]:
                 if w in self.word2id:
                     noun_mask[i][self.word2id[w]] = 1.0
-            for w in adj_word_list[i]:
+            for w in adj_word_lists[i]:
                 if w in self.word2id:
                     adj_mask[i][self.word2id[w]] = 1.0
         second_noun_mask = copy.copy(noun_mask)
@@ -539,7 +541,7 @@ class CustomAgent:
         Notes:
             The following information *won't* be available at test time:
 
-            * 'walkthrough'
+            * 'walkthrough', 'facts'
         """
         request_infos = EnvInfos()
         request_infos.description = True
@@ -547,7 +549,7 @@ class CustomAgent:
         request_infos.entities = True
         request_infos.verbs = True
         request_infos.extras = ["recipe"]
-#        request_infos.facts = True
+        request_infos.facts = True
         return request_infos
 
     def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
@@ -646,9 +648,16 @@ class CustomAgent:
             agent_id = 0
             for desctext, agent in zip(obs, self.agents):
                 print(agent_id, "NAIL: observation=[", desctext, ']')
-                actiontxt = agent.take_action(desctext)
+                if 'facts' in infos:
+                    world_facts = infos['facts'][agent_id]
+                    observable_facts = filter_observables(world_facts)
+
+                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=world_facts)
+                else:
+                    actiontxt = agent.take_action(desctext)
                 print(agent_id, "agent.take_action ->", actiontxt)
                 chosen_strings.append(actiontxt)
+                agent_id += 1
         else:
             input_description, _ = self.get_game_step_info(obs, infos)
             word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab

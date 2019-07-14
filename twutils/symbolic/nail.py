@@ -94,7 +94,13 @@ class NailAgent():
         self.gi.event_stream.clear()
 
 
-    def take_action(self, observation):
+    def take_action(self, observation, obs_facts=None, gt_facts=None):
+        if gt_facts:
+            print("GROUND TRUTH:")
+            # for fact in gt_facts:
+            #     print('\t', fact)
+            #     for v in fact.arguments:
+            #         print('\t\t', v.)
         if self.env and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
