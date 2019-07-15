@@ -550,6 +550,7 @@ class CustomAgent:
         request_infos.verbs = True
         request_infos.extras = ["recipe"]
         request_infos.facts = True
+        request_infos.location = True
         return request_infos
 
     def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
@@ -648,9 +649,22 @@ class CustomAgent:
             agent_id = 0
             for desctext, agent in zip(obs, self.agents):
                 print(agent_id, "NAIL: observation=[", desctext, ']')
-                if 'facts' in infos:
+                if 'inventory' in infos:
+                    print("INVENTORY:", infos['inventory'][agent_id])
+
+                # if self.current_step == 0:
+                #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
+                if self.current_step == 0:
+                    actiontxt = "go west"
+                elif self.current_step == 1:
+                    actiontxt = "go north"
+                elif 'facts' in infos:
                     world_facts = infos['facts'][agent_id]
-                    observable_facts = filter_observables(world_facts)
+                    observable_facts, player_room = filter_observables(world_facts, verbose=(self.current_step == 2))
+                    print("FACTS IN SCOPE:")
+                    for fact in observable_facts:
+                        print('\t', fact)
+                        # print_fact(game, fact)
 
                     actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=world_facts)
                 else:
