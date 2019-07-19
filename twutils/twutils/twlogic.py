@@ -10,18 +10,63 @@ DIRECTION_RELATIONS = ('north_of', 'south_of', 'west_of', 'east_of')
 def is_observable_relation(relname):
     return relname in OBSERVABLE_RELATIONS
 
-# def exit_and_door_facts(fact_list):
-#     for fact in fact_list:
-#         if fact.name in DIRECTION_RELATIONS:
-#
 
-def filter_observables(facts: Iterable[Proposition], verbose=False):
+def find_link_direction(world, src, dest):
+    for room in world.rooms:
+        if room.name == src.name:
+            for e, r2 in room.exits.items():
+                if r2.name == dest.name:
+                    return e
+    print("WARNING: find_link_direction failed!", src, dest)
+    return None
+
+
+def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
+    # adds to world_facts additional facts about door directions
+    # and also about exits and door directions relative to the player if local_facts is not None
+    if local_facts is not None:
+        assert where_fact is not None
+    door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
+    if where_fact:
+        the_player = where_fact.arguments[0]
+        player_location = where_fact.arguments[1]
+
+    for room in world.rooms:
+        print(room)
+        for e, p in room.exits.items():
+            print('\t', e, p)
+
+    for df in door_facts:
+        assert len(df.arguments) == 3
+        r0, door, r1 = df.arguments
+        direction = find_link_direction(world, r0, r1)
+        world_facts.append(Proposition("{}_of".format(direction), (door, r1)
+                                       ))
+        if local_facts is not None and r1 == player_location:
+            local_facts.append(Proposition("{}_of".format(direction), (
+                door,
+                the_player)))
+            # if world.state.is_fact(Proposition('free', (player_location, r1))):
+            #     local_facts.append(Proposition("{}_of".format(direction), (
+            #         the_player,
+            #         Variable("exit_{}".format(direction), 'e'))))
+            if world.state.is_fact(Proposition('closed', [door])):
+                closed_fact = Proposition('closed', [door])
+                if closed_fact not in local_facts:
+                    local_facts.append(closed_fact)
+            if world.state.is_fact(Proposition('locked', [door])):
+                locked_fact = Proposition('locked', [door])
+                if locked_fact not in local_facts:
+                    local_facts.append(locked_fact)
+
+
+def filter_observables(world_facts: Iterable[Proposition], verbose=False):
     fixups = defaultdict(set)
-    if not facts:
+    if not world_facts:
         return None
 
     # print("WORLD FACTS:")
-    for fact in facts:
+    for fact in world_facts:
         # print('\t', fact)
         for v in fact.arguments:
             #     print('\t\t{}:{}'.format(v.name, v.type))
@@ -35,7 +80,7 @@ def filter_observables(facts: Iterable[Proposition], verbose=False):
                     v.name = '~{}_{}'.format(v.type, v_count)
                 fixups[v.type].add(v)
 
-    world = World.from_facts(facts)
+    world = World.from_facts(world_facts)
     world_state = world.state
 
     if 'P' in world_state._vars_by_type:
@@ -52,16 +97,16 @@ def filter_observables(facts: Iterable[Proposition], verbose=False):
     where_fact = list(where_am_i)[0]
     the_player = where_fact.arguments[0]
     player_location = where_fact.arguments[1]
+    if verbose:
+        print("WORLD FACTS:")
+        for fact in world_facts:
+            print('\t', fact)
+            # print_fact(game, fact)
 
     if verbose:
         print("VARIABLES:")
         for v in world_state.variables:
             print('\t\t{}:{}'.format(v.name, v.type))
-    if verbose:
-        print("WORLD FACTS:")
-        for fact in facts:
-            print('\t', fact)
-            # print_fact(game, fact)
 
     print(where_fact, world.player_room)
     facts_in_scope = world.get_facts_in_scope()
@@ -75,23 +120,31 @@ def filter_observables(facts: Iterable[Proposition], verbose=False):
             pass
 
     for e in world.player_room.exits:
-        if world.state.is_fact(Proposition('free', (where_fact.arguments[1], world.player_room.exits[e]))):
+        if world.state.is_fact(Proposition('free', (world.player_room.exits[e], where_fact.arguments[1]))):
             observable_facts.append(Proposition("{}_of".format(e), (
-                                                                    the_player,
-                                                                    Variable("exit_{}".format(e), 'e'))))
-        else:  # probably a closed door
-            door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
-            for df in door_facts:
-                if df.arguments[0] == player_location:
-                    the_door = df.arguments[1]
-                    observable_facts.append(Proposition("{}_of".format(e), (
-                                                                    the_player,
-                                                                    the_door
+                                                                    Variable("exit_{}".format(e), 'e'),
+                                                                    the_player
                                                                     )))
-                    if world.state.is_fact(Proposition('closed', [the_door])):
-                        observable_facts.append(Proposition('closed', [the_door]))
+    # REFACTORING: the following is now handled within add_extra_door_facts()
+    #     else:  # probably a closed door
+    #         door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
+    #         for df in door_facts:
+    #             if df.arguments[0] == player_location:
+    #                 the_door = df.arguments[1]
+    #                 observable_facts.append(Proposition("{}_of".format(e), (
+    #                                                                 the_player,
+    #                                                                 the_door
+    #                                                                 )))
+    #                 if world.state.is_fact(Proposition('closed', [the_door])):
+    #                     observable_facts.append(Proposition('closed', [the_door]))
 
-    # observable_facts += exit_and_door_facts(world.state, player_location)
+    add_extra_door_facts(world, world_facts, local_facts=observable_facts, where_fact=where_fact)
+
+    if verbose:
+        print("++WORLD FACTS++:")
+        for fact in world_facts:
+            print('\t', fact)
+            # print_fact(game, fact)
     return observable_facts, player_location
 
 def get_obj_infos(infos, entities, room_infos, gid):
