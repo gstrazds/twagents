@@ -15,8 +15,8 @@ class Hoarder(DecisionModule):
     def process_event(self, event, gi: GameInstance):
         if not self._active:
             return
-        if type(event) is NewLocationEvent and gv.TakeAll.recognized():
-            self._eagerness = 1.
+        # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
+        #     self._eagerness = 1.
 
 
     def parse_response(self, response, gi: GameInstance):

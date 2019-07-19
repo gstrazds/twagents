@@ -96,11 +96,16 @@ class NailAgent():
 
     def take_action(self, observation, obs_facts=None, gt_facts=None):
         if gt_facts:
-            print("GROUND TRUTH:")
+            pass
+            # print("GROUND TRUTH:")
             # for fact in gt_facts:
             #     print('\t', fact)
             #     for v in fact.arguments:
             #         print('\t\t', v.)
+        if obs_facts:
+            # world = World.from_facts(facts)
+            # add obs_facts to our KnowledgeGraph (self.gi.kg)
+            pass
         if self.env and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
