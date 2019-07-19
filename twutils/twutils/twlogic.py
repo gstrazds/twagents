@@ -39,8 +39,8 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
     for df in door_facts:
         assert len(df.arguments) == 3
         r0, door, r1 = df.arguments
-        direction = find_link_direction(world, r0, r1)
-        world_facts.append(Proposition("{}_of".format(direction), (door, r1)
+        direction = find_link_direction(world, r1, r0)
+        world_facts.append(Proposition("{}_of".format(direction), (door, r0)
                                        ))
         if local_facts is not None and r1 == player_location:
             local_facts.append(Proposition("{}_of".format(direction), (
