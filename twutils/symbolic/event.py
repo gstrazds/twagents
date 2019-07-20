@@ -25,14 +25,16 @@ class EventStream:
 
 class Event:
     """ Base class for all events. """
-    def __init__(self, message):
+    def __init__(self, message, groundtruth=False):
         self.message = message
+        self.is_groundtruth = groundtruth
+
 
 class NewTransitionEvent(Event):
     """ Generated whenever an action is taken. """
-    def __init__(self, obs, action, score, new_obs, terminal):
+    def __init__(self, obs, action, score, new_obs, terminal, groundtruth=False):
         message = '\"{}\" --> {} Score={}'.format(action, util.clean(new_obs), score)
-        super().__init__(message)
+        super().__init__(message, groundtruth=groundtruth)
         self.obs      = obs
         self.action   = action
         self.score    = score
@@ -41,50 +43,50 @@ class NewTransitionEvent(Event):
 
 class NewLocationEvent(Event):
     """ Generated whenever a new location is discovered. """
-    def __init__(self, new_location):
-        super().__init__(new_location.name)
+    def __init__(self, new_location, groundtruth=False):
+        super().__init__(new_location.name, groundtruth=groundtruth)
         self.new_location = new_location
 
 class NewEntityEvent(Event):
     """ Generated whenever a new entity is discovered. """
-    def __init__(self, new_entity):
+    def __init__(self, new_entity, groundtruth=False):
         message = "{}: {}".format(new_entity.name, new_entity.description)
-        super().__init__(message)
+        super().__init__(message, groundtruth=groundtruth)
         self.new_entity = new_entity
 
 class NewActionRecordEvent(Event):
     """ Generated whenever a new action is applied. """
-    def __init__(self, entity, action_record, result_text):
+    def __init__(self, entity, action_record, result_text, groundtruth=False):
         message = "{} ==({})==> {}".format(entity, action_record, util.clean(result_text))
-        super().__init__(message)
+        super().__init__(message, groundtruth=groundtruth)
         self.entity = entity
         self.action_record = action_record
         self.result_text = result_text
 
 class NewConnectionEvent(Event):
     """ Generated whenever a new connection is discovered. """
-    def __init__(self, connection):
+    def __init__(self, connection, groundtruth=False):
         message = "{} ==({})==> {}".format(connection.from_location, connection.action, connection.to_location)
-        super().__init__(message)
+        super().__init__(message, groundtruth=groundtruth)
         self.connection = connection
 
 class LocationChangedEvent(Event):
     """ Generated whenever the player's location changes. """
-    def __init__(self, new_location):
-        super().__init__(new_location.name)
+    def __init__(self, new_location, groundtruth=False):
+        super().__init__(new_location.name, groundtruth=groundtruth)
         self.new_location = new_location
 
 class EntityMovedEvent(Event):
     """ Generated whenever an entity moves. """
-    def __init__(self, entity, origin, destination):
-        super().__init__("EntityMoved")
+    def __init__(self, entity, origin, destination, groundtruth=False):
+        super().__init__("EntityMoved", groundtruth=groundtruth)
         self.entity = entity
         self.origin = origin
         self.destination = destination
 
 class NewAttributeEvent(Event):
     """ Generated whenever an object is given an attribute. """
-    def __init__(self, entity, new_attribute):
+    def __init__(self, entity, new_attribute, groundtruth=False):
         message = "{} is {}".format(entity.name, new_attribute.name)
-        super().__init__(message)
+        super().__init__(message, groundtruth=groundtruth)
         self.new_attribute = new_attribute

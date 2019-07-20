@@ -48,6 +48,8 @@ class Examiner(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
+        if event.is_groundtruth:
+            return
         location, message = self.get_event_info(event, gi)
         if location not in self._to_examine:
             self._to_examine[location] = []

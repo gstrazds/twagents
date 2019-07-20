@@ -31,34 +31,36 @@ def get_unrecognized(action, response):
 
 
 class GameInstance:
-    def __init__(self, kg):  # kg : knowledge_graph.KnowledgeGraph
+    def __init__(self, kg, gt):  # kg : knowledge_graph.KnowledgeGraph
         self.event_stream = event.EventStream()
         self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]
         #
         self.kg = kg
+        self.gt = gt  # ground truth knowledge graph
 
     def action_at_location(self, action, location, p_valid, result_text):
-        ev = location.add_action_record(action, p_valid, result_text)
+        location.add_action_record(action, p_valid, result_text)
+        ev = event.NewActionRecordEvent(location, action, result_text)
         self.event_stream.push(ev)
 
     def entity_at_location(self, entity, location):
-        ev = location.add_entity(entity)
-        if ev:
+        if location.add_entity(entity):
+            ev = event.NewEntityEvent(entity)
             self.event_stream.push(ev)
 
     def entity_at_entity(self, entity1, entity2):
-        ev = entity1.add_entity(entity2)
-        if ev:
+        if entity1.add_entity(entity2):
+            ev = event.NewEntityEvent(entity2)
             self.event_stream.push(ev)
 
     def act_on_entity(self, action, entity, p_valid, result_text):
-        ev = entity.add_action_record(action, p_valid, result_text)
-        if ev:
+        if entity.add_action_record(action, p_valid, result_text):
+            ev = event.NewActionRecordEvent(entity, action, result_text)
             self.event_stream.push(ev)
 
     def add_entity_attribute(self, entity, attribute):
-        ev = entity.add_attribute(attribute)
-        if ev:
+        if entity.add_attribute(attribute):
+            ev = event.NewAttributeEvent(entity, attribute)
             self.event_stream.push(ev)
 
     def move_entity(self, entity, origin, dest):
@@ -67,9 +69,8 @@ class GameInstance:
             "Can't move entity {} that isn't present at origin {}" \
             .format(entity, origin)
         origin.del_entity(entity)
-        ev0 = dest.add_entity(entity)
-        if ev0 is not None:
-            msg = "unexpected NewEntityEvent from dest.add_entity() dest={} event={}".format(dest, ev0)
+        if dest.add_entity(entity):
+            msg = "unexpected NewEntityEvent from dest.add_entity() dest={} entity={}".format(dest, entity)
             print("!!!WARNING: "+msg)
             assert False, msg
         self.event_stream.push(event.EntityMovedEvent(entity, origin, dest))

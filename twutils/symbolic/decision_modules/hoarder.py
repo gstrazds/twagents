@@ -20,7 +20,7 @@ class Hoarder(DecisionModule):
 
 
     def parse_response(self, response, gi: GameInstance):
-        here = gi.gv.kg.player_location
+        here = gi.kg.player_location
         success = False
         for line in response.splitlines():
             line = line.strip()
@@ -37,7 +37,7 @@ class Hoarder(DecisionModule):
                     # Create the entity at the current location
                     entity = Entity(entity_name, here)
                     entity.add_name(short_name)
-                    gi.entity_at_location(entity, here) # FORMERLY: here.add_entity(entity)
+                    gi.entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
 
                 take_action = gv.Take(entity)
                 p_valid = take_action.validate(resp)

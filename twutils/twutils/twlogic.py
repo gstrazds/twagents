@@ -31,10 +31,10 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
         the_player = where_fact.arguments[0]
         player_location = where_fact.arguments[1]
 
-    for room in world.rooms:
-        print(room)
-        for e, p in room.exits.items():
-            print('\t', e, p)
+    # for room in world.rooms:
+    #     print(room)
+    #     for e, p in room.exits.items():
+    #         print('\t', e, p)
 
     for df in door_facts:
         assert len(df.arguments) == 3

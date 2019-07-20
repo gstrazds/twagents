@@ -1,10 +1,10 @@
-from typing import Optional
+# from typing import Optional
 from fuzzywuzzy import fuzz
 # from symbolic import gv
 from .gv import logger
 from .game import GameInstance
 from .action import Action
-from .event import NewEntityEvent, NewActionRecordEvent
+# from .event import NewEntityEvent, NewActionRecordEvent
 
 
 class Location:
@@ -43,12 +43,12 @@ class Location:
     def entities(self):
         return self._entities
 
-    def add_entity(self, entity) -> Optional[NewEntityEvent]:
+    def add_entity(self, entity) -> bool:
         if not self.has_entity_with_name(entity.name):
             # gv.event_stream.push(NewEntityEvent(entity))
             self._entities.append(entity)
-            return NewEntityEvent(entity)
-        return None
+            return True
+        return False
 
     def get_entity_by_name(self, entity_name):
         """
@@ -92,12 +92,12 @@ class Location:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text) -> NewActionRecordEvent:
+    def add_action_record(self, action, p_valid, result_text) -> bool:
         """ Records an action, the probability it succeeded, and the text response. """
         if not isinstance(action, Action):
             raise ValueError("Expected Action. Got {}".format(type(action)))
         self._action_records[action] = (p_valid, result_text)
-        return NewActionRecordEvent(self, action, result_text)
+        return True
 
     def has_action_record(self, action):
         if not isinstance(action, Action):

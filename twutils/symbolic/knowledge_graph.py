@@ -11,12 +11,13 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self):
+    def __init__(self, groundtruth=False):
         self._locations          = []
         self._player_location    = None
         self._init_loc           = None
         self._inventory          = Inventory()
         self._connections        = ConnectionGraph()
+        self.groundtruth         = groundtruth
 
     @property
     def locations(self):
@@ -25,7 +26,7 @@ class KnowledgeGraph:
     def add_location(self, new_location: Location) -> NewLocationEvent:
         """ Adds a new location object and broadcasts a NewLocation event. """
         self._locations.append(new_location)
-        return NewLocationEvent(new_location)
+        return NewLocationEvent(new_location, groundtruth=self.groundtruth)
 
     def most_similar_location(self, description):
         """ Returns the location with the highest similarity to the given description. """
@@ -55,7 +56,7 @@ class KnowledgeGraph:
         """ Changes player location and broadcasts a LocationChangedEvent. """
         if new_location == self._player_location:
             return
-        gi.event_stream.push(LocationChangedEvent(new_location))
+        gi.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
         self._player_location = new_location
 
     @property
@@ -68,7 +69,7 @@ class KnowledgeGraph:
 
     def add_connection(self, new_connection, gi):
         """ Adds a connection object. """
-        self._connections.add(new_connection, gi)
+        self._connections.add(new_connection, gi, groundtruth=self.groundtruth)
 
     def reset(self, gi):
         """Returns the knowledge_graph to a state resembling the start of the
@@ -79,7 +80,7 @@ class KnowledgeGraph:
             location.reset()
 
     def __str__(self):
-        s = "Knowledge Graph\n"
+        s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
         if self._player_location == None:
             s += "PlayerLocation: None"
         else:
@@ -107,13 +108,14 @@ class ConnectionGraph:
         self._out_graph = {} # Location : [Outgoing Connections]
         self._in_graph  = {} # Location : [Incoming Connections]
 
-    def add(self, connection, gi):
+    def add(self, connection, gi, groundtruth=False):
         """ Adds a new connection to the graph if it doesn't already exist. """
         from_location = connection.from_location
         to_location = connection.to_location
-        gi.event_stream.push(NewConnectionEvent(connection))
+        gi.event_stream.push(NewConnectionEvent(connection, groundtruth=groundtruth))
         if from_location in self._out_graph:
             if connection in self._out_graph[from_location]:
+                # print("IGNORING new_connection:", connection)
                 return
             self._out_graph[from_location].append(connection)
         else:
@@ -123,6 +125,7 @@ class ConnectionGraph:
                 self._in_graph[to_location].append(connection)
             else:
                 self._in_graph[to_location] = [connection]
+        print("ADDED NEW {}CONNECTION".format('GT ' if groundtruth else ''), connection)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """

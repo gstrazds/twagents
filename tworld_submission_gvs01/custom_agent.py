@@ -575,8 +575,9 @@ class CustomAgent:
         ]
 
         self.vocab.init_with_infos(infos)
-        self.cache_description_id_list = None
-        self.cache_chosen_indices = None
+        self.prev_obs = obs
+        self.cache_description_id_list = None   # similar to .prev_obs
+        self.cache_chosen_indices = None        # similar to .prev_actions
         self.current_step = 0
 
 
@@ -637,6 +638,16 @@ class CustomAgent:
 
         if self.current_step > 0:
             # append scores / dones from previous step into memory
+            # Update the agent.
+            if use_nail_agent:
+                for idx, agent in enumerate(self.agents):
+                    prevobs = self.prev_obs
+                    prevaction = self.prev_actions[idx]
+                    agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
+                    # Output this step.
+                    print("observe: [{}] Step {}   Action [{}]   Score {}\nobs::".format(
+                                idx, self.current_step, prevaction, scores[idx],)) # obs[idx]))
+                self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)
 
@@ -648,7 +659,7 @@ class CustomAgent:
             chosen_strings = []
             agent_id = 0
             for desctext, agent in zip(obs, self.agents):
-                print(agent_id, "NAIL: observation=[", desctext, ']')
+                print("\t[{}] NAIL: observation=[{}]".format(agent_id, desctext))
                 if 'inventory' in infos:
                     print("INVENTORY:", infos['inventory'][agent_id])
 
@@ -670,6 +681,7 @@ class CustomAgent:
                 else:
                     actiontxt = agent.take_action(desctext)
                 print(agent_id, "agent.take_action ->", actiontxt)
+
                 chosen_strings.append(actiontxt)
                 agent_id += 1
         else:

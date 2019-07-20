@@ -20,7 +20,7 @@ class Navigator(DecisionModule):
     def __init__(self, active=False, p_retry=.3):
         super().__init__()
         self._active = active
-        self._nav_actions = [North, South, West, East]
+        self._nav_actions = [GoNorth, GoSouth, GoWest, GoEast]
             # NorthWest, SouthWest, NorthEast, SouthEast, Up, Down, Enter, Exit]
         self._p_retry = p_retry
         self._valid_detector = LearnedValidDetector()

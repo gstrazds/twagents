@@ -1,5 +1,3 @@
-from typing import Optional
-from symbolic import event
 from symbolic.gv import OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM
 from symbolic.gv import FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ
 from symbolic.gv import MEAL, RECIPE, INGREDIENT, SLOT
@@ -68,7 +66,7 @@ class Entity:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text) -> Optional[event.NewActionRecordEvent]:
+    def add_action_record(self, action, p_valid, result_text) -> bool:
         """
         Record an action that was applied to this object and the
         resulting game text.
@@ -76,17 +74,17 @@ class Entity:
         """
         self._action_records[action] = (p_valid, result_text)
         if action not in self._action_records and p_valid > .5:
-            return event.NewActionRecordEvent(self, action, result_text)
+            return True
         else:
-            return None
+            return False
 
     def has_action_record(self, action):
         return action in self._action_records
 
-    def add_entity(self, entity) -> event.NewEntityEvent:
+    def add_entity(self, entity) -> bool:
         self._entities.append(entity)
         # gi.event_stream.push(event.NewEntityEvent(entity))
-        return event.NewEntityEvent(entity)
+        return True
 
     def del_entity(self, entity):
         self._entities.remove(entity)
@@ -95,10 +93,10 @@ class Entity:
     def attributes(self):
         return self._failures
 
-    def add_attribute(self, attribute) -> event.NewEntityEvent:
+    def add_attribute(self, attribute) -> bool:
         if attribute not in self._attributes:
-            return event.NewAttributeEvent(self, attribute)
-        return None
+            return True
+        return False
 
     @property
     def state(self):

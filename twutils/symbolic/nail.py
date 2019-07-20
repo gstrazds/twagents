@@ -7,8 +7,14 @@ from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Ho
 from symbolic.event import NewTransitionEvent
 from symbolic.location import Location
 from symbolic import knowledge_graph
-# from symbolic.util import clean
-# from symbolic.valid_detectors.learned_valid_detector import LearnedValidDetector
+from symbolic.action import GoNorth, GoSouth, GoEast, GoWest
+# from twutils.twlogic import DIRECTION_RELATIONS
+
+DIRECTION_ACTIONS = {
+        'north_of': GoNorth,
+        'south_of': GoSouth,
+        'east_of': GoEast,
+        'west_of': GoWest}
 
 class NailAgent():
     """
@@ -23,8 +29,9 @@ class NailAgent():
         self.setup_logging(rom_name, output_subdir)
         gv.rng.seed(seed)
         gv.dbg("RandomSeed: {}".format(seed))
-        self.knowledge_graph  = knowledge_graph.KnowledgeGraph()
-        self.gi = GameInstance(self.knowledge_graph)
+        observed_knowledge_graph  = knowledge_graph.KnowledgeGraph()
+        groundtruth_graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
+        self.gi = GameInstance(observed_knowledge_graph, groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.modules = [
@@ -66,8 +73,8 @@ class NailAgent():
             if eagerness >= most_eager:
                 self.active_module = module
                 most_eager = eagerness
-        gv.dbg("[NAIL](elect): {} Eagerness: {}"\
-            .format(type(self.active_module).__name__, most_eager))
+        gv.dbg("[NAIL](elect): {} Eagerness: {}".format(
+            type(self.active_module).__name__, most_eager))
         self.action_generator = self.active_module.take_control(self.gi)
         self.action_generator.send(None)
 
@@ -93,15 +100,34 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
+    def _get_gt_location(self, roomvar):
+        locations = self.gi.gt.locations_with_name(roomvar.name)
+        if locations:
+            assert len(locations) == 1
+            return locations[0]
+        else:
+            new_loc = Location(roomvar.name)
+            ev = self.gi.gt.add_location(new_loc)
+            # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
+            print("created new GT Location:", new_loc)
+            return new_loc
 
     def take_action(self, observation, obs_facts=None, gt_facts=None):
         if gt_facts:
-            pass
-            # print("GROUND TRUTH:")
-            # for fact in gt_facts:
-            #     print('\t', fact)
-            #     for v in fact.arguments:
-            #         print('\t\t', v.)
+            # print("GROUND TRUTH")
+            for fact in gt_facts:
+                if fact.name in DIRECTION_ACTIONS:
+                    a0 = fact.arguments[0]
+                    a1 = fact.arguments[1]
+                    if a0.type == 'r' and a1.type == 'r':
+                        # print('++CONNECTION:', fact)
+                        loc0 = self._get_gt_location(a0)
+                        loc1 = self._get_gt_location(a1)
+                        new_connection = knowledge_graph.Connection(loc0, DIRECTION_ACTIONS[fact.name], loc1)
+                        self.gi.gt.add_connection(new_connection, self.gi)  #does nothing if connection already present
+                    else:
+                        # print("--IGNORING:", fact)
+                        pass
         if obs_facts:
             # world = World.from_facts(facts)
             # add obs_facts to our KnowledgeGraph (self.gi.kg)
