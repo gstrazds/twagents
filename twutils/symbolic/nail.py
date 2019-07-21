@@ -3,6 +3,7 @@ import logging
 from symbolic.game import GameInstance
 from symbolic import gv
 from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
+from symbolic.decision_modules import GTNavigator
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent
 from symbolic.location import Location
@@ -15,6 +16,9 @@ DIRECTION_ACTIONS = {
         'south_of': GoSouth,
         'east_of': GoEast,
         'west_of': GoWest}
+
+LOCATION_RELATIONS = ['at', 'in', 'on']
+
 
 class NailAgent():
     """
@@ -34,7 +38,9 @@ class NailAgent():
         self.gi = GameInstance(observed_knowledge_graph, groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
+        self.gt_nav = GTNavigator(False)
         self.modules = [
+                        self.gt_nav,
                         #Explorer(True),
                         Examiner(True), Hoarder(True), Navigator(True), Interactor(True),
                         Idler(True),
@@ -47,7 +53,6 @@ class NailAgent():
         if env and rom_name:
             self.env = env
             self.step_num = 0
-
 
     def setup_logging(self, rom_name, output_subdir):
         """ Configure the logging facilities. """
@@ -64,7 +69,6 @@ class NailAgent():
         logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
                             level=logging.DEBUG, filemode='w')
 
-
     def elect_new_active_module(self):
         """ Selects the most eager module to take control. """
         most_eager = 0.
@@ -73,11 +77,10 @@ class NailAgent():
             if eagerness >= most_eager:
                 self.active_module = module
                 most_eager = eagerness
-        gv.dbg("[NAIL](elect): {} Eagerness: {}".format(
-            type(self.active_module).__name__, most_eager))
+        print("elect_new_active_module:", "[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
+        gv.dbg("[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
         self.action_generator = self.active_module.take_control(self.gi)
-        self.action_generator.send(None)
-
+        self.action_generator.send(None)  # handshake with initial argless yield
 
     def generate_next_action(self, observation):
         """Returns the action selected by the current active module and
@@ -88,11 +91,11 @@ class NailAgent():
         while not next_action:
             try:
                 next_action = self.action_generator.send(observation)
+                print("[NAIL] (generate_next_action): {} {}".format(type(self.active_module).__name__, next_action))
             except StopIteration:
                 self.consume_event_stream()
                 self.elect_new_active_module()
         return next_action.text()
-
 
     def consume_event_stream(self):
         """ Each module processes stored events then the stream is cleared. """
@@ -100,34 +103,52 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def _get_gt_location(self, roomvar):
-        locations = self.gi.gt.locations_with_name(roomvar.name)
+    def _get_gt_location(self, roomname, create_if_notfound=False):
+        locations = self.gi.gt.locations_with_name(roomname)
         if locations:
             assert len(locations) == 1
             return locations[0]
-        else:
-            new_loc = Location(roomvar.name)
+        elif create_if_notfound:
+            new_loc = Location(roomname)
             ev = self.gi.gt.add_location(new_loc)
             # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
             print("created new GT Location:", new_loc)
             return new_loc
+        return None
+
+    def gt_navigate(self, roomname):
+        dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
+        assert dest_loc is not None
+        self.gt_nav.set_goal(dest_loc, self.gi)
+        # self.elect_new_active_module()
+
+    def set_ground_truth(self, gt_facts):
+        # print("GROUND TRUTH")
+        player_loc = None
+        for fact in gt_facts:
+            if fact.name in LOCATION_RELATIONS or fact.name in DIRECTION_ACTIONS:
+                a0 = fact.arguments[0]
+                a1 = fact.arguments[1]
+                if a0.type == 'P' and a1.type == 'r':
+                    player_loc = self._get_gt_location(a1.name, create_if_notfound=True)
+                elif a0.type == 'r' and a1.type == 'r':
+                    # print('++CONNECTION:', fact)
+                    loc0 = self._get_gt_location(a0.name, create_if_notfound=True)
+                    loc1 = self._get_gt_location(a1.name, create_if_notfound=True)
+                    new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0)
+                    self.gi.gt.add_connection(new_connection, self.gi)  # does nothing if connection already present
+                elif a0.type == 'd' and a1.type == 'r':
+                    print("set_ground_truth: door fact -- ", fact)
+                else:
+                    # print("--IGNORING:", fact)
+                    pass
+        if player_loc:
+            if self.gi.gt.set_player_location(player_loc, self.gi):
+                print("CHANGED GT player location:", player_loc)
 
     def take_action(self, observation, obs_facts=None, gt_facts=None):
         if gt_facts:
-            # print("GROUND TRUTH")
-            for fact in gt_facts:
-                if fact.name in DIRECTION_ACTIONS:
-                    a0 = fact.arguments[0]
-                    a1 = fact.arguments[1]
-                    if a0.type == 'r' and a1.type == 'r':
-                        # print('++CONNECTION:', fact)
-                        loc0 = self._get_gt_location(a0)
-                        loc1 = self._get_gt_location(a1)
-                        new_connection = knowledge_graph.Connection(loc0, DIRECTION_ACTIONS[fact.name], loc1)
-                        self.gi.gt.add_connection(new_connection, self.gi)  #does nothing if connection already present
-                    else:
-                        # print("--IGNORING:", fact)
-                        pass
+            self.set_ground_truth(gt_facts)
         if obs_facts:
             # world = World.from_facts(facts)
             # add obs_facts to our KnowledgeGraph (self.gi.kg)
@@ -164,7 +185,6 @@ class NailAgent():
         next_action = self.generate_next_action(observation)
         return next_action
 
-
     def observe(self, prev_obs, action, score, new_obs, terminal):
         """ Observe will be used for learning from rewards. """
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
@@ -175,7 +195,6 @@ class NailAgent():
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
             self.gi.kg.reset(self.gi)
-
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:

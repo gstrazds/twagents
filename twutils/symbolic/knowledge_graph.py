@@ -55,9 +55,10 @@ class KnowledgeGraph:
     def set_player_location(self, new_location, gi):
         """ Changes player location and broadcasts a LocationChangedEvent. """
         if new_location == self._player_location:
-            return
+            return False
         gi.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
         self._player_location = new_location
+        return True
 
     @property
     def inventory(self):

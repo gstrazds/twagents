@@ -665,19 +665,22 @@ class CustomAgent:
 
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
-                if self.current_step == 0:
-                    actiontxt = "go west"
-                elif self.current_step == 1:
-                    actiontxt = "go north"
-                elif 'facts' in infos:
+                if 'facts' in infos:
                     world_facts = infos['facts'][agent_id]
-                    observable_facts, player_room = filter_observables(world_facts, verbose=(self.current_step == 2))
+                    observable_facts, player_room = filter_observables(world_facts, verbose=True) #verbose=(self.current_step == 2))
                     print("FACTS IN SCOPE:")
                     for fact in observable_facts:
                         print('\t', fact)
                         # print_fact(game, fact)
 
-                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=world_facts)
+                    agent.set_ground_truth(world_facts)
+                    if self.current_step == 0:
+                        agent.gt_navigate("kitchen")  # set nav destination (using Ground Truth knowledge)
+                    #     actiontxt = "go west"
+                    # elif self.current_step == 1:
+                    #     actiontxt = "go north"
+                    # else:
+                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=None)
                 else:
                     actiontxt = agent.take_action(desctext)
                 print(agent_id, "agent.take_action ->", actiontxt)
