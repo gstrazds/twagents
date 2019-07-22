@@ -170,42 +170,44 @@ class TWAffordanceExtractor(AffordanceExtractor):
         return scored_actions
 
     def estimate_attribute_prob(self, entity_name, attribute_name):
-        combined_string = "[{}][{}]".format(entity_name, attribute_name)
-        if combined_string in self.attribute_probs.keys():
-            return self.attribute_probs[combined_string]
-
-        affordable_attribute = self.affordable_attributes_by_name[attribute_name]
-        thresh_hi = affordable_attribute.thresholds[2]
-        thresh_md = affordable_attribute.thresholds[1]
-        thresh_lo = affordable_attribute.thresholds[0]
-        log_prob = self.conditional_log_prob_of_attribute_given_noun(affordable_attribute.attribute_name, entity_name)
-        if log_prob >= thresh_hi:
-            est_prob = 1.
-        elif log_prob <= thresh_lo:
-            est_prob = 0.
-        elif log_prob >= thresh_md:
-            est_prob = 0.5 + 0.5 * (log_prob - thresh_md) / (thresh_hi - thresh_md)
-        else:
-            est_prob = 0.5 * (log_prob - thresh_lo) / (thresh_md - thresh_lo)
-
-        self.attribute_probs[combined_string] = est_prob
-        return est_prob
+        return 1.0
+        # combined_string = "[{}][{}]".format(entity_name, attribute_name)
+        # if combined_string in self.attribute_probs.keys():
+        #     return self.attribute_probs[combined_string]
+        #
+        # affordable_attribute = self.affordable_attributes_by_name[attribute_name]
+        # thresh_hi = affordable_attribute.thresholds[2]
+        # thresh_md = affordable_attribute.thresholds[1]
+        # thresh_lo = affordable_attribute.thresholds[0]
+        # log_prob = self.conditional_log_prob_of_attribute_given_noun(affordable_attribute.attribute_name, entity_name)
+        # if log_prob >= thresh_hi:
+        #     est_prob = 1.
+        # elif log_prob <= thresh_lo:
+        #     est_prob = 0.
+        # elif log_prob >= thresh_md:
+        #     est_prob = 0.5 + 0.5 * (log_prob - thresh_md) / (thresh_hi - thresh_md)
+        # else:
+        #     est_prob = 0.5 * (log_prob - thresh_lo) / (thresh_md - thresh_lo)
+        #
+        # self.attribute_probs[combined_string] = est_prob
+        # return est_prob
 
     def estimate_unknown_action_prob(self, log_prob):
-        thresh_hi = self.unknown_action_calibration_thresholds[2]
-        thresh_md = self.unknown_action_calibration_thresholds[1]
-        thresh_lo = self.unknown_action_calibration_thresholds[0]
-
-        if log_prob >= thresh_hi:
-            est_prob = 1.
-        elif log_prob <= thresh_lo:
-            est_prob = 0.
-        elif log_prob >= thresh_md:
-            est_prob = 0.5 + 0.5 * (log_prob - thresh_md) / (thresh_hi - thresh_md)
-        else:
-            est_prob = 0.5 * (log_prob - thresh_lo) / (thresh_md - thresh_lo)
-
-        return est_prob
+        return 0.5
+        # thresh_hi = self.unknown_action_calibration_thresholds[2]
+        # thresh_md = self.unknown_action_calibration_thresholds[1]
+        # thresh_lo = self.unknown_action_calibration_thresholds[0]
+        #
+        # if log_prob >= thresh_hi:
+        #     est_prob = 1.
+        # elif log_prob <= thresh_lo:
+        #     est_prob = 0.
+        # elif log_prob >= thresh_md:
+        #     est_prob = 0.5 + 0.5 * (log_prob - thresh_md) / (thresh_hi - thresh_md)
+        # else:
+        #     est_prob = 0.5 * (log_prob - thresh_lo) / (thresh_md - thresh_lo)
+        #
+        # return est_prob
 
     def conditional_log_prob_of_attribute_given_noun(self, attribute_name, noun):
         affordable_attribute = self.affordable_attributes_by_name[attribute_name]

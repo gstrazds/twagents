@@ -11,7 +11,8 @@ class EventStream:
         self._stream = []
 
     def push(self, event):
-        gv.dbg("[LOG]({}) {}".format(type(event).__name__, event.message))
+        if not event.is_groundtruth:
+            gv.dbg("[LOG]({}) {}".format(type(event).__name__, event.message))
         self._stream.append(event)
 
     def clear(self):

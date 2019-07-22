@@ -4,6 +4,11 @@ from ..action import *
 from ..location import Location
 from ..gv import rng, dbg
 
+
+def get_direction_from_navaction(navaction):
+    return navaction.verb
+
+
 class GTNavigator(DecisionModule):
     """
     The Ground Truth Navigator is responsible for choosing navigation actions to
@@ -38,6 +43,11 @@ class GTNavigator(DecisionModule):
             self._active = True
             self._path_idx = 0
         else:
+            if self.goal_location == current_loc:
+                gv.dbg("[GT NAV] NOOP: already at goal {}={}".format(self.goal_location, current_loc))
+            else:
+                gv.dbg("[GT NAV] NOPATH: (current={}, goal={}) path={}".format(
+                                                            current_loc, self.goal_location, self.path))
             self._active = False
             self._path_idx = -1
         # adjust eagerness
@@ -61,15 +71,33 @@ class GTNavigator(DecisionModule):
         """
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
             self._active = False
+            if gi.gt.player_location == self.goal_location:
+                gv.dbg("[GT NAV] Goal reached: {}".format(self.goal_location))
+            else:
+                gv.dbg("[GT NAV] FAILED! {} {} {}".format(self.goal_location, self._path_idx, self.path))
             if self._debug:
                 print("GT Navigator resetting _active=False", self._path_idx, self.path)
             return None
         next_step = self.path[self._path_idx]
-        # TODO: check for closed door:  "open <the door>" and don't increment _path_idx
-        self._path_idx += 1
+        # TODO: check for closed door -> "open <the door>" and don't increment _path_idx
         if self._debug:
             assert next_step.from_location == gi.gt.player_location
+        direction = get_direction_from_navaction(next_step.action)
+        door = self.get_door_if_closed(next_step.from_location, direction, next_step.to_location)
+        if door is not None:
+            return Open(door)
+        self._path_idx += 1
         return next_step.action
+
+    def get_door_if_closed(self, loc, direction, dest):
+        # rel = "{}_of".format(direction)
+        # door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
+        # for link in door_facts:
+        #     if link.arguments[0].name == loc.name and link.arguments[2].name == dest.name:
+        #         door = link.arguments[1]
+        #         if world.state.is_fact(Proposition("closed", [door])):
+        #             return entity_from_variable(door)
+        return None
 
     def take_control(self, gi: GameInstance):
         """

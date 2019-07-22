@@ -76,9 +76,9 @@ class KnowledgeGraph:
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
         self.set_player_location(self._init_loc, gi)
-        self.inventory.reset()
+        self.inventory.reset(gi)
         for location in self.locations:
-            location.reset()
+            location.reset(gi)
 
     def __str__(self):
         s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
@@ -182,11 +182,12 @@ class Connection:
     message: The text response given by the game upon moving
 
     """
-    def __init__(self, from_location, action, to_location=None, message=''):
+    def __init__(self, from_location, action, doorway=None, to_location=None, message=''):
         self.from_location = from_location
         self.to_location   = to_location
         self.action        = action
         self.message       = message
+        self.doorway       = doorway
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
@@ -196,9 +197,10 @@ class Connection:
         return False
 
     def to_string(self, prefix=''):
-        return prefix + "{} --({})--> {}".format(self.from_location.name,
-                                                 self.action,
-                                                 self.to_location.name)
+        return prefix + "{} --({}{})--> {}".format(self.from_location.name,
+                                                   self.action,
+                                                   ":{}".format(self.doorway.name) if self.doorway else '',
+                                                   self.to_location.name)
 
     def __str__(self):
         return self.to_string()

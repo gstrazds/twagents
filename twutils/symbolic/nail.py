@@ -42,8 +42,10 @@ class NailAgent():
         self.modules = [
                         self.gt_nav,
                         #Explorer(True),
-                        Examiner(True), Hoarder(True), Navigator(True), Interactor(True),
+                        # Navigator(True),
                         Idler(True),
+                        Examiner(True), Hoarder(True),
+                        # Interactor(True),
                         # YesNo(True), YouHaveTo(True), Darkness(True)
                         ]
         self.active_module    = None
@@ -125,6 +127,7 @@ class NailAgent():
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         player_loc = None
+        door_facts = []
         for fact in gt_facts:
             if fact.name in LOCATION_RELATIONS or fact.name in DIRECTION_ACTIONS:
                 a0 = fact.arguments[0]
@@ -138,7 +141,7 @@ class NailAgent():
                     new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0)
                     self.gi.gt.add_connection(new_connection, self.gi)  # does nothing if connection already present
                 elif a0.type == 'd' and a1.type == 'r':
-                    print("set_ground_truth: door fact -- ", fact)
+                    print("\t\tset_ground_truth: TODO door fact -- ", fact)
                 else:
                     # print("--IGNORING:", fact)
                     pass

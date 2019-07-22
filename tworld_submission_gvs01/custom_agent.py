@@ -17,6 +17,7 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.nail import NailAgent
+from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
 
 # a snapshot of state to be stored in replay memory
@@ -428,6 +429,7 @@ class CustomAgent:
         self.batch_size = self.config['training']['batch_size']
         self.max_nb_steps_per_episode = self.config['training']['max_nb_steps_per_episode']
         self.nb_epochs = self.config['training']['nb_epochs']
+        self._debug_quit = False
 
         # Set the random seed manually for reproducibility.
         seedval = self.config['general']['random_seed']
@@ -569,7 +571,7 @@ class CustomAgent:
             NailAgent(
                 self.config['general']['random_seed'],
                 "TW", #env
-                "n_{}".format(idx),
+                "n_{}".format(infos['game_id'][idx] if 'game_id' in infos else idx),
 
             ) for idx in range(len(obs))
         ]
@@ -645,8 +647,8 @@ class CustomAgent:
                     prevaction = self.prev_actions[idx]
                     agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
                     # Output this step.
-                    print("observe: [{}] Step {}   Action [{}]   Score {}\nobs::".format(
-                                idx, self.current_step, prevaction, scores[idx],)) # obs[idx]))
+                    print("<Step {}> observe: [{}]  Action [{}]   Score {}\nobs::".format(
+                                self.current_step, idx, prevaction, scores[idx],)) # obs[idx]))
                 self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)
@@ -659,15 +661,18 @@ class CustomAgent:
             chosen_strings = []
             agent_id = 0
             for desctext, agent in zip(obs, self.agents):
-                print("\t[{}] NAIL: observation=[{}]".format(agent_id, desctext))
+                print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, agent_id, desctext))
                 if 'inventory' in infos:
-                    print("INVENTORY:", infos['inventory'][agent_id])
+                    print("\tINVENTORY:", infos['inventory'][agent_id])
 
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
                 if 'facts' in infos:
                     world_facts = infos['facts'][agent_id]
-                    observable_facts, player_room = filter_observables(world_facts, verbose=True) #verbose=(self.current_step == 2))
+                    verbose = (self.current_step == 0)
+                    if agent.gt_nav == agent.active_module and agent.gt_nav._path_idx == len(agent.gt_nav.path):
+                        verbose = True
+                    observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
                     print("FACTS IN SCOPE:")
                     for fact in observable_facts:
                         print('\t', fact)
@@ -680,10 +685,15 @@ class CustomAgent:
                     # elif self.current_step == 1:
                     #     actiontxt = "go north"
                     # else:
+                    if self._debug_quit and self._debug_quit == self.current_step:
+                        dbg("[{}] DEBUG QUIT! step={}".format(agent_id, self.current_step))
+                        # exit(0)
+                    if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
+                        self._debug_quit = self.current_step + 2  # early abort after executing one more action
                     actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=None)
                 else:
                     actiontxt = agent.take_action(desctext)
-                print(agent_id, "agent.take_action ->", actiontxt)
+                print("[{}] agent.take_action -> {}".format(agent_id,actiontxt))
 
                 chosen_strings.append(actiontxt)
                 agent_id += 1

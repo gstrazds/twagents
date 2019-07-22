@@ -40,9 +40,10 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
         assert len(df.arguments) == 3
         r0, door, r1 = df.arguments
         direction = find_link_direction(world, r1, r0)
-        world_facts.append(Proposition("{}_of".format(direction), (door, r0)
-                                       ))
+        new_fact = Proposition("{}_of".format(direction), (door, r1))
+        world_facts.append(new_fact)
         if local_facts is not None and r1 == player_location:
+            local_facts.append(new_fact)
             local_facts.append(Proposition("{}_of".format(direction), (
                 door,
                 the_player)))
@@ -54,10 +55,11 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
                 closed_fact = Proposition('closed', [door])
                 if closed_fact not in local_facts:
                     local_facts.append(closed_fact)
-            if world.state.is_fact(Proposition('locked', [door])):
-                locked_fact = Proposition('locked', [door])
-                if locked_fact not in local_facts:
-                    local_facts.append(locked_fact)
+            # locked state is not directly observable
+            # if world.state.is_fact(Proposition('locked', [door])):
+            #     locked_fact = Proposition('locked', [door])
+            #     if locked_fact not in local_facts:
+            #         local_facts.append(locked_fact)
 
 
 def filter_observables(world_facts: Iterable[Proposition], verbose=False):
@@ -73,12 +75,13 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
             if not v.name:
                 v_count = len(fixups[v.type])
                 assert v not in fixups[v.type]
-                if v.type == 'P' or v.type == 'I':
+                if v.type == 'P' or v.type == 'I' or v.type == 'RECIPE' or v.type == 'MEAL':
                     v.name = v.type
-                    assert v_count == 0
+                    if v_count == 0:
+                        fixups[v.type].add(v)
                 else:
                     v.name = '~{}_{}'.format(v.type, v_count)
-                fixups[v.type].add(v)
+                    fixups[v.type].add(v)
 
     world = World.from_facts(world_facts)
     world_state = world.state
