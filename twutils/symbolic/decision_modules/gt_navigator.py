@@ -32,6 +32,8 @@ class GTNavigator(DecisionModule):
         self.goal_location = None
         self.path = None    # shortest path from start location to goal_location
         self._path_idx = -1  # next step along path
+        self._opened_door = None  # state flag for keeping track of Open(door) actions
+        self._close_door = None  # remember that we want to close a door that we opened
 
     def set_goal(self, goal: Location, gi: GameInstance):
         self.goal_location = goal
@@ -83,13 +85,21 @@ class GTNavigator(DecisionModule):
         if self._debug:
             assert next_step.from_location == gi.gt.player_location
         direction = get_direction_from_navaction(next_step.action)
-        door = self.get_door_if_closed(next_step.from_location, direction, next_step.to_location)
-        if door is not None:
+        door = self.get_door_if_closed(next_step)
+        if door is not None and not self._opened_door:
+            self._opened_door = door
             return Open(door)
+        if self._close_door:
+            close_door = self._close_door
+            self._close_door = None
+            return close_door
         self._path_idx += 1
+        if self._opened_door:
+            # self._close_door = Close(self._opened_door)
+            self._opened_door = None  # close the door on the next step (after going to dest room)
         return next_step.action
 
-    def get_door_if_closed(self, loc, direction, dest):
+    def get_door_if_closed(self, connection):
         # rel = "{}_of".format(direction)
         # door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
         # for link in door_facts:
@@ -97,7 +107,9 @@ class GTNavigator(DecisionModule):
         #         door = link.arguments[1]
         #         if world.state.is_fact(Proposition("closed", [door])):
         #             return entity_from_variable(door)
-        return None
+
+        #TODO: check state of doorway, return None if the door is already open...
+        return connection.doorway
 
     def take_control(self, gi: GameInstance):
         """

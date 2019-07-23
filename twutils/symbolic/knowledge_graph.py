@@ -98,6 +98,14 @@ class KnowledgeGraph:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
 
+    def entities_with_name(self, entityname, entitytype=None):
+        """ Returns all entities with a particular name. """
+        ret = set()
+        for l in self._locations:
+            e = l.get_entity_by_name(entityname)
+            if e and (entitytype is None or e._type == entitytype):
+                ret.add(e)
+        return ret
 
 
 class ConnectionGraph:
@@ -182,7 +190,7 @@ class Connection:
     message: The text response given by the game upon moving
 
     """
-    def __init__(self, from_location, action, doorway=None, to_location=None, message=''):
+    def __init__(self, from_location, action, to_location=None, doorway=None, message=''):
         self.from_location = from_location
         self.to_location   = to_location
         self.action        = action

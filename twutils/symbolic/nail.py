@@ -6,6 +6,7 @@ from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Ho
 from symbolic.decision_modules import GTNavigator
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent
+from symbolic.entity import Entity
 from symbolic.location import Location
 from symbolic import knowledge_graph
 from symbolic.action import GoNorth, GoSouth, GoEast, GoWest
@@ -18,6 +19,15 @@ DIRECTION_ACTIONS = {
         'west_of': GoWest}
 
 LOCATION_RELATIONS = ['at', 'in', 'on']
+
+
+def find_door(fact_list, from_room, to_room):  # return name of door
+    for fact in fact_list:
+        if fact.name == 'link'\
+        and fact.arguments[0].name == from_room.name \
+        and fact.arguments[2].name == to_room.name:
+            return fact.arguments[1].name
+    return None
 
 
 class NailAgent():
@@ -118,6 +128,38 @@ class NailAgent():
             return new_loc
         return None
 
+    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
+        if create_if_notfound:
+            assert locations is not None
+        entities = set()
+        if locations:
+            for l in locations:
+                for e in l.entities:
+                    if e.has_name(name):
+                        entities.add(e)
+        else:
+            entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
+        if entities:
+            if len(entities) == 1:
+                return list(entities)[0]
+            else:
+                found = None
+                for e in entities:
+                    if e._type == entitytype:
+                        found = e
+                if found:
+                    return found
+        if create_if_notfound:
+            new_entity = Entity(name, locations[0], type=entitytype)
+            ev = locations[0].add_entity(new_entity)
+            if len(locations) > 0:
+                for l in locations[1:]:
+                    l.add_entity(new_entity)
+            # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
+            print("created new GT Entity:", new_entity)
+            return new_entity
+        return None
+
     def gt_navigate(self, roomname):
         dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
         assert dest_loc is not None
@@ -127,7 +169,7 @@ class NailAgent():
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         player_loc = None
-        door_facts = []
+        door_facts = [fact for fact in gt_facts if fact.name == 'link']
         for fact in gt_facts:
             if fact.name in LOCATION_RELATIONS or fact.name in DIRECTION_ACTIONS:
                 a0 = fact.arguments[0]
@@ -138,10 +180,16 @@ class NailAgent():
                     # print('++CONNECTION:', fact)
                     loc0 = self._get_gt_location(a0.name, create_if_notfound=True)
                     loc1 = self._get_gt_location(a1.name, create_if_notfound=True)
-                    new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0)
+                    door_name = find_door(gt_facts, a1, a0)
+                    if door_name:
+                        door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
+                    else:
+                        door = None
+                    new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
                     self.gi.gt.add_connection(new_connection, self.gi)  # does nothing if connection already present
                 elif a0.type == 'd' and a1.type == 'r':
-                    print("\t\tset_ground_truth: TODO door fact -- ", fact)
+                    # print("\t\tset_ground_truth: TODO door fact -- ", fact)
+                    pass
                 else:
                     # print("--IGNORING:", fact)
                     pass
