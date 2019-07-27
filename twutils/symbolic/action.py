@@ -112,7 +112,7 @@ class ExamineAction(Action):
         return "{} {}".format(self.verb, self.entity_name)
 
     def apply(self, gi: GameInstance):
-        entity = Entity(self.entity_name, response)
+        entity = Entity(self.entity_name, gi.kg.player_location, ) #description=response)
         gi.entity_at_location(entity, gi.kg.player_location)
 
 
@@ -128,7 +128,7 @@ class TakeAction(SingleAction):
             gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
         # gi.kg.inventory.add_entity(self.entity)
         gi.entity_at_location(self.entity, gi.kg.inventory)
-        gi.add_entity_attribute(self.entity, gv.Portable)
+        gi.add_entity_attribute(self.entity, Portable)
 
     def validate(self, response_text):
         if 'taken' in response_text.lower() or \
@@ -151,7 +151,7 @@ class DropAction(SingleAction):
         assert self.entity in gi.kg.inventory
         gi.kg.inventory.remove(self.entity)
         gi.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
-        gi.add_entity_attribute(self.entity, gv.Portable)
+        gi.add_entity_attribute(self.entity, Portable)
 
     def validate(self, response_text):
         if 'dropped' in response_text.lower():
@@ -166,7 +166,7 @@ class OpenAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.open()
-        gi.add_entity_attribute(self.entity, gv.Openable)
+        gi.add_entity_attribute(self.entity, Openable)
 
 
 class CloseAction(SingleAction):
@@ -175,7 +175,7 @@ class CloseAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.close()
-        gi.add_entity_attribute(self.entity, gv.Openable)
+        gi.add_entity_attribute(self.entity, Openable)
 
 
 class LockAction(SingleAction):
@@ -184,7 +184,7 @@ class LockAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.lock()
-        gi.add_entity_attribute(self.entity, gv.Lockable)
+        gi.add_entity_attribute(self.entity, Lockable)
 
 class LockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
@@ -192,7 +192,7 @@ class LockWithAction(DoubleAction):
 
     def apply(self, gi: GameInstance):
         self.entity1.state.lock()
-        gi.add_entity_attribute(self.entity1, gv.Lockable)
+        gi.add_entity_attribute(self.entity1, Lockable)
 
 class UnlockAction(SingleAction):
     def __init__(self, entity):
@@ -200,7 +200,7 @@ class UnlockAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.unlock()
-        gi.add_entity_attribute(self.entity, gv.Lockable)
+        gi.add_entity_attribute(self.entity, Lockable)
 
 class UnlockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
@@ -208,7 +208,7 @@ class UnlockWithAction(DoubleAction):
 
     def apply(self, gi: GameInstance):
         self.entity1.state.unlock()
-        gi.add_entity_attribute(self.entity1, gv.Lockable)
+        gi.add_entity_attribute(self.entity1, Lockable)
 
 class TurnOnAction(SingleAction):
     def __init__(self, entity):
@@ -216,7 +216,7 @@ class TurnOnAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.turn_on()
-        gi.add_entity_attribute(self.entity, gv.Switchable)
+        gi.add_entity_attribute(self.entity, Switchable)
 
 
 class TurnOffAction(SingleAction):
@@ -225,7 +225,7 @@ class TurnOffAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.turn_off()
-        gi.add_entity_attribute(self.entity, gv.Switchable)
+        gi.add_entity_attribute(self.entity, Switchable)
 
 
 class ConsumeAction(SingleAction):
@@ -235,7 +235,7 @@ class ConsumeAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.state.remove()
-        gi.add_entity_attribute(self.entity, gv.Edible)
+        gi.add_entity_attribute(self.entity, Edible)
 
 
 class MoveItemAction(DoubleAction):
@@ -321,7 +321,7 @@ Prepare     = lambda x: SingleAction('prepare', x)  # x='meal'
 Portable   = attribute.Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,
 Edible     = attribute.Attribute('edible',     [Eat, Drink])  # Swallow, Consume])
 # Moveable   = attribute.Attribute('moveable',   [Move, Push, Pull, Drag, Lift])
-# Switchable = attribute.Attribute('switchable', [TurnOn, TurnOff])
+Switchable = attribute.Attribute('switchable', [TurnOn, TurnOff])
 # Flammable  = attribute.Attribute('flammable',  [Light, Extinguish])
 Openable   = attribute.Attribute('openable',   [Open, Close])
 Lockable   = attribute.Attribute('lockable',   [Lock, Unlock, LockWith, UnlockWith])

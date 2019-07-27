@@ -95,6 +95,7 @@ class Entity:
 
     def add_attribute(self, attribute) -> bool:
         if attribute not in self._attributes:
+            self._attributes.append(attribute)
             return True
         return False
 
