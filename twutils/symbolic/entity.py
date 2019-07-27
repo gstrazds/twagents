@@ -91,7 +91,7 @@ class Entity:
 
     @property
     def attributes(self):
-        return self._failures
+        return self._attributes
 
     def add_attribute(self, attribute) -> bool:
         if attribute not in self._attributes:

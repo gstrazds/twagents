@@ -86,16 +86,17 @@ class GTNavigator(DecisionModule):
             assert next_step.from_location == gi.gt.player_location
         direction = get_direction_from_navaction(next_step.action)
         door = self.get_door_if_closed(next_step)
+    #TODO: fix get_door_if_closed() to check for closed(door)...
         if door is not None and not self._opened_door:
             self._opened_door = door
             return Open(door)
         if self._close_door:
-            close_door = self._close_door
+            close_door = Close(self._close_door)
             self._close_door = None
             return close_door
         self._path_idx += 1
         if self._opened_door:
-            # self._close_door = Close(self._opened_door)
+            self._close_door = self._opened_door   #Close(self._opened_door)
             self._opened_door = None  # close the door on the next step (after going to dest room)
         return next_step.action
 
@@ -109,7 +110,9 @@ class GTNavigator(DecisionModule):
         #             return entity_from_variable(door)
 
         #TODO: check state of doorway, return None if the door is already open...
-        return connection.doorway
+        if connection.doorway and connection.doorway.state.openable() and not connection.doorway.state.is_open:
+            return connection.doorway
+        return None
 
     def take_control(self, gi: GameInstance):
         """

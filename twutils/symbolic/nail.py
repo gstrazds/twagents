@@ -21,6 +21,12 @@ DIRECTION_ACTIONS = {
 LOCATION_RELATIONS = ['at', 'in', 'on']
 
 
+def entity_type_for_twvar(vartype):
+    if vartype in Entity.entity_types:
+        return vartype  # 1:1 mapping, for now
+    return None
+
+
 def find_door(fact_list, from_room, to_room):  # return name of door
     for fact in fact_list:
         if fact.name == 'link'\
@@ -128,37 +134,75 @@ class NailAgent():
             return new_loc
         return None
 
-    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
+    def _get_gt_entity(self, name, locations=None, holder=None, entitytype=None, create_if_notfound=False):
         if create_if_notfound:
             assert locations is not None
         entities = set()
-        if locations:
+        if holder:
+            for e in holder._entities:
+                if e.has_name(name):
+                    entities.add(e)
+        elif locations:
             for l in locations:
                 for e in l.entities:
                     if e.has_name(name):
                         entities.add(e)
-        else:
+        if not entities:  # none found
             entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
         if entities:
             if len(entities) == 1:
-                return list(entities)[0]
+                return list(entities)[0], None
             else:
                 found = None
                 for e in entities:
-                    if e._type == entitytype:
+                    if entitytype is None or e._type == entitytype:
                         found = e
                 if found:
-                    return found
+                    return found, None
         if create_if_notfound:
             new_entity = Entity(name, locations[0], type=entitytype)
-            ev = locations[0].add_entity(new_entity)
-            if len(locations) > 0:
-                for l in locations[1:]:
-                    l.add_entity(new_entity)
+            if holder:
+                ev = holder.add_entity(new_entity)
+            else:
+                ev = locations[0].add_entity(new_entity)
+                if len(locations) > 0:
+                    for l in locations[1:]:
+                        l.add_entity(new_entity)
             # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
             print("created new GT Entity:", new_entity)
-            return new_entity
-        return None
+            return new_entity, ev
+        return None, None
+
+    def _add_obj_to_obj(self, fact, player_loc):
+        o = fact.arguments[0]
+        h = fact.arguments[1]
+        if o.name.startswith('~') or h.name.startswith('~'):
+            print("_add_obj_to_obj: SKIPPING FACT", fact)
+            return None
+        if h.name == 'I':  # Inventory
+            holder = None  #self.gi.gt.inventory
+            loc = self.gi.gt.inventory  #player_loc
+        else:
+            holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
+                                         create_if_notfound=False)
+            loc = holder._init_loc if holder is not None else None
+        if loc:
+            loc = [loc]
+        else:
+            print("WARNING! NO LOCATION FOR HOLDER while adding GT Object {} {}".format(fact, holder))
+            loc = None
+
+    #NOTE TODO: handle objects that have moved from to or from Inventory
+        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc, holder=holder,
+                                  create_if_notfound=True)
+        #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
+        # if holder:
+        #     holder.add_entity(obj)
+        if ev:
+            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder))
+        else:
+            print("FOUND GT Object {} :{} {}".format(obj, fact.name, holder))
+        return obj
 
     def gt_navigate(self, roomname):
         dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
@@ -168,23 +212,38 @@ class NailAgent():
 
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
+        # sort into separate lists to control the order in which facts get processed
         player_loc = None
-        door_facts = [fact for fact in gt_facts if fact.name == 'link']
+        door_facts = []
+        at_facts = []
+        on_facts = []
+        in_facts = []
+        other_facts = []
         for fact in gt_facts:
-            if fact.name in LOCATION_RELATIONS or fact.name in DIRECTION_ACTIONS:
-                a0 = fact.arguments[0]
-                a1 = fact.arguments[1]
+            a0 = fact.arguments[0]
+            a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
+            if fact.name == 'link':
+                door_facts.append(fact)
+            elif fact.name == 'at':
+                at_facts.append(fact)
                 if a0.type == 'P' and a1.type == 'r':
                     player_loc = self._get_gt_location(a1.name, create_if_notfound=True)
-                elif a0.type == 'r' and a1.type == 'r':
+            elif fact.name == 'on':
+                on_facts.append(fact)
+            elif fact.name == 'in':
+                in_facts.append(fact)
+            elif fact.name in DIRECTION_ACTIONS:
+                if a0.type == 'r' and a1.type == 'r':
+                    # During this initial pass we create locations and connections among them
                     # print('++CONNECTION:', fact)
                     loc0 = self._get_gt_location(a0.name, create_if_notfound=True)
                     loc1 = self._get_gt_location(a1.name, create_if_notfound=True)
-                    door_name = find_door(gt_facts, a1, a0)
-                    if door_name:
-                        door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
-                    else:
-                        door = None
+                    # door_name = find_door(gt_facts, a1, a0)
+                    # if door_name:
+                    #     door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
+                    # else:
+                    #     door = None
+                    door = None  # will add info about doors later
                     new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
                     self.gi.gt.add_connection(new_connection, self.gi)  # does nothing if connection already present
                 elif a0.type == 'd' and a1.type == 'r':
@@ -193,6 +252,47 @@ class NailAgent():
                 else:
                     # print("--IGNORING:", fact)
                     pass
+            else:
+                other_facts.append(fact)
+        # 2nd pass, add doors to connections
+        for fact in door_facts:
+            assert len(fact.arguments) == 3
+            r0 = fact.arguments[0]
+            d = fact.arguments[1]
+            r1 = fact.arguments[2]
+            assert r0.type == 'r'
+            assert r1.type == 'r'
+            assert d.type == 'd'
+            loc0 = self._get_gt_location(r0.name, create_if_notfound=False)
+            loc1 = self._get_gt_location(r1.name, create_if_notfound=False)
+            door, _ = self._get_gt_entity(d.name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
+            linkpath = self.gi.gt.connections.shortest_path(loc0, loc1)
+            assert len(linkpath) == 1
+            connection = linkpath[0]
+            connection.doorway = door
+        for fact in other_facts:
+            if fact.name == 'closed' and fact.arguments[0].type == 'd':
+                doorname = fact.arguments[0].name
+                doors = self.gi.gt.entities_with_name(doorname, entitytype=gv.DOOR)
+                assert len(doors) == 1
+                door = list(doors)[0]
+                door.state.close()
+        for fact in at_facts:
+            o = fact.arguments[0]
+            r = fact.arguments[1]
+            loc = self._get_gt_location(r.name, create_if_notfound=False)
+            if r.type == 'r':
+                obj, _ = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=[loc], create_if_notfound=True)
+            else:
+                gv.dbg("WARNING -- SET GROUND TRUTH: unexpected location for at(o,l): {}".format(r))
+
+    #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
+    # and similarly, that "in" relations are not nested.
+    #TODO: this should be generalized to work correctly for arbitrary chains of 'on' and 'in'
+        for fact in on_facts:
+            self._add_obj_to_obj(fact, player_loc)
+        for fact in in_facts:
+            self._add_obj_to_obj(fact, player_loc)
         if player_loc:
             if self.gi.gt.set_player_location(player_loc, self.gi):
                 print("CHANGED GT player location:", player_loc)

@@ -179,6 +179,12 @@ class ConnectionGraph:
         return shortest
 
 
+def _format_doorinfo(doorentity):
+    if doorentity is None:
+        return ''
+    if doorentity.state.openable() and not doorentity.state.is_open:
+        return ":{}(closed)".format(doorentity.name)
+    return ":{}(open)".format(doorentity.name)
 
 class Connection:
     """
@@ -207,7 +213,7 @@ class Connection:
     def to_string(self, prefix=''):
         return prefix + "{} --({}{})--> {}".format(self.from_location.name,
                                                    self.action,
-                                                   ":{}".format(self.doorway.name) if self.doorway else '',
+                                                   _format_doorinfo(self.doorway),
                                                    self.to_location.name)
 
     def __str__(self):
