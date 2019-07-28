@@ -316,6 +316,8 @@ ChopWith    = lambda x,y: DoubleAction('chop', x, 'with', y)
 DiceWith    = lambda x,y: DoubleAction('dice', x, 'with', y)
 CookWith    = lambda x,y: DoubleAction('cook', x, 'with', y)
 Prepare     = lambda x: SingleAction('prepare', x)  # x='meal'
+PrepareMeal = StandaloneAction('prepare meal')
+EatMeal = StandaloneAction('eat meal')
 
 # Global Entity Attributes
 Portable   = attribute.Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,

@@ -91,3 +91,9 @@ class NewAttributeEvent(Event):
         message = "{} is {}".format(entity.name, new_attribute.name)
         super().__init__(message, groundtruth=groundtruth)
         self.new_attribute = new_attribute
+
+class GroundTruthComplete(Event):
+    """ Generated whenever an object is given an attribute. """
+    def __init__(self, groundtruth=True):
+        message = "Finished processing {}input facts".format('GT ' if groundtruth else '')
+        super().__init__(message, groundtruth=groundtruth)

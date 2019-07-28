@@ -660,11 +660,16 @@ class CustomAgent:
         if use_nail_agent:
             chosen_strings = []
             agent_id = 0
+            game_id = None
             for desctext, agent in zip(obs, self.agents):
                 print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, agent_id, desctext))
                 if 'inventory' in infos:
                     print("\tINVENTORY:", infos['inventory'][agent_id])
-
+                if 'game_id' in infos:
+                    print("infos[game_id]=", infos['game_id'][agent_id])
+                    #CHEAT on one specific game (to debug some new code)
+                    if infos['game_id'][agent_id] == 'tw-cooking-recipe1+open+go6-qqqrhLbXf7bOTRoa.ulx':
+                        agent.modules[0].add_required_obj('block of cheese')
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
                 if 'facts' in infos:
@@ -693,7 +698,7 @@ class CustomAgent:
                     actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=None)
                 else:
                     actiontxt = agent.take_action(desctext)
-                print("[{}] agent.take_action -> {}".format(agent_id,actiontxt))
+                print("NAIL[{}] take_action -> {}".format(agent_id, actiontxt))
 
                 chosen_strings.append(actiontxt)
                 agent_id += 1

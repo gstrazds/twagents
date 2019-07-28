@@ -3,9 +3,9 @@ import logging
 from symbolic.game import GameInstance
 from symbolic import gv
 from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator
+from symbolic.decision_modules import GTNavigator, GTEnder
 # from symbolic.knowledge_graph import *
-from symbolic.event import NewTransitionEvent
+from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
 from symbolic.location import Location
 from symbolic import knowledge_graph
@@ -154,6 +154,7 @@ class NailAgent():
         # gv.event_stream.clear()
         self.gt_nav = GTNavigator(False)
         self.modules = [
+                        GTEnder(True),
                         self.gt_nav,
                         #Explorer(True),
                         # Navigator(True),
@@ -207,7 +208,7 @@ class NailAgent():
         while not next_action:
             try:
                 next_action = self.action_generator.send(observation)
-                print("[NAIL] (generate_next_action): {} {}".format(type(self.active_module).__name__, next_action))
+                print("[NAIL] (generate_next_action): ({}) -> |{}|".format(type(self.active_module).__name__, next_action))
             except StopIteration:
                 self.consume_event_stream()
                 self.elect_new_active_module()
@@ -425,6 +426,7 @@ class NailAgent():
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
+        self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
     def take_action(self, observation, obs_facts=None, gt_facts=None):
         if gt_facts:
@@ -448,7 +450,7 @@ class NailAgent():
         if self.first_step:
             gv.dbg("[NAIL] {}".format(observation))
             self.first_step = False
-            return 'look' # Do a look to get rid of intro text
+            #GVS# return 'look' # Do a look to get rid of intro text
 
         if not self.gi.kg.player_location:
             loc = Location(observation)
