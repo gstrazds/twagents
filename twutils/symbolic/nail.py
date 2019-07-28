@@ -9,7 +9,7 @@ from symbolic.event import NewTransitionEvent
 from symbolic.entity import Entity
 from symbolic.location import Location
 from symbolic import knowledge_graph
-from symbolic.action import GoNorth, GoSouth, GoEast, GoWest
+from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 
 DIRECTION_ACTIONS = {
@@ -34,6 +34,104 @@ def find_door(fact_list, from_room, to_room):  # return name of door
         and fact.arguments[2].name == to_room.name:
             return fact.arguments[1].name
     return None
+
+def add_attributes_for_type(entity, twvartype):
+    if twvartype == 't' \
+    or twvartype == 'P' \
+    or twvartype == 'I' \
+    or twvartype == 'r':
+        pass
+    elif twvartype == 'o':
+        entity.add_attribute(Portable)
+    elif twvartype == 'f':
+        entity.add_attribute(Portable)
+        entity.add_attribute(Edible)
+        entity.add_attribute(Cutable)
+        entity.add_attribute(Cookable)
+    elif twvartype == 'c':
+        entity.add_attribute(Container)
+        entity.add_attribute(Openable)
+    elif twvartype == 's':
+        entity.add_attribute(Support)
+    elif twvartype == 'k':
+        entity.add_attribute(Portable)
+    elif twvartype == 'd':
+        entity.add_attribute(Openable)
+        # entity.add_attribute(Lockable)
+    elif twvartype == 'oven':
+        entity.add_attribute(Container)
+        entity.add_attribute(Openable)
+    elif twvartype == 'stove':
+        entity.add_attribute(Support)
+    elif twvartype == 'bbq':
+        entity.add_attribute(Cooker)
+    elif twvartype == 'toaster':
+        entity.add_attribute(Cooker)
+    elif twvartype == 'meal':
+        entity.add_attribute(Preparable)
+    elif twvartype == 'ingredient':
+        pass
+    elif twvartype == 'slot':
+        pass
+    elif twvartype == 'RECIPE':
+        pass
+    else:
+        print("Warning -- unexpected variable type:", twvartype, entity)
+
+def add_attributes_for_predicate(entity, predicate, entity2=None):
+    if predicate == 'sharp':
+        entity.add_attribute(Sharp)
+    elif predicate == 'closed':
+        entity.add_attribute(Openable)
+        entity.state.close()
+    elif predicate == 'open':
+        entity.add_attribute(Openable)
+        entity.state.open()
+    elif predicate == 'locked':
+        entity.add_attribute(Lockable)
+        entity.state.locked()
+    elif predicate == 'in':
+        entity.add_attribute(Portable)
+        if entity2:
+            entity2.add_attribute(Container)
+    elif predicate == 'on':
+        entity.add_attribute(Portable)
+        if entity2:
+            entity2.add_attribute(Support)
+    elif predicate == 'raw':
+        entity.add_attribute(Cookable)
+    elif predicate == 'inedible':
+        entity.del_attribute(Edible)
+    elif predicate == 'edible':
+        entity.del_attribute(Edible)
+    elif predicate == 'drinkable':
+        entity.del_attribute(Drinkable)
+    elif predicate == 'cookable':
+        entity.add_attribute(Cookable)
+    elif predicate == 'cooked' \
+      or predicate == 'fried' \
+      or predicate == 'baked' \
+      or predicate == 'toasted' \
+      or predicate == 'roasted':
+        entity.add_attribute(Edible)
+        entity.add_attribute(Cookable)
+        entity.state.cook(cooked_state=predicate)
+    elif predicate == 'needs_cooking':
+        entity.add_attribute(Cookable)
+        entity.state.not_cooked()
+    elif predicate == 'uncut':
+        entity.add_attribute(Cutable)
+    elif predicate == 'cuttable':
+        entity.add_attribute(Cutable)
+    elif predicate == 'chopped' \
+         or predicate == 'sliced' \
+         or predicate == 'diced' \
+         or predicate == 'minced':
+        entity.add_attribute(Cutable)
+        #entity.state.cut(cut_state=predicate)
+    else:
+        print("Warning -- unexpected predicate:", predicate, entity)
+
 
 
 class NailAgent():
@@ -178,7 +276,7 @@ class NailAgent():
         h = fact.arguments[1]
         if o.name.startswith('~') or h.name.startswith('~'):
             print("_add_obj_to_obj: SKIPPING FACT", fact)
-            return None
+            return None, None
         if h.name == 'I':  # Inventory
             holder = None  #self.gi.gt.inventory
             loc = self.gi.gt.inventory  #player_loc
@@ -202,7 +300,7 @@ class NailAgent():
             print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder))
         else:
             print("FOUND GT Object {} :{} {}".format(obj, fact.name, holder))
-        return obj
+        return obj, holder
 
     def gt_navigate(self, roomname):
         dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
@@ -285,17 +383,48 @@ class NailAgent():
                 obj, _ = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=[loc], create_if_notfound=True)
             else:
                 gv.dbg("WARNING -- SET GROUND TRUTH: unexpected location for at(o,l): {}".format(r))
+            add_attributes_for_type(obj, o.type)
 
     #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
     # and similarly, that "in" relations are not nested.
     #TODO: this should be generalized to work correctly for arbitrary chains of 'on' and 'in'
         for fact in on_facts:
-            self._add_obj_to_obj(fact, player_loc)
+            o1, o2 = self._add_obj_to_obj(fact, player_loc)
+            if o1 and o2:
+                add_attributes_for_predicate(o1, 'on', o2)
         for fact in in_facts:
-            self._add_obj_to_obj(fact, player_loc)
+            o1, o2 = self._add_obj_to_obj(fact, player_loc)
+            if o1 and o2:
+                add_attributes_for_predicate(o1, 'in', o2)
         if player_loc:
             if self.gi.gt.set_player_location(player_loc, self.gi):
                 print("CHANGED GT player location:", player_loc)
+
+        for fact in other_facts:
+            predicate = fact.name
+            if predicate == 'cooking_location' \
+            or predicate.startswith('ingredient_') \
+            or predicate == 'free' \
+            or predicate == 'base' \
+            or predicate == 'out':
+                continue
+
+            a0 = fact.arguments[0]
+            if a0.name.startswith('~'):
+                continue
+            if len(fact.arguments) > 1:
+                a1 = fact.arguments[1]
+            else:
+                a1 = None
+            o1, _ = self._get_gt_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
+            if a1:
+                o2, _ = self._get_gt_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
+            if o1:
+                add_attributes_for_predicate(o1, predicate, entity2=o2)
+            else:
+                if predicate == 'edible' and a0.name == 'meal':
+                    continue
+                print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
 
     def take_action(self, observation, obs_facts=None, gt_facts=None):
         if gt_facts:

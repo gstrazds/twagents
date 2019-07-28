@@ -320,6 +320,7 @@ Prepare     = lambda x: SingleAction('prepare', x)  # x='meal'
 # Global Entity Attributes
 Portable   = attribute.Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,
 Edible     = attribute.Attribute('edible',     [Eat, Drink])  # Swallow, Consume])
+Drinkable  = attribute.Attribute('drinkable',     [Drink])  # Swallow, Consume])
 # Moveable   = attribute.Attribute('moveable',   [Move, Push, Pull, Drag, Lift])
 Switchable = attribute.Attribute('switchable', [TurnOn, TurnOff])
 # Flammable  = attribute.Attribute('flammable',  [Light, Extinguish])
@@ -332,5 +333,7 @@ Support    = attribute.Attribute('support',    [PutOn, TakeFrom])  #, Search])
 # Enemy      = attribute.Attribute('enemy',      [Attack, AttackWith, Kill, KillWith])
 
 Cutable    = attribute.Attribute('cutable',   [SliceWith, ChopWith, DiceWith])
+Sharp      = attribute.Attribute('cut_2',   [SliceWith, ChopWith, DiceWith])
 Cookable   = attribute.Attribute('cookable',   [CookWith])
-
+Cooker     = attribute.Attribute('cook_2',   [CookWith])
+Preparable = attribute.Attribute('preparable', [Prepare])

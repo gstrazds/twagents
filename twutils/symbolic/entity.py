@@ -99,6 +99,10 @@ class Entity:
             return True
         return False
 
+    def del_attribute(self, attribute):
+        if attribute in self._attributes:
+            self._attributes.remove(attribute)
+
     @property
     def state(self):
         return self._state
@@ -172,6 +176,15 @@ class EntityState:
 
     def remove(self):
         self.exists = False
+
+    def cookable(self):
+        return hasattr(self, 'is_cooked')
+
+    def cook(self, cooked_state='cooked'):
+        self.is_cooked = cooked_state
+
+    def not_cooked(self):
+        self.is_cooked = ''
 
     def __str__(self):
         pass
