@@ -1,7 +1,7 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
-from ..action import StandaloneAction, PrepareMeal, EatMeal #Eat
-from ..event import GroundTruthComplete
+from ..action import StandaloneAction, PrepareMeal, Eat #, EatMeal
+from ..event import GroundTruthComplete, NeedToAcquire
 from ..game import GameInstance
 from .. import gv
 from ..util import first_sentence
@@ -18,7 +18,7 @@ class GTEnder(DecisionModule):
         self._eagerness = 0.0
         self.required_objs = set()
         self.found_objs = set()
-        self.action_sequence = [PrepareMeal, EatMeal]
+        # self.action_sequence = [PrepareMeal, EatMeal]
         # self._action_idx = 0
 
     def deactivate(self):
@@ -62,7 +62,12 @@ class GTEnder(DecisionModule):
                     self._active = True
                     self._eagerness = 1.0
             else:
-                print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
+                if self.required_objs:
+                    print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
+        elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
+            print("GT Need To Acquire", event.objnames)
+            for itemname in event.objnames:
+                self.add_required_obj(itemname)
 
     def take_control(self, gi: GameInstance):
         obs = yield
@@ -77,14 +82,15 @@ class GTEnder(DecisionModule):
             print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
             self.deactivate()
 
-
         response = yield PrepareMeal
         # check to make sure meal object now exists in gi.gt.inventory
-        success = gi.gt.inventory.has_entity_with_name('meal')
+        meal = gi.gt.inventory.get_entity_by_name('meal')
+        success = meal is not None
         self.record(success)
         gv.dbg("[GT ENDER](1.success={}) {} --> {}".format(
             success, PrepareMeal, response))
 
+        EatMeal = Eat(meal)
         response = yield EatMeal
         # check to make sure meal object no longer exists in gi.gt.inventory
         success = gi.gt.inventory.has_entity_with_name()

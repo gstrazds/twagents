@@ -3,7 +3,7 @@ import logging
 from symbolic.game import GameInstance
 from symbolic import gv
 from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator, GTEnder
+from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
@@ -156,6 +156,7 @@ class NailAgent():
         self.modules = [
                         GTEnder(True),
                         self.gt_nav,
+                        GTRecipeReader(False),
                         #Explorer(True),
                         # Navigator(True),
                         Idler(True),

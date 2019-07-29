@@ -93,7 +93,14 @@ class NewAttributeEvent(Event):
         self.new_attribute = new_attribute
 
 class GroundTruthComplete(Event):
-    """ Generated whenever an object is given an attribute. """
+    """ Generated after all world facts have been incorporated into the Ground Truth knowledge graph. """
     def __init__(self, groundtruth=True):
         message = "Finished processing {}input facts".format('GT ' if groundtruth else '')
+        super().__init__(message, groundtruth=groundtruth)
+
+class NeedToAcquire(Event):
+    """ Generated whenever a decision module determines that one or more specific items should be obtained (into inventory). """
+    def __init__(self, objnames=None, groundtruth=False):
+        self.objnames = objnames
+        message = "Need to acquire: {}".format(objnames)
         super().__init__(message, groundtruth=groundtruth)
