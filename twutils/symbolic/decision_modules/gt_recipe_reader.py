@@ -1,7 +1,7 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..action import SingleAction
-from ..event import GroundTruthComplete, NeedToAcquire
+from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps
 from ..game import GameInstance
 from .. import gv
 from ..util import first_sentence
@@ -16,6 +16,7 @@ class GTRecipeReader(DecisionModule):
         super().__init__()
         self._active = active
         self._eagerness = 0.0
+        self.recipe_steps = []
 
     def deactivate(self):
         self._active = False
@@ -54,18 +55,28 @@ class GTRecipeReader(DecisionModule):
         response = yield SingleAction('read', cookbook)
         # parse the response
         recipe_lines = response.split('\n')
-        recipe_lines = map(lambda line: line.strip(), recipe_lines)
+        recipe_lines = list(map(lambda line: line.strip(), recipe_lines))
         ingredients = []
+        directions = []
         try:
             start_of_ingredients = recipe_lines.index("Ingredients:")
             start_of_ingredients += 1
         except ValueError:
             print("GT RecipeReader failed to find Ingredients in:", response)
             return None
-        for ingredient in recipe_lines[start_of_ingredients:]:
-            if ingredient or ingredient.startswith("Directions"):
+        for i, ingredient in enumerate(recipe_lines[start_of_ingredients:]):
+            if ingredient.startswith("Directions"):
                 break     # end of Ingredients list
-            ingredients.append(ingredient)
+            if ingredient:
+                ingredients.append(ingredient)
         if ingredients:
-            gi.event_stream.push(NeedToAcquire(objnames=ingredients))
-            self.deactivate()
+            gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
+        start_of_directions = start_of_ingredients + i + 1
+        if start_of_directions < len(recipe_lines):
+            assert recipe_lines[start_of_directions-1] == 'Directions:'
+            for recipe_step in recipe_lines[start_of_directions:]:
+                if recipe_step:
+                    directions.append(recipe_step)
+            if directions:
+                gi.event_stream.push(NeedSequentialSteps(directions, groundtruth=True))
+        self.deactivate()

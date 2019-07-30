@@ -234,19 +234,15 @@ class NailAgent():
             return new_loc
         return None
 
-    def _get_gt_entity(self, name, locations=None, holder=None, entitytype=None, create_if_notfound=False):
+    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
         if create_if_notfound:
             assert locations is not None
         entities = set()
-        if holder:
-            for e in holder._entities:
-                if e.has_name(name):
-                    entities.add(e)
-        elif locations:
+        if locations:
             for l in locations:
-                for e in l.entities:
-                    if e.has_name(name):
-                        entities.add(e)
+                e = l.get_entity_by_name(name)
+                if e:
+                    entities.add(e)
         if not entities:  # none found
             entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
         if entities:
@@ -261,13 +257,10 @@ class NailAgent():
                     return found, None
         if create_if_notfound:
             new_entity = Entity(name, locations[0], type=entitytype)
-            if holder:
-                ev = holder.add_entity(new_entity)
-            else:
-                ev = locations[0].add_entity(new_entity)
-                if len(locations) > 0:
-                    for l in locations[1:]:
-                        l.add_entity(new_entity)
+            ev = locations[0].add_entity(new_entity)
+            if len(locations) > 0:
+                for l in locations[1:]:
+                    l.add_entity(new_entity)
             # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
             print("created new GT Entity:", new_entity)
             return new_entity, ev
@@ -281,23 +274,30 @@ class NailAgent():
             return None, None
         if h.name == 'I':  # Inventory
             holder = None  #self.gi.gt.inventory
-            loc = self.gi.gt.inventory  #player_loc
+            loc = [ self.gi.gt.inventory ] #player_loc
         else:
             holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
                                          create_if_notfound=False)
-            loc = holder._init_loc if holder is not None else None
-        if loc:
-            loc = [loc]
-        else:
+            if holder is None:
+                loc = None
+            else:
+                # loc = holder._init_loc if holder is not None else None
+                locs = self.gi.gt.location_of_entity(holder.name)
+                if locs:
+                    loc = list(locs)
+                    if len(loc) > 1:
+                        print("WARNING: entity <{}> has multiple locations: {}".format(holder, loc))
+                    # loc = list(locs)[0]  # if multiple locations, choose just one
+        if not loc:
             print("WARNING! NO LOCATION FOR HOLDER while adding GT Object {} {}".format(fact, holder))
             loc = None
 
     #NOTE TODO: handle objects that have moved from to or from Inventory
-        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc, holder=holder,
+        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc,
                                   create_if_notfound=True)
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
-        # if holder:
-        #     holder.add_entity(obj)
+        if holder:
+            holder.add_entity(obj)
         if ev:
             print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder))
         else:

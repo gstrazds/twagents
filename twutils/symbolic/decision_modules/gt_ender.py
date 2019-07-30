@@ -1,7 +1,7 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
-from ..action import StandaloneAction, PrepareMeal, Eat #, EatMeal
-from ..event import GroundTruthComplete, NeedToAcquire
+from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
+from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps, NeedToGoTo
 from ..game import GameInstance
 from .. import gv
 from ..util import first_sentence
@@ -18,7 +18,7 @@ class GTEnder(DecisionModule):
         self._eagerness = 0.0
         self.required_objs = set()
         self.found_objs = set()
-        # self.action_sequence = [PrepareMeal, EatMeal]
+        self.recipe_steps = []
         # self._action_idx = 0
 
     def deactivate(self):
@@ -32,6 +32,15 @@ class GTEnder(DecisionModule):
     def remove_required_obj(self, entityname:str):
         self.required_objs.discard(entityname)
         self.found_objs.discard(entityname)
+
+    def add_step(self, acttext:str):
+        print("GTEnder.add_step({})".format(acttext))
+        if acttext not in self.recipe_steps:
+            self.recipe_steps.append(acttext)
+
+    def remove_step(self, acttext:str):
+        if acttext in self.recipe_steps:
+            self.recipe_steps.remove(acttext)
 
     def clear_all(self):
         self.required_objs.clear()
@@ -65,9 +74,21 @@ class GTEnder(DecisionModule):
                 if self.required_objs:
                     print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
         elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
-            print("GT Need To Acquire", event.objnames)
+            print("GT Need To Acquire:", event.objnames)
             for itemname in event.objnames:
                 self.add_required_obj(itemname)
+        elif isinstance(event, NeedSequentialSteps) and event.is_groundtruth:
+            print("GT Need To Do:", event.steps)
+            for acttext in event.steps:
+                self.add_step(acttext)
+
+    def check_response(self, response):
+        return True
+
+    def convert_instruction_to_action(self, instr: str):
+        act = StandaloneAction(instr)
+        print("GT Ender: mapping <{}> -> {}".format(instr, act))
+        return act
 
     def take_control(self, gi: GameInstance):
         obs = yield
@@ -78,22 +99,42 @@ class GTEnder(DecisionModule):
         if not self.have_everything_required(gi.gt):
             print("[GT ENDER] ABORTING because preconditions are not satisfied", self.required_objs, self.found_objs)
             self.deactivate()
+            return None
+
+        while self.recipe_steps:
+            instr = self.recipe_steps[0]
+            step = self.convert_instruction_to_action(instr)
+            response = yield step
+            success = self.check_response(response)
+            if success:
+                self.recipe_steps = self.recipe_steps[1:]
+            else:
+                self.deactivate()
+                return None
+
         if not self.are_where_we_need_to_be(gi.gt):
             print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
+            gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
             self.deactivate()
+            return None
 
-        response = yield PrepareMeal
-        # check to make sure meal object now exists in gi.gt.inventory
+    # The recipes already contain an instruction step for "prepare meal"
+    #     response = yield PrepareMeal
+    #     # check to make sure meal object now exists in gi.gt.inventory
         meal = gi.gt.inventory.get_entity_by_name('meal')
-        success = meal is not None
-        self.record(success)
-        gv.dbg("[GT ENDER](1.success={}) {} --> {}".format(
-            success, PrepareMeal, response))
-
+        success = meal
+    #     self.record(success)
+    #     #gv.dbg(
+    #     print("[GT ENDER](1.success={}) {} --> {}".format(
+    #         success, PrepareMeal, response))
+        if not success:
+            self.deactivate()
+            return None
         EatMeal = Eat(meal)
         response = yield EatMeal
         # check to make sure meal object no longer exists in gi.gt.inventory
-        success = gi.gt.inventory.has_entity_with_name()
+        success = not gi.gt.inventory.has_entity_with_name('meal')
         self.record(success)
-        gv.dbg("[GT ENDER](1.success={}) {} --> {}".format(
+        #gv.dbg(
+        print("[GT ENDER](2.success={}) {} --> {}".format(
             success, EatMeal, response))

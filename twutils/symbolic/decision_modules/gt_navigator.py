@@ -56,7 +56,11 @@ class GTNavigator(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        pass
+        if isinstance(event, NeedToGoTo) and event.is_groundtruth:
+            locs = gi.gt.locations_with_name(event.target_location)
+            if locs:
+                self.set_goal(locs[0], gi)
+
 
     def get_eagerness(self, gi: GameInstance):
         if not self._active:

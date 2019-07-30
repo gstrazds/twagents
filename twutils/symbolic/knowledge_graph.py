@@ -105,12 +105,27 @@ class KnowledgeGraph:
             e = l.get_entity_by_name(entityname)
             if e and (entitytype is None or e._type == entitytype):
                 ret.add(e)
-        if len(ret) == 0:   # check also on or in other entities (just one level deep)
-            for l in (self._locations + [self._inventory]):
-                for e in l.entities:
-                    for e2 in e._entities:
-                        if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
-                            ret.add(e2)
+        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
+        #     for l in (self._locations + [self._inventory]):
+        #         for e in l.entities:
+        #             for e2 in e._entities:
+        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
+        #                     ret.add(e2)
+        return ret
+
+    def location_of_entity(self, entityname, entitytype=None):
+        """ Returns locations where an entity with a specific name can be found """
+        ret = set()
+        for l in (self._locations + [self._inventory]):
+            e = l.get_entity_by_name(entityname)
+            if e and (entitytype is None or e._type == entitytype):
+                ret.add(l)
+        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
+        #     for l in (self._locations + [self._inventory]):
+        #         for e in l.entities:
+        #             for e2 in e._entities:
+        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
+        #                     ret.add(l)
         return ret
 
 

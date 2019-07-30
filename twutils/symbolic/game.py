@@ -48,10 +48,10 @@ class GameInstance:
             ev = event.NewEntityEvent(entity)
             self.event_stream.push(ev)
 
-    def entity_at_entity(self, entity1, entity2):
-        if entity1.add_entity(entity2):
-            ev = event.NewEntityEvent(entity2)
-            self.event_stream.push(ev)
+    # def entity_at_entity(self, entity1, entity2):
+    #     if entity1.add_entity(entity2):
+    #         ev = event.NewEntityEvent(entity2)
+    #         self.event_stream.push(ev)
 
     def act_on_entity(self, action, entity, p_valid, result_text):
         if entity.add_action_record(action, p_valid, result_text):

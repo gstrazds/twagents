@@ -17,7 +17,7 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.nail import NailAgent
-from symbolic.event import NeedToAcquire
+from symbolic.event import NeedToAcquire, NeedToGoTo
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
 
@@ -669,9 +669,6 @@ class CustomAgent:
                 if 'game_id' in infos:
                     print("infos[game_id]=", infos['game_id'][agent_id])
                     #CHEAT on one specific game (to debug some new code)
-                    if infos['game_id'][agent_id] == 'tw-cooking-recipe1+open+go6-qqqrhLbXf7bOTRoa.ulx':
-                        agent.gi.event_stream.push(NeedToAcquire(objnames=['block of cheese'], groundtruth=True))
-                        # agent.modules[0].add_required_obj('block of cheese')
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
                 if 'facts' in infos:
@@ -687,7 +684,11 @@ class CustomAgent:
 
                     agent.set_ground_truth(world_facts)
                     if self.current_step == 0:
-                        agent.gt_navigate("kitchen")  # set nav destination (using Ground Truth knowledge)
+                        # agent.gt_navigate("kitchen")  # set nav destination (using Ground Truth knowledge)
+                        agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
+                        if infos['game_id'][agent_id] == 'tw-cooking-recipe1+open+go6-qqqrhLbXf7bOTRoa.ulx':
+                            agent.gi.event_stream.push(NeedToAcquire(objnames=['block of cheese'], groundtruth=True))
+                            # agent.modules[0].add_required_obj('block of cheese')
                     #     actiontxt = "go west"
                     # elif self.current_step == 1:
                     #     actiontxt = "go north"

@@ -104,3 +104,17 @@ class NeedToAcquire(Event):
         self.objnames = objnames
         message = "Need to acquire: {}".format(objnames)
         super().__init__(message, groundtruth=groundtruth)
+
+class NeedSequentialSteps(Event):
+    """ Generated whenever a decision module determines a series of sequential actions should be performed. """
+    def __init__(self, steps, groundtruth=False):
+        self.steps = steps
+        message = "Need to perform: {}".format(steps)
+        super().__init__(message, groundtruth=groundtruth)
+
+class NeedToGoTo(Event):
+    """ Generated when a decision module determines that the agent should navigate to a specific location. """
+    def __init__(self, target_location, groundtruth=False):
+        self.target_location = target_location
+        message = "Need to go to: {}".format(target_location)
+        super().__init__(message, groundtruth=groundtruth)
