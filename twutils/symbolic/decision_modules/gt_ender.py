@@ -21,7 +21,24 @@ class GTEnder(DecisionModule):
         self.recipe_steps = []
         # self._action_idx = 0
 
+    def get_eagerness(self, gi: GameInstance):
+        """ Returns a float in [0,1] indicating how eager this module is to take
+        control. """
+        if self.have_everything_required(gi.gt):
+            print("GT Ender: we possess all required objs:", self.required_objs)
+            if self.are_where_we_need_to_be(gi.gt):
+                if not self._active:
+                    print("GT Ender: ACTIVATING!")
+                self._active = True
+                self._eagerness = 1.0
+            else:
+                if self.required_objs:
+                    print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
+        return self._eagerness
+
     def deactivate(self):
+        if self._active:
+            print("GT Ender: DEACTIVATING.")
         self._active = False
         self._eagerness = 0.0
 
@@ -64,15 +81,7 @@ class GTEnder(DecisionModule):
         """ Process an event from the event stream. """
         if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
             print("GT complete", event)
-            if self.have_everything_required(gi.gt):
-                print("GT Ender: we possess all required objs:", self.required_objs)
-                if self.are_where_we_need_to_be(gi.gt):
-                    print("GT Ender: ACTIVATING!")
-                    self._active = True
-                    self._eagerness = 1.0
-            else:
-                if self.required_objs:
-                    print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
+            self.get_eagerness(gi)
         elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
             print("GT Need To Acquire:", event.objnames)
             for itemname in event.objnames:
