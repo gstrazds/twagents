@@ -14,6 +14,7 @@ class GTRecipeReader(DecisionModule):
         super().__init__()
         self._active = active
         self._eagerness = 0.0
+        self.ingredients = []
         self.recipe_steps = []
 
     def deactivate(self):
@@ -28,12 +29,13 @@ class GTRecipeReader(DecisionModule):
         """ Process an event from the event stream. """
         if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
             print("GTRecipeReader GroundTruthComplete")
-            player_loc = gi.gt.player_location
-            cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
-            if cookbook:
-                print("GT Recipe Reader: ACTIVATING!")
-                self._active = True
-                self._eagerness = 1.0
+            if not self.recipe_steps and not self.ingredients:  # don't activate a 2nd time
+                player_loc = gi.gt.player_location
+                cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
+                if cookbook:
+                    print("GT Recipe Reader: ACTIVATING!")
+                    self._active = True
+                    self._eagerness = 1.0
         # elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
         #     print("GTRecipeReader Need To Acquire", event.objnames)
         #     for itemname in event.objnames:
@@ -49,6 +51,7 @@ class GTRecipeReader(DecisionModule):
         if not cookbook:
             print("[GT RecipeReader] ABORTING because cookbook is not here", gi.gt.player_location)
             self.deactivate()
+            return None
 
         response = yield SingleAction('read', cookbook)
         # parse the response
@@ -68,6 +71,7 @@ class GTRecipeReader(DecisionModule):
             if ingredient:
                 ingredients.append(ingredient)
         if ingredients:
+            self.ingredients = ingredients
             gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
         start_of_directions = start_of_ingredients + i + 1
         if start_of_directions < len(recipe_lines):
@@ -81,5 +85,7 @@ class GTRecipeReader(DecisionModule):
                         gi.event_stream.push(NeedToAcquire(objnames=with_objs, groundtruth=True))
 
             if directions:
+                self.recipe_steps = directions
                 gi.event_stream.push(NeedSequentialSteps(directions, groundtruth=True))
         self.deactivate()
+        return None

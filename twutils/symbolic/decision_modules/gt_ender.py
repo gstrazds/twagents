@@ -1,7 +1,7 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
-from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps, NeedToGoTo
+from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed, NeedSequentialSteps, NeedToGoTo
 from ..game import GameInstance
 # from .. import gv
 # from ..util import first_sentence
@@ -47,6 +47,7 @@ class GTEnder(DecisionModule):
         self.required_objs.add(entityname)
 
     def remove_required_obj(self, entityname:str):
+        print("GTEnder.remove_required_obj({})".format(entityname))
         self.required_objs.discard(entityname)
         self.found_objs.discard(entityname)
 
@@ -83,9 +84,13 @@ class GTEnder(DecisionModule):
             print("GT complete", event)
             self.get_eagerness(gi)
         elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
-            print("GT Need To Acquire:", event.objnames)
+            print("GT Required Objects:", event.objnames)
             for itemname in event.objnames:
                 self.add_required_obj(itemname)
+        elif isinstance(event, NoLongerNeed) and event.is_groundtruth:
+            print("GT Not Needed Objects:", event.objnames)
+            for itemname in event.objnames:
+                self.remove_required_obj(itemname)
         elif isinstance(event, NeedSequentialSteps) and event.is_groundtruth:
             print("GT Need To Do:", event.steps)
             for acttext in event.steps:

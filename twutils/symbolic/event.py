@@ -105,6 +105,13 @@ class NeedToAcquire(Event):
         message = "Need to acquire: {}".format(objnames)
         super().__init__(message, groundtruth=groundtruth)
 
+class NoLongerNeed(Event):
+    """ Generated whenever a decision module determines that one or more required items are no longer required. """
+    def __init__(self, objnames=None, groundtruth=False):
+        self.objnames = objnames
+        message = "No longer need: {}".format(objnames)
+        super().__init__(message, groundtruth=groundtruth)
+
 class NeedSequentialSteps(Event):
     """ Generated whenever a decision module determines a series of sequential actions should be performed. """
     def __init__(self, steps, groundtruth=False):

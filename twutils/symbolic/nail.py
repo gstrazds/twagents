@@ -3,7 +3,7 @@ import logging
 from symbolic.game import GameInstance
 from symbolic import gv
 from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader
+from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
@@ -157,6 +157,7 @@ class NailAgent():
                         GTEnder(True),
                         self.gt_nav,
                         GTRecipeReader(False),
+                        GTAcquire(True),
                         #Explorer(True),
                         # Navigator(True),
                         Idler(True),
@@ -298,10 +299,12 @@ class NailAgent():
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
             holder.add_entity(obj)
+
+        holder_for_logging = 'Inventory' if h.name == 'I' else holder
         if ev:
-            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder))
+            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
         else:
-            print("FOUND GT Object {} :{} {}".format(obj, fact.name, holder))
+            print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
         return obj, holder
 
     def gt_navigate(self, roomname):
