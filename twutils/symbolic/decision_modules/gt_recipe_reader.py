@@ -3,9 +3,7 @@ from ..decision_module import DecisionModule
 from ..action import SingleAction
 from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps
 from ..game import GameInstance
-from .. import gv
-from ..util import first_sentence
-
+from ..gv import adapt_tw_instr
 
 
 class GTRecipeReader(DecisionModule):
@@ -76,7 +74,12 @@ class GTRecipeReader(DecisionModule):
             assert recipe_lines[start_of_directions-1] == 'Directions:'
             for recipe_step in recipe_lines[start_of_directions:]:
                 if recipe_step:
+                    enh_instr, with_objs = adapt_tw_instr(recipe_step)
+                    print("GT RecipeReader: mapping <{}> -> {}".format(recipe_step, enh_instr))
                     directions.append(recipe_step)
+                    if with_objs:
+                        gi.event_stream.push(NeedToAcquire(objnames=with_objs, groundtruth=True))
+
             if directions:
                 gi.event_stream.push(NeedSequentialSteps(directions, groundtruth=True))
         self.deactivate()

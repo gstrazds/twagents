@@ -3,8 +3,8 @@ from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
 from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps, NeedToGoTo
 from ..game import GameInstance
-from .. import gv
-from ..util import first_sentence
+# from .. import gv
+# from ..util import first_sentence
 
 
 
@@ -96,7 +96,6 @@ class GTEnder(DecisionModule):
 
     def convert_instruction_to_action(self, instr: str):
         act = StandaloneAction(instr)
-        print("GT Ender: mapping <{}> -> {}".format(instr, act))
         return act
 
     def take_control(self, gi: GameInstance):

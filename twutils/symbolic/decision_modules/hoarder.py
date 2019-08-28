@@ -11,13 +11,11 @@ class Hoarder(DecisionModule):
         super().__init__()
         self._active = active
 
-
     def process_event(self, event, gi: GameInstance):
         if not self._active:
             return
         # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
         #     self._eagerness = 1.
-
 
     def parse_response(self, response, gi: GameInstance):
         here = gi.kg.player_location
@@ -46,7 +44,6 @@ class Hoarder(DecisionModule):
                 if p_valid > 0.5:
                     take_action.apply(gi)
         self.record(success)
-
 
     def take_control(self, gi: GameInstance):
         obs = yield
