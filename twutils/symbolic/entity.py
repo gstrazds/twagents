@@ -177,6 +177,7 @@ class EntityState:
     def remove(self):
         self.exists = False
 
+    @property
     def cookable(self):
         return hasattr(self, 'is_cooked')
 
@@ -184,7 +185,17 @@ class EntityState:
         self.is_cooked = cooked_state
 
     def not_cooked(self):
-        self.is_cooked = ''
+        self.is_cooked = ''  # equiv to False, but can also be tested with str.startswith()
+
+    @property
+    def cuttable(self):
+        return hasattr(self, 'is_cut')
+
+    def cut(self, cut_state='cut'):  # 'sliced', 'chopped', 'diced', etc...
+        self.is_cut = cut_state
+
+    def not_cut(self):
+        self.is_cut = ''  # equiv to False, but can also be tested with str.startswith()
 
     def __str__(self):
         pass

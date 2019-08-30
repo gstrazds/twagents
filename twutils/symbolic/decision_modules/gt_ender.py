@@ -1,10 +1,51 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
-from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed, NeedSequentialSteps, NeedToGoTo
+from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed, NeedSequentialSteps, AlreadyDone, NeedToGoTo, \
+    NeedToFind
 from ..game import GameInstance
-# from .. import gv
 # from ..util import first_sentence
+
+COOK_WITH = {
+    "grill": "BBQ",
+    "bake": "oven",
+    "roast": "oven",
+    "fry": "stove",
+    "toast": "toaster",
+}
+
+CUT_WITH = {
+    "chop": "knife",
+    "dice": "knife",
+    "slice": "knife",
+    "mince": "knife",
+}
+
+
+def convert_cooking_instruction(words, device: str, change_verb=None):
+    words_out = words.copy()
+    words_out.append("with")
+    words_out.append(device)
+    if change_verb:
+        words_out[0] = change_verb  # convert the verb to generic "cook" (the specific verbs don't work as is in TextWorld)
+    return words_out
+
+
+def adapt_tw_instr(words: str, gi) -> str:
+    # if instr.startswith("chop ") or instr.startswith("dice ") or instr.startswith("slice "):
+    #     return instr + " with the knife", ["knife"]
+    # words = instr.split()
+    with_objs = []
+    if words[0] in COOK_WITH:
+        device = COOK_WITH[words[0]]
+        with_objs.append(device)
+        return convert_cooking_instruction(words, device, change_verb="cook"), with_objs
+    elif words[0] in CUT_WITH:
+        device = CUT_WITH[words[0]]
+        with_objs.append(device)
+        return convert_cooking_instruction(words, device), with_objs
+    else:
+        return words, []
 
 
 
@@ -32,8 +73,10 @@ class GTEnder(DecisionModule):
                 self._active = True
                 self._eagerness = 1.0
             else:
+                print("GT Ender: not at correct location")
                 if self.required_objs:
-                    print("GT Ender: missing some required objs:", self.required_objs, self.found_objs)
+                    print("GT Ender -- required:", self.required_objs, "found:", self.found_objs)
+                self.deactivate()
         return self._eagerness
 
     def deactivate(self):
@@ -70,13 +113,18 @@ class GTEnder(DecisionModule):
         if not self.required_objs:
             return False
         for name in self.required_objs:
+            e2 = kg.player_location.get_entity_by_name(name)
             e = kg.inventory.get_entity_by_name(name)
-            if e:
+            if e or e2 and 'portable' not in e2.attributes:
                 self.found_objs.add(name)
         return self.required_objs == self.found_objs
 
     def are_where_we_need_to_be(self, kg):
-        return kg.player_location.name == 'kitchen'
+        if not self.recipe_steps:
+            return False
+        if self.recipe_steps[0].startswith('prepare '):
+            return kg.player_location.name == 'kitchen'
+        return True
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
@@ -86,6 +134,12 @@ class GTEnder(DecisionModule):
         elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
             print("GT Required Objects:", event.objnames)
             for itemname in event.objnames:
+                # gi.gt.entities_with_name()
+                self.add_required_obj(itemname)
+        elif isinstance(event, NeedToFind) and event.is_groundtruth:
+            print("GT Need to Find Objects:", event.objnames)
+            for itemname in event.objnames:
+                # gi.gt.entities_with_name()
                 self.add_required_obj(itemname)
         elif isinstance(event, NoLongerNeed) and event.is_groundtruth:
             print("GT Not Needed Objects:", event.objnames)
@@ -95,13 +149,53 @@ class GTEnder(DecisionModule):
             print("GT Need To Do:", event.steps)
             for acttext in event.steps:
                 self.add_step(acttext)
+        elif isinstance(event, AlreadyDone) and event.is_groundtruth:
+            print("GT AlreadyDone:", event.instr_step)
+            self.remove_step(event.instr_step)
 
     def check_response(self, response):
         return True
 
-    def convert_instruction_to_action(self, instr: str):
-        act = StandaloneAction(instr)
-        return act
+    def convert_next_instruction_to_action(self, gi: GameInstance):
+        for instr in self.recipe_steps:
+            instr_words = instr.split()
+            enhanced_instr_words, with_objs = adapt_tw_instr(instr_words, gi)
+            # TODO: don't chop if already chopped, etc...
+            verb = instr.split()[0]
+            if verb in CUT_WITH or verb in COOK_WITH:
+                obj_words = instr_words[1:]
+                if obj_words[0] == 'the':
+                    obj_words = obj_words[1:]
+                obj_name = ' '.join(obj_words)
+                entity = gi.gt.inventory.get_entity_by_name(obj_name)
+                if not entity:
+                    print(f"WARNING: expected but failed to find {obj_name} in Inventory!")
+                    continue  #try the next instruction
+                if verb in CUT_WITH and entity.state.cuttable and entity.state.is_cut.startswith(verb):
+                    gi.event_stream.push(AlreadyDone(instr, groundtruth=True))
+                    continue  #already cut
+                elif verb in COOK_WITH and entity.state.cookable and entity.state.is_cooked.startswith(verb):
+                    gi.event_stream.push(AlreadyDone(instr, groundtruth=True))
+                    continue  #already cooked
+            print("GT Ender: mapping <{}> -> {}".format(instr, enhanced_instr_words))
+            if with_objs:
+                # TODO: if object is not takeable, navigate to object
+                for objname in with_objs:
+                    entityset = gi.gt.entities_with_name(objname)
+                    if entityset:
+                        entity = list(entityset)[0]
+                        if 'portable' in entity.attributes:
+                            if not gi.gt.inventory.get_entity_by_name(objname):
+                                gi.event_stream.push(NeedToAcquire(objnames=[objname], groundtruth=True))
+                                return None
+                        else:  # need to navigate to this object
+                            if not gi.gt.player_location.get_entity_by_name(objname):
+                                gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=True))
+                                return None
+            act = StandaloneAction(" ".join(enhanced_instr_words))
+            self.remove_step(instr)
+            return act
+        return None
 
     def take_control(self, gi: GameInstance):
         obs = yield
@@ -115,10 +209,12 @@ class GTEnder(DecisionModule):
             return None
 
         while self.recipe_steps:
-            instr = self.recipe_steps[0]
-            step = self.convert_instruction_to_action(instr)
-            response = yield step
-            success = self.check_response(response)
+            step = self.convert_next_instruction_to_action(gi)
+            if step:
+                response = yield step
+                success = self.check_response(response)
+            else:
+                success = False
             if success:
                 self.recipe_steps = self.recipe_steps[1:]
             else:
@@ -135,7 +231,7 @@ class GTEnder(DecisionModule):
     #     response = yield PrepareMeal
     #     # check to make sure meal object now exists in gi.gt.inventory
         meal = gi.gt.inventory.get_entity_by_name('meal')
-        success = meal
+        success = meal is not None
     #     self.record(success)
     #     #gv.dbg(
     #     print("[GT ENDER](1.success={}) {} --> {}".format(
@@ -143,11 +239,11 @@ class GTEnder(DecisionModule):
         if not success:
             self.deactivate()
             return None
-        EatMeal = Eat(meal)
-        response = yield EatMeal
+        act = Eat(meal)
+        response = yield act
         # check to make sure meal object no longer exists in gi.gt.inventory
         success = not gi.gt.inventory.has_entity_with_name('meal')
         self.record(success)
         #gv.dbg(
         print("[GT ENDER](2.success={}) {} --> {}".format(
-            success, EatMeal, response))
+            success, act, response))

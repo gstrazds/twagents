@@ -68,32 +68,6 @@ except Exception as e:
 #
 #   'examine {o|t}',
 
-COOK_WITH = {
-    "grill": "BBQ",
-    "bake": "oven",
-    "roast": "oven",
-    "fry": "stove",
-    "toast": "toaster",
-}
-
-def convert_cooking_instruction(words, device:str):
-    words.append("with")
-    words.append(device)
-    words[0] = "cook"  # convert the verb to generic "cook" (the specific verbs don't work as is in TextWorld)
-    return " ".join(words)
-
-
-def adapt_tw_instr(instr:str) -> str:
-    if instr.startswith("chop ") or instr.startswith("dice ") or instr.startswith("slice "):
-        return instr + " with the knife", ["knife"]
-    words = instr.split()
-    with_objs = []
-    if words[0] in COOK_WITH:
-        device = COOK_WITH[words[0]]
-        with_objs.append(device)
-        return convert_cooking_instruction(words, device), with_objs
-    else:
-        return instr, []
 
 # Entity types for TextWorld CodaLab challenge #1 (recipe games)
 OBJECT = 'o'

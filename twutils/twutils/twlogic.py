@@ -100,11 +100,11 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
     where_fact = list(where_am_i)[0]
     the_player = where_fact.arguments[0]
     player_location = where_fact.arguments[1]
-    if verbose:
-        print("WORLD FACTS:")
-        for fact in world_facts:
-            print('\t', fact)
-            # print_fact(game, fact)
+    # if verbose:
+    #     print("WORLD FACTS:")
+    #     for fact in world_facts:
+    #         print('\t', fact)
+    #         # print_fact(game, fact)
 
     if verbose:
         print("VARIABLES:")

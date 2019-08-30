@@ -1,6 +1,6 @@
 from ..decision_module import DecisionModule
 from ..action import Take
-from ..event import NeedToAcquire, NeedToGoTo, NoLongerNeed
+from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from .. import gv
 
@@ -35,11 +35,12 @@ class GTAcquire(DecisionModule):
         #     return
         # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
         #     self._eagerness = 1.
-        if isinstance(event, NeedToAcquire) and event.is_groundtruth:
-            print("GT Need To Acquire:", event.objnames)
-            for itemname in event.objnames:
-                self.add_required_obj(itemname)
-                self._eagerness = 0.8
+        if event.is_groundtruth:
+            if isinstance(event, NeedToAcquire) or isinstance(event, NeedToFind):
+                print("GT Acquire:", event.objnames)
+                for itemname in event.objnames:
+                    self.add_required_obj(itemname)
+                    self._eagerness = 0.8
 
     def parse_response(self, response, gi: GameInstance):
         success = False
@@ -80,8 +81,12 @@ class GTAcquire(DecisionModule):
                 assert False, f"Still needed object {entityName} *should not be* in Inventory"
             elif here.has_entity_with_name(entityName):
                 entity = here.get_entity_by_name(entityName)
-                take_action = Take(entity)
-                response = yield take_action
+                if 'portable' in entity.attributes:
+                    take_action = Take(entity)
+                    response = yield take_action
+                else: # can't take it, but we've found it, so consider it acquired...
+                    self.found_objs.add(entityName)
+
         still_needed = list(self.missing_objs(gi.gt))
         if still_needed:
             obj_to_find = still_needed[0]   # TODO: make it smarter - choose closest instead of first

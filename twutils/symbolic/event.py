@@ -105,6 +105,13 @@ class NeedToAcquire(Event):
         message = "Need to acquire: {}".format(objnames)
         super().__init__(message, groundtruth=groundtruth)
 
+class NeedToFind(Event):
+    """ Generated whenever a decision module determines that one or more specific items should be located. """
+    def __init__(self, objnames=None, groundtruth=False):
+        self.objnames = objnames
+        message = "Need to find: {}".format(objnames)
+        super().__init__(message, groundtruth=groundtruth)
+
 class NoLongerNeed(Event):
     """ Generated whenever a decision module determines that one or more required items are no longer required. """
     def __init__(self, objnames=None, groundtruth=False):
@@ -117,6 +124,13 @@ class NeedSequentialSteps(Event):
     def __init__(self, steps, groundtruth=False):
         self.steps = steps
         message = "Need to perform: {}".format(steps)
+        super().__init__(message, groundtruth=groundtruth)
+
+class AlreadyDone(Event):
+    """ Generated whenever a decision module determines that one or more required items are no longer required. """
+    def __init__(self, instr_step=None, groundtruth=False):
+        self.instr_step = instr_step
+        message = "Already Done: {}".format(instr_step)
         super().__init__(message, groundtruth=groundtruth)
 
 class NeedToGoTo(Event):

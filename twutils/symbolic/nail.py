@@ -121,14 +121,15 @@ def add_attributes_for_predicate(entity, predicate, entity2=None):
         entity.state.not_cooked()
     elif predicate == 'uncut':
         entity.add_attribute(Cutable)
+        entity.state.not_cut()
     elif predicate == 'cuttable':
         entity.add_attribute(Cutable)
     elif predicate == 'chopped' \
-         or predicate == 'sliced' \
-         or predicate == 'diced' \
-         or predicate == 'minced':
+     or predicate == 'sliced' \
+     or predicate == 'diced' \
+     or predicate == 'minced':
         entity.add_attribute(Cutable)
-        #entity.state.cut(cut_state=predicate)
+        entity.state.cut(cut_state=predicate)
     else:
         print("Warning -- unexpected predicate:", predicate, entity)
 
