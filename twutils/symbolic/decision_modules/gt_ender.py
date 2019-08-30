@@ -121,7 +121,7 @@ class GTEnder(DecisionModule):
 
     def are_where_we_need_to_be(self, kg):
         if not self.recipe_steps:
-            return False
+            return True
         if self.recipe_steps[0].startswith('prepare '):
             return kg.player_location.name == 'kitchen'
         return True
@@ -176,6 +176,9 @@ class GTEnder(DecisionModule):
                     continue  #already cut
                 elif verb in COOK_WITH and entity.state.cookable and entity.state.is_cooked.startswith(verb):
                     gi.event_stream.push(AlreadyDone(instr, groundtruth=True))
+                    if with_objs:
+                        for obj in with_objs:
+                            self.remove_required_obj(obj)
                     continue  #already cooked
             print("GT Ender: mapping <{}> -> {}".format(instr, enhanced_instr_words))
             if with_objs:
@@ -194,6 +197,9 @@ class GTEnder(DecisionModule):
                                 return None
             act = StandaloneAction(" ".join(enhanced_instr_words))
             self.remove_step(instr)
+            if with_objs:
+                for obj in with_objs:
+                    self.remove_required_obj(obj)
             return act
         return None
 
@@ -214,18 +220,20 @@ class GTEnder(DecisionModule):
                 response = yield step
                 success = self.check_response(response)
             else:
+                print("GT Ender FAILED to convert next step to action", self.recipe_steps)
                 success = False
-            if success:
-                self.recipe_steps = self.recipe_steps[1:]
+            if step and self.recipe_steps and success:
+                # self.recipe_steps = self.recipe_steps[1:]
+                print("GT Ender recipe_steps <= ", self.recipe_steps)
             else:
+                print("GT Ender stopping: failed to execute next step")
                 self.deactivate()
                 return None
-
-        if not self.are_where_we_need_to_be(gi.gt):
-            print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
-            gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
-            self.deactivate()
-            return None
+            if not self.are_where_we_need_to_be(gi.gt):
+                print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
+                gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
+                self.deactivate()
+                return None
 
     # The recipes already contain an instruction step for "prepare meal"
     #     response = yield PrepareMeal
@@ -237,6 +245,7 @@ class GTEnder(DecisionModule):
     #     print("[GT ENDER](1.success={}) {} --> {}".format(
     #         success, PrepareMeal, response))
         if not success:
+            print("GTEnder FAILED TO PREPARE MEAL")
             self.deactivate()
             return None
         act = Eat(meal)

@@ -112,6 +112,7 @@ def add_attributes_for_predicate(entity, predicate, entity2=None):
       or predicate == 'fried' \
       or predicate == 'baked' \
       or predicate == 'toasted' \
+      or predicate == 'grilled' \
       or predicate == 'roasted':
         entity.add_attribute(Edible)
         entity.add_attribute(Cookable)
