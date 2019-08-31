@@ -83,6 +83,10 @@ class GTNavigator(DecisionModule):
                 gv.dbg("[GT NAV] FAILED! {} {} {}".format(self.goal_location, self._path_idx, self.path))
             if self._debug:
                 print("GT Navigator resetting _active=False", self._path_idx, self.path)
+            if self._close_door:
+                close_door = Close(self._close_door)
+                self._close_door = None
+                return close_door
             return None
         next_step = self.path[self._path_idx]
         # TODO: check for closed door -> "open <the door>" and don't increment _path_idx

@@ -248,6 +248,9 @@ class NailAgent():
                     entities.add(e)
         if not entities:  # none found
             entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
+            if locations and entities:
+                # need to move it from wherever it was to its new location
+                print(f"WARNING - TODO: should move {entities} to {locations}")
         if entities:
             if len(entities) == 1:
                 return list(entities)[0], None
@@ -260,6 +263,8 @@ class NailAgent():
                     return found, None
         if create_if_notfound:
             new_entity = Entity(name, locations[0], type=entitytype)
+            add_attributes_for_type(new_entity, entitytype)
+
             ev = locations[0].add_entity(new_entity)
             if len(locations) > 0:
                 for l in locations[1:]:
@@ -307,6 +312,10 @@ class NailAgent():
             print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
         else:
             print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            if holder_for_logging == 'Inventory':
+                if not self.gi.gt.inventory.get_entity_by_name(obj.name):
+                    print(obj.name, "NOT IN INVENTORY", self.gi.gt.inventory.entities)
+                    assert False
         return obj, holder
 
     def gt_navigate(self, roomname):
@@ -318,6 +327,8 @@ class NailAgent():
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # sort into separate lists to control the order in which facts get processed
+        groundtruth_graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
+        self.gi.gt = groundtruth_graph  # reinit, because we build full the full graph every time
         player_loc = None
         door_facts = []
         at_facts = []
@@ -390,7 +401,7 @@ class NailAgent():
                 obj, _ = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=[loc], create_if_notfound=True)
             else:
                 gv.dbg("WARNING -- SET GROUND TRUTH: unexpected location for at(o,l): {}".format(r))
-            add_attributes_for_type(obj, o.type)
+            # add_attributes_for_type(obj, o.type)
 
     #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
     # and similarly, that "in" relations are not nested.

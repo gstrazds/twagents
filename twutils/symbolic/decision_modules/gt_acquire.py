@@ -1,5 +1,5 @@
 from ..decision_module import DecisionModule
-from ..action import Take
+from ..action import Take, Portable
 from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from .. import gv
@@ -23,11 +23,12 @@ class GTAcquire(DecisionModule):
 
     def missing_objs(self, kg):
         if not self.required_objs:
-            return False
+            return set()
         for name in self.required_objs:
             e = kg.inventory.get_entity_by_name(name)
             if e:
                 self.found_objs.add(name)
+        print(f"GTAcquire required:{self.required_objs} - found:{self.found_objs}")
         return self.required_objs - self.found_objs
 
     def process_event(self, event, gi: GameInstance):
@@ -71,7 +72,7 @@ class GTAcquire(DecisionModule):
         self.record(success)
 
     def take_control(self, gi: GameInstance):
-        ignored_objs = yield
+        ignored_obs = yield
         still_needed = list(self.missing_objs(gi.gt))
         print("GT_Acquire required_objs:", self.required_objs)
         print("GT_Acquire still_needed:", still_needed)
@@ -81,7 +82,7 @@ class GTAcquire(DecisionModule):
                 assert False, f"Still needed object {entityName} *should not be* in Inventory"
             elif here.has_entity_with_name(entityName):
                 entity = here.get_entity_by_name(entityName)
-                if 'portable' in entity.attributes:
+                if Portable in entity.attributes:
                     take_action = Take(entity)
                     response = yield take_action
                 else: # can't take it, but we've found it, so consider it acquired...

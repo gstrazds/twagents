@@ -1,6 +1,6 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
-from ..action import SingleAction
+from ..action import SingleAction, Drop
 from ..event import GroundTruthComplete, NeedToAcquire, NeedSequentialSteps
 from ..game import GameInstance
 
@@ -67,7 +67,14 @@ class GTRecipeReader(DecisionModule):
             if ingredient.startswith("Directions"):
                 break     # end of Ingredients list
             if ingredient:
-                ingredients.append(ingredient)
+                already_in_inventory = False
+                for entity in gi.gt.inventory.entities:
+                    if not entity.has_name(ingredient):
+                        response = yield Drop(entity)
+                    else:
+                        already_in_inventory = True
+                if not already_in_inventory:
+                    ingredients.append(ingredient)
         if ingredients:
             self.ingredients = ingredients
             gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
