@@ -1,5 +1,6 @@
 # console output files
 out/
+results/
 
 # trained models
 saved_models/

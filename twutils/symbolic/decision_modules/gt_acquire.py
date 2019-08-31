@@ -1,5 +1,5 @@
 from ..decision_module import DecisionModule
-from ..action import Take, Portable
+from ..action import Take, Open, Portable
 from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from .. import gv
@@ -83,6 +83,9 @@ class GTAcquire(DecisionModule):
             elif here.has_entity_with_name(entityName):
                 entity = here.get_entity_by_name(entityName)
                 if Portable in entity.attributes:
+                    container = gi.gt.get_containing_entity(entity)
+                    if container and container.state.openable() and not container.state.is_open:
+                        response = yield Open(container)
                     take_action = Take(entity)
                     response = yield take_action
                 else: # can't take it, but we've found it, so consider it acquired...

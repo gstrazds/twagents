@@ -128,6 +128,19 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return ret
 
+    def get_containing_entity(self, entity):
+        """ Returns container (or support) where an entity with a specific name can be found """
+        for l in self._locations:
+            for ce in l.entities:
+                if entity in ce._entities:
+                    return ce
+        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
+        #     for l in (self._locations + [self._inventory]):
+        #         for e in l.entities:
+        #             for e2 in e._entities:
+        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
+        #                     ret.add(l)
+        return None
 
 class ConnectionGraph:
     """
