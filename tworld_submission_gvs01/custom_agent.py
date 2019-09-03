@@ -459,7 +459,8 @@ class CustomAgent:
         self.epsilon = self.epsilon_anneal_from
         self.update_per_k_game_steps = self.config['general']['update_per_k_game_steps']
 
-        self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
+        # self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
+        self.nlp = None
         self.current_episode = 0
         self.current_step = 0
         self._episode_has_started = False
@@ -696,8 +697,8 @@ class CustomAgent:
                     if self._debug_quit and self._debug_quit == self.current_step:
                         dbg("[{}] DEBUG QUIT! step={}".format(agent_id, self.current_step))
                         # exit(0)
-                    if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
-                        self._debug_quit = self.current_step + 2  # early abort after executing one more action
+                    # if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
+                    #     self._debug_quit = self.current_step + 2  # early abort after executing one more action
                     actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=None)
                 else:
                     actiontxt = agent.take_action(desctext)

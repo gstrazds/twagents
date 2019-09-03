@@ -77,6 +77,7 @@ class GTEnder(DecisionModule):
                 print("GT Ender: not at correct location")
                 if self.required_objs:
                     print("GT Ender -- required:", self.required_objs, "found:", self.found_objs)
+                gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
                 self.deactivate()
         return self._eagerness
 
@@ -113,6 +114,7 @@ class GTEnder(DecisionModule):
     def have_everything_required(self, kg):
         if not self.required_objs and not self.recipe_steps:
             return False
+        found = set()
         for name in self.required_objs:
             e2 = kg.player_location.get_entity_by_name(name)
             e = kg.inventory.get_entity_by_name(name)
@@ -120,13 +122,14 @@ class GTEnder(DecisionModule):
                 # if e2:
                 #     attrs = [ attr.name for attr in e2.attributes ]
                 #     print(e2, '----------- attrs:', attrs)
-                self.found_objs.add(name)
+                found.add(name)
+        self.found_objs = found
         return self.required_objs == self.found_objs
 
     def are_where_we_need_to_be(self, kg):
         if not self.recipe_steps:
             return True
-        if self.recipe_steps[0].startswith('prepare '):
+        if self.recipe_steps[0].startswith('prepare'):
             return kg.player_location.name == 'kitchen'
         return True
 
@@ -175,7 +178,9 @@ class GTEnder(DecisionModule):
                 entity = gi.gt.inventory.get_entity_by_name(obj_name)
                 if not entity:
                     print(f"WARNING: expected but failed to find {obj_name} in Inventory!")
-                    continue  #try the next instruction
+                    gi.event_stream.push(NeedToAcquire(objnames=[obj_name], groundtruth=True))
+                    return None  # maybe we can re-acquire it
+                    # continue  #try the next instruction
                 if verb in CUT_WITH and entity.state.cuttable and entity.state.is_cut.startswith(verb) \
                  or verb in COOK_WITH and entity.state.cookable and entity.state.is_cooked.startswith(verb)\
                  or verb == 'fry' and entity.state.cookable and entity.state.is_cooked == 'fried':
@@ -205,6 +210,7 @@ class GTEnder(DecisionModule):
             if with_objs:
                 for obj in with_objs:
                     self.remove_required_obj(obj)
+                gi.event_stream.push(NoLongerNeed(objnames=with_objs, groundtruth=True))
             return act
         return None
 
@@ -218,6 +224,11 @@ class GTEnder(DecisionModule):
             if not self.have_everything_required(gi.gt):
                 print("[GT ENDER] ABORTING because preconditions are not satisfied", self.required_objs,
                       self.found_objs)
+                self.deactivate()
+                return None
+            if not self.are_where_we_need_to_be(gi.gt):
+                print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
+                gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
                 self.deactivate()
                 return None
             step = self.convert_next_instruction_to_action(gi)
@@ -234,11 +245,6 @@ class GTEnder(DecisionModule):
                 print("GT Ender stopping: failed to execute next step")
                 self.deactivate()
                 return None
-            if not self.are_where_we_need_to_be(gi.gt):
-                print("[GT ENDER] ABORTING because location is not correct:", gi.gt.player_location.name)
-                gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
-                self.deactivate()
-                return None
 
     # The recipes already contain an instruction step for "prepare meal"
     #     response = yield PrepareMeal
@@ -251,6 +257,9 @@ class GTEnder(DecisionModule):
     #         success, PrepareMeal, response))
         if not success:
             print("GTEnder FAILED TO PREPARE MEAL")
+            gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
+            if 'prepare meal' not in self.recipe_steps:
+                self.recipe_steps.append('prepare meal')
             self.deactivate()
             return None
         act = Eat(meal)

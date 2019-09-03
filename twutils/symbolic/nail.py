@@ -2,7 +2,7 @@ import os
 import logging
 from symbolic.game import GameInstance
 from symbolic import gv
-from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
+# from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
 from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
@@ -57,6 +57,7 @@ def add_attributes_for_type(entity, twvartype):
         entity.add_attribute(Portable)
     elif twvartype == 'd':
         entity.add_attribute(Openable)
+        entity.state.open()  # default until we find otherwise (in add_attributes_for_predicate)
         # entity.add_attribute(Lockable)
     elif twvartype == 'oven':
         entity.add_attribute(Container)
@@ -162,8 +163,9 @@ class NailAgent():
                         GTAcquire(True),
                         #Explorer(True),
                         # Navigator(True),
-                        Idler(True),
-                        Examiner(True), Hoarder(True),
+                        #Idler(True),
+                        #Examiner(True),
+                        #Hoarder(True),
                         # Interactor(True),
                         # YesNo(True), YouHaveTo(True), Darkness(True)
                         ]
@@ -209,7 +211,11 @@ class NailAgent():
 
         """
         next_action = None
+        failed_counter = 0
         while not next_action:
+            failed_counter += 1
+            if failed_counter > 100:
+                return "Look"
             try:
                 next_action = self.action_generator.send(observation)
                 print("[NAIL] (generate_next_action): ({}) -> |{}|".format(type(self.active_module).__name__, next_action))

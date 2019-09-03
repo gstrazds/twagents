@@ -27,7 +27,8 @@ ILLEGAL_ACTIONS = ['restart', 'verbose', 'save', 'restore', 'score', 'quit', 'mo
 # pip install spacy
 # python -m spacy download en_core_web_lg
 try:
-    nlp = spacy.load('en_core_web_lg')
+    # nlp = spacy.load('en_core_web_lg')
+    pass
 except Exception as e:
     print("Failed to load \'en\' with exception {}. Try: python -m spacy download en_core_web_lg".format(e))
     sys.exit(1)

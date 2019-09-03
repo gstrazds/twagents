@@ -1,5 +1,6 @@
+import random
 from ..decision_module import DecisionModule
-from ..action import Take, Open, Portable
+from ..action import Take, Drop, Open, Portable
 from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from .. import gv
@@ -12,14 +13,19 @@ class GTAcquire(DecisionModule):
         self.required_objs = set()
         self.found_objs = set()
         self._active = active
+        self._temporary_drop = None  # remember an object that we need to re-acquire
+        self._no_longer_needed = set()
 
     def add_required_obj(self, entityname:str):
         print("GTAcquire.add_required_obj({})".format(entityname))
         self.required_objs.add(entityname)
+        self._eagerness = 0.8
 
     def remove_required_obj(self, entityname:str):
         self.required_objs.discard(entityname)
         self.found_objs.discard(entityname)
+        if not self.required_objs:
+            self._eagerness = 0.0
 
     def missing_objs(self, kg):
         if not self.required_objs:
@@ -41,7 +47,13 @@ class GTAcquire(DecisionModule):
                 print("GT Acquire:", event.objnames)
                 for itemname in event.objnames:
                     self.add_required_obj(itemname)
-                    self._eagerness = 0.8
+                    # self._eagerness = 0.8
+            elif isinstance(event, NoLongerNeed):
+                print("GT Acquire NO LONGER NEED:", event.objnames)
+                for itemname in event.objnames:
+                    if itemname != self._temporary_drop:
+                        self._no_longer_needed.add(itemname)
+                    self.remove_required_obj(itemname)
 
     def parse_response(self, response, gi: GameInstance):
         success = False
@@ -73,6 +85,11 @@ class GTAcquire(DecisionModule):
 
     def take_control(self, gi: GameInstance):
         ignored_obs = yield
+        if self._temporary_drop:
+            gi.event_stream.push(NeedToAcquire([self._temporary_drop], groundtruth=True))
+            self._temporary_drop = None
+            yield None  # reevaluate which should be the active module
+
         still_needed = list(self.missing_objs(gi.gt))
         print("GT_Acquire required_objs:", self.required_objs)
         print("GT_Acquire still_needed:", still_needed)
@@ -88,8 +105,36 @@ class GTAcquire(DecisionModule):
                         response = yield Open(container)
                     take_action = Take(entity)
                     response = yield take_action
+                    if "carrying too many" in response or \
+                      not gi.gt.inventory.has_entity_with_name(entityName):
+                        print(f"GTAcquire: Take({entityName}) failed, try dropping something...")
+                        if len(gi.gt.inventory.entities) > 0:
+                            not_needed = None
+                            for name in self._no_longer_needed:
+                                if gi.gt.inventory.has_entity_with_name(name):
+                                    not_needed = name
+                                    drop_entity = gi.gt.inventory.get_entity_by_name(not_needed)
+                                    break
+                            if not_needed is not None:
+                                self._no_longer_needed.remove(name)
+                            else:  # try temporarily dropping a random item from our inventory
+                                drop_entity = random.choice(gi.gt.inventory.entities)
+                                print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
+                                self._temporary_drop = drop_entity.name
+                            self.remove_required_obj(drop_entity.name)
+                            response = yield Drop(drop_entity)
+                            gi.event_stream.push(NoLongerNeed([drop_entity.name], groundtruth=True))
+                            response = yield take_action  # try again, now that we've dropped something
+                            self._eagerness = 0
+                            return None # let someone else do something with the new object (e.g. cut with knife)
+
+                        else:
+                            print("CAN'T DROP ANYTHING, NOTHING IN INVENTORY!!!")
+                    else:
+                        print("WARNING: asdfad;lqwjerpoiu")
+                        break
                 else: # can't take it, but we've found it, so consider it acquired...
-                    self.found_objs.add(entityName)
+                    self.remove_required_obj(entityName)
 
         still_needed = list(self.missing_objs(gi.gt))
         if still_needed:

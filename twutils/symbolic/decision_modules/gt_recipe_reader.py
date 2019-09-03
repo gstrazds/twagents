@@ -67,15 +67,24 @@ class GTRecipeReader(DecisionModule):
             if ingredient.startswith("Directions"):
                 break     # end of Ingredients list
             if ingredient:
-                already_in_inventory = False
-                for entity in gi.gt.inventory.entities:
-                    if not entity.has_name(ingredient):
-                        response = yield Drop(entity)
-                    else:
-                        already_in_inventory = True
-                if not already_in_inventory:
                     ingredients.append(ingredient)
         if ingredients:
+            unneeded_inventory = []  #inventory items that are not listed as ingredients
+            already_in_inventory = []  #ingredients that we already have
+            for entity in gi.gt.inventory.entities:
+                is_in_ingredients = False
+                for ingredient in ingredients:
+                    if entity.has_name(ingredient):
+                        already_in_inventory.append(ingredient)
+                        is_in_ingredients = True
+                        continue  # check next entity
+                if not is_in_ingredients:
+                    unneeded_inventory.append(entity)
+
+            for entity in unneeded_inventory:
+                response = yield Drop(entity)
+            for entity_name in already_in_inventory:
+                ingredients.remove(entity_name)
             self.ingredients = ingredients
             gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
         start_of_directions = start_of_ingredients + i + 1

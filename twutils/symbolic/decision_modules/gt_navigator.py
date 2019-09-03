@@ -96,7 +96,8 @@ class GTNavigator(DecisionModule):
         door = self.get_door_if_closed(next_step)
     #TODO: fix get_door_if_closed() to check for closed(door)...
         if door is not None and not self._opened_door:
-            self._opened_door = door
+            #Temporarily revert: don't close doors that we open
+            # self._opened_door = door
             return Open(door)
         if self._close_door:
             close_door = Close(self._close_door)
