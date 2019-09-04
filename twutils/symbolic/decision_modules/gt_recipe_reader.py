@@ -51,7 +51,7 @@ class GTRecipeReader(DecisionModule):
             self.deactivate()
             return None
 
-        response = yield SingleAction('read', cookbook)
+        response = yield SingleAction('examine', cookbook)
         # parse the response
         recipe_lines = response.split('\n')
         recipe_lines = list(map(lambda line: line.strip(), recipe_lines))

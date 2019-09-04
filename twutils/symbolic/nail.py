@@ -215,6 +215,7 @@ class NailAgent():
         while not next_action:
             failed_counter += 1
             if failed_counter > 100:
+                gv.dbg("[NAIL] generate_next_action FAILED ", failed_counter, "times! BREAKING LOOP => |Look|")
                 return "Look"
             try:
                 next_action = self.action_generator.send(observation)
@@ -230,105 +231,66 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def _get_gt_location(self, roomname, create_if_notfound=False):
-        locations = self.gi.gt.locations_with_name(roomname)
-        if locations:
-            assert len(locations) == 1
-            return locations[0]
-        elif create_if_notfound:
-            new_loc = Location(roomname)
-            ev = self.gi.gt.add_location(new_loc)
-            # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
-            print("created new GT Location:", new_loc)
-            return new_loc
-        return None
+    def take_action(self, observation, obs_facts=None, gt_facts=None):
+        if gt_facts:
+            self.set_ground_truth(gt_facts)
+        if obs_facts:
+            # world = World.from_facts(facts)
+            # add obs_facts to our KnowledgeGraph (self.gi.kg)
+            pass
+        if self.env and getattr(self.env, 'get_player_location', None):
+            # Add true locations to the .log file.
+            loc = self.env.get_player_location()
+            if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
+                gv.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
 
-    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
-        if create_if_notfound:
-            assert locations is not None
-        entities = set()
-        if locations:
-            for l in locations:
-                e = l.get_entity_by_name(name)
-                if e:
-                    entities.add(e)
-        if not entities:  # none found
-            entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
-            if locations and entities:
-                # need to move it from wherever it was to its new location
-                print(f"WARNING - TODO: should move {entities} to {locations}")
-        if entities:
-            if len(entities) == 1:
-                return list(entities)[0], None
-            else:
-                found = None
-                for e in entities:
-                    if entitytype is None or e._type == entitytype:
-                        found = e
-                if found:
-                    return found, None
-        if create_if_notfound:
-            new_entity = Entity(name, locations[0], type=entitytype)
-            add_attributes_for_type(new_entity, entitytype)
+            # Output a snapshot of the kg.
+            # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
+            #     f.write(str(self.knowledge_graph)+'\n\n')
+            # self.step_num += 1
 
-            ev = locations[0].add_entity(new_entity)
-            if len(locations) > 0:
-                for l in locations[1:]:
-                    l.add_entity(new_entity)
-            # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
-            print("created new GT Entity:", new_entity)
-            return new_entity, ev
-        return None, None
+        observation = observation.strip()
+        if self.first_step:
+            gv.dbg("[NAIL] {}".format(observation))
+            self.first_step = False
+            #GVS# return 'look' # Do a look to get rid of intro text
 
-    def _add_obj_to_obj(self, fact, player_loc):
-        o = fact.arguments[0]
-        h = fact.arguments[1]
-        if o.name.startswith('~') or h.name.startswith('~'):
-            print("_add_obj_to_obj: SKIPPING FACT", fact)
-            return None, None
-        if h.name == 'I':  # Inventory
-            holder = None  #self.gi.gt.inventory
-            loc = [ self.gi.gt.inventory ] #player_loc
-        else:
-            holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
-                                         create_if_notfound=False)
-            if holder is None:
-                loc = None
-            else:
-                # loc = holder._init_loc if holder is not None else None
-                locs = self.gi.gt.location_of_entity(holder.name)
-                if locs:
-                    loc = list(locs)
-                    if len(loc) > 1:
-                        print("WARNING: entity <{}> has multiple locations: {}".format(holder, loc))
-                    # loc = list(locs)[0]  # if multiple locations, choose just one
-        if not loc:
-            print("WARNING! NO LOCATION FOR HOLDER while adding GT Object {} {}".format(fact, holder))
-            loc = None
+        if not self.gi.kg.player_location:
+            loc = Location(observation)
+            ev = self.gi.kg.add_location(loc)
+            self.gi.kg.set_player_location(loc, self.gi)
+            self.gi.kg._init_loc = loc
+            # self.gi.event_stream.push(ev)
 
-    #NOTE TODO: handle objects that have moved from to or from Inventory
-        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc,
-                                  create_if_notfound=True)
-        #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
-        if holder:
-            holder.add_entity(obj)
+        self.consume_event_stream()
 
-        holder_for_logging = 'Inventory' if h.name == 'I' else holder
-        if ev:
-            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-        else:
-            print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            if holder_for_logging == 'Inventory':
-                if not self.gi.gt.inventory.get_entity_by_name(obj.name):
-                    print(obj.name, "NOT IN INVENTORY", self.gi.gt.inventory.entities)
-                    assert False
-        return obj, holder
+        if not self.active_module:
+            self.elect_new_active_module()
 
-    def gt_navigate(self, roomname):
-        dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
-        assert dest_loc is not None
-        self.gt_nav.set_goal(dest_loc, self.gi)
-        # self.elect_new_active_module()
+        next_action = self.generate_next_action(observation)
+        return next_action
+
+    def observe(self, prev_obs, action, score, new_obs, terminal):
+        """ Observe will be used for learning from rewards. """
+#        p_valid = self._valid_detector.action_valid(action, new_obs)
+#        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
+#        if kg.player_location:
+#            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
+        self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
+        self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
+        if terminal:
+            self.gi.kg.reset(self.gi)
+
+    def finalize(self):
+        # with open(self.logpath+'.kng', 'w') as f:
+        #     f.write(str(self.knowledge_graph)+'\n\n')
+        pass
+
+    # def gt_navigate(self, roomname):
+    #     dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
+    #     assert dest_loc is not None
+    #     self.gt_nav.set_goal(dest_loc, self.gi)
+    #     # self.elect_new_active_module()
 
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
@@ -451,57 +413,97 @@ class NailAgent():
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
-    def take_action(self, observation, obs_facts=None, gt_facts=None):
-        if gt_facts:
-            self.set_ground_truth(gt_facts)
-        if obs_facts:
-            # world = World.from_facts(facts)
-            # add obs_facts to our KnowledgeGraph (self.gi.kg)
-            pass
-        if self.env and getattr(self.env, 'get_player_location', None):
-            # Add true locations to the .log file.
-            loc = self.env.get_player_location()
-            if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
-                gv.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
+    def _get_gt_location(self, roomname, create_if_notfound=False):
+        locations = self.gi.gt.locations_with_name(roomname)
+        if locations:
+            assert len(locations) == 1
+            return locations[0]
+        elif create_if_notfound:
+            new_loc = Location(roomname)
+            ev = self.gi.gt.add_location(new_loc)
+            # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
+            print("created new GT Location:", new_loc)
+            return new_loc
+        return None
 
-            # Output a snapshot of the kg.
-            # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
-            #     f.write(str(self.knowledge_graph)+'\n\n')
-            # self.step_num += 1
+    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
+        if create_if_notfound:
+            assert locations is not None
+        entities = set()
+        if locations:
+            for l in locations:
+                e = l.get_entity_by_name(name)
+                if e:
+                    entities.add(e)
+        if not entities:  # none found
+            entities = self.gi.gt.entities_with_name(name, entitytype=entitytype)
+            if locations and entities:
+                # need to move it from wherever it was to its new location
+                print(f"WARNING - TODO: should move {entities} to {locations}")
+        if entities:
+            if len(entities) == 1:
+                return list(entities)[0], None
+            else:
+                found = None
+                for e in entities:
+                    if entitytype is None or e._type == entitytype:
+                        found = e
+                if found:
+                    return found, None
+        if create_if_notfound:
+            new_entity = Entity(name, locations[0], type=entitytype)
+            add_attributes_for_type(new_entity, entitytype)
 
-        observation = observation.strip()
-        if self.first_step:
-            gv.dbg("[NAIL] {}".format(observation))
-            self.first_step = False
-            #GVS# return 'look' # Do a look to get rid of intro text
+            ev = locations[0].add_entity(new_entity)
+            if len(locations) > 0:
+                for l in locations[1:]:
+                    l.add_entity(new_entity)
+            # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
+            print("created new GT Entity:", new_entity)
+            return new_entity, ev
+        return None, None
 
-        if not self.gi.kg.player_location:
-            loc = Location(observation)
-            ev = self.gi.kg.add_location(loc)
-            self.gi.kg.set_player_location(loc, self.gi)
-            self.gi.kg._init_loc = loc
-            # self.gi.event_stream.push(ev)
+    def _add_obj_to_obj(self, fact, player_loc):
+        o = fact.arguments[0]
+        h = fact.arguments[1]
+        if o.name.startswith('~') or h.name.startswith('~'):
+            print("_add_obj_to_obj: SKIPPING FACT", fact)
+            return None, None
+        if h.name == 'I':  # Inventory
+            holder = None  #self.gi.gt.inventory
+            loc = [ self.gi.gt.inventory ] #player_loc
+        else:
+            holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
+                                         create_if_notfound=False)
+            if holder is None:
+                loc = None
+            else:
+                # loc = holder._init_loc if holder is not None else None
+                locs = self.gi.gt.location_of_entity(holder.name)
+                if locs:
+                    loc = list(locs)
+                    if len(loc) > 1:
+                        print("WARNING: entity <{}> has multiple locations: {}".format(holder, loc))
+                    # loc = list(locs)[0]  # if multiple locations, choose just one
+        if not loc:
+            print("WARNING! NO LOCATION FOR HOLDER while adding GT Object {} {}".format(fact, holder))
+            loc = None
 
-        self.consume_event_stream()
+    #NOTE TODO: handle objects that have moved from to or from Inventory
+        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc,
+                                  create_if_notfound=True)
+        #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
+        if holder:
+            holder.add_entity(obj)
 
-        if not self.active_module:
-            self.elect_new_active_module()
+        holder_for_logging = 'Inventory' if h.name == 'I' else holder
+        if ev:
+            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+        else:
+            print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            if holder_for_logging == 'Inventory':
+                if not self.gi.gt.inventory.get_entity_by_name(obj.name):
+                    print(obj.name, "NOT IN INVENTORY", self.gi.gt.inventory.entities)
+                    assert False
+        return obj, holder
 
-        next_action = self.generate_next_action(observation)
-        return next_action
-
-    def observe(self, prev_obs, action, score, new_obs, terminal):
-        """ Observe will be used for learning from rewards. """
-#        p_valid = self._valid_detector.action_valid(action, new_obs)
-#        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
-#        if kg.player_location:
-#            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
-        self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
-        self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
-        if terminal:
-            self.gi.kg.reset(self.gi)
-
-    def finalize(self):
-        # with open(self.logpath+'.kng', 'w') as f:
-        #     f.write(str(self.knowledge_graph)+'\n\n')
-        pass

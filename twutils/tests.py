@@ -51,5 +51,17 @@ class TestTask(unittest.TestCase):
         self._check_composite_done(ParallelTasks)
         self._check_composite_done(SequentialTasks)
 
+    def test_prereqs1(self):
+        t = Task("Task1")
+        subt1 = Task("Task_sub1")
+        subt2 = Task("Task_sub2")
+        t.prereq.required_tasks += [subt1, subt2]
+        subt1._done = True
+        all_satisf, missing = t.check_preconditions(None)
+        self.assertFalse(all_satisf)
+        self.assertEqual(len(missing.required_tasks), 1)
+        self.assertEqual(missing.required_tasks[0], subt2)
+
+
 if __name__ == '__main__':
     unittest.main()
