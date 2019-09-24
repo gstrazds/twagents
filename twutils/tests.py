@@ -59,6 +59,9 @@ class TestTask(unittest.TestCase):
         subt1._done = True
         all_satisf, missing = t.check_preconditions(None)
         self.assertFalse(all_satisf)
+        self.assertEqual(len(missing.required_inventory), 0)
+        self.assertEqual(len(missing.required_objects), 0)
+        self.assertEqual(len(missing.required_locations), 0)
         self.assertEqual(len(missing.required_tasks), 1)
         self.assertEqual(missing.required_tasks[0], subt2)
 

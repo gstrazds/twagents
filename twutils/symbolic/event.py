@@ -126,7 +126,7 @@ class NeedSequentialSteps(Event):
         message = "Need to perform: {}".format(steps)
         super().__init__(message, groundtruth=groundtruth)
 
-class AlreadyDone(Event):
+class AlreadyAcquired(Event):
     """ Generated whenever a decision module determines that one or more required items are no longer required. """
     def __init__(self, instr_step=None, groundtruth=False):
         self.instr_step = instr_step
@@ -139,3 +139,11 @@ class NeedToGoTo(Event):
         self.target_location = target_location
         message = "Need to go to: {}".format(target_location)
         super().__init__(message, groundtruth=groundtruth)
+
+class NeedToDo(Event):
+    """ Generated when a decision module determines that the agent needs to perform a specific Task. """
+    def __init__(self, task, groundtruth=False):
+        self.task = task
+        message = "Need to do: {}".format(task)
+        super().__init__(message, groundtruth=groundtruth)
+

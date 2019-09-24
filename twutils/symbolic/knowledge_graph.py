@@ -168,7 +168,7 @@ class ConnectionGraph:
                 self._in_graph[to_location].append(connection)
             else:
                 self._in_graph[to_location] = [connection]
-        print("ADDED NEW {}CONNECTION".format('GT ' if groundtruth else ''), connection)
+        #print("ADDED NEW {}CONNECTION".format('GT ' if groundtruth else ''), connection)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """

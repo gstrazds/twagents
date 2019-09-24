@@ -8,19 +8,16 @@ class GTRecipeReader(DecisionModule):
     """
     The Recipe Reader module activates when the player finds the cookbook.
     """
-    def __init__(self, active=False):
+    def __init__(self):
         super().__init__()
-        self._active = active
         self._eagerness = 0.0
         self.ingredients = []
         self.recipe_steps = []
 
     def deactivate(self):
-        self._active = False
         self._eagerness = 0.0
 
     def clear_all(self):
-        self._active = False
         self._eagerness = 0.0
 
     def process_event(self, event, gi: GameInstance):
@@ -32,7 +29,6 @@ class GTRecipeReader(DecisionModule):
                 cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
                 if cookbook:
                     print("GT Recipe Reader: ACTIVATING!")
-                    self._active = True
                     self._eagerness = 1.0
         # elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
         #     print("GTRecipeReader Need To Acquire", event.objnames)
@@ -41,8 +37,8 @@ class GTRecipeReader(DecisionModule):
 
     def take_control(self, gi: GameInstance):
         obs = yield
-        if not self._active:
-            self._eagerness = 0.0
+        if not self._eagerness:
+            print(f"WARNING: GTRecipeReader.take_control() with eagerness={self._eagerness}")
             return None #ends iteration
 
         cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
@@ -67,7 +63,7 @@ class GTRecipeReader(DecisionModule):
             if ingredient.startswith("Directions"):
                 break     # end of Ingredients list
             if ingredient:
-                    ingredients.append(ingredient)
+                ingredients.append(ingredient)
         if ingredients:
             unneeded_inventory = []  #inventory items that are not listed as ingredients
             already_in_inventory = []  #ingredients that we already have

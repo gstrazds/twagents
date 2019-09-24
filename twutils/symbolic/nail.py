@@ -3,7 +3,7 @@ import logging
 from symbolic.game import GameInstance
 from symbolic import gv
 # from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire
+from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire, TaskExecutor
 # from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
@@ -157,9 +157,10 @@ class NailAgent():
         # gv.event_stream.clear()
         self.gt_nav = GTNavigator(False)
         self.modules = [
+                        TaskExecutor(),
                         GTEnder(True),
                         self.gt_nav,
-                        GTRecipeReader(False),
+                        GTRecipeReader(),
                         GTAcquire(True),
                         #Explorer(True),
                         # Navigator(True),
@@ -214,8 +215,8 @@ class NailAgent():
         failed_counter = 0
         while not next_action:
             failed_counter += 1
-            if failed_counter > 100:
-                gv.dbg("[NAIL] generate_next_action FAILED ", failed_counter, "times! BREAKING LOOP => |Look|")
+            if failed_counter > 10:
+                gv.dbg(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|")
                 return "Look"
             try:
                 next_action = self.action_generator.send(observation)
@@ -422,7 +423,7 @@ class NailAgent():
             new_loc = Location(roomname)
             ev = self.gi.gt.add_location(new_loc)
             # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
-            print("created new GT Location:", new_loc)
+#            print("created new GT Location:", new_loc)
             return new_loc
         return None
 
@@ -459,7 +460,7 @@ class NailAgent():
                 for l in locations[1:]:
                     l.add_entity(new_entity)
             # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
-            print("created new GT Entity:", new_entity)
+#            print("created new GT Entity:", new_entity)
             return new_entity, ev
         return None, None
 
@@ -498,9 +499,10 @@ class NailAgent():
 
         holder_for_logging = 'Inventory' if h.name == 'I' else holder
         if ev:
-            print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            #print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            pass
         else:
-            print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
             if holder_for_logging == 'Inventory':
                 if not self.gi.gt.inventory.get_entity_by_name(obj.name):
                     print(obj.name, "NOT IN INVENTORY", self.gi.gt.inventory.entities)

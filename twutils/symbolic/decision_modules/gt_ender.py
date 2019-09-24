@@ -3,7 +3,7 @@ from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
 from ..action import Portable
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
-from ..event import NeedSequentialSteps, AlreadyDone, NeedToGoTo, NeedToFind
+from ..event import NeedSequentialSteps, AlreadyAcquired, NeedToGoTo, NeedToFind
 from ..game import GameInstance
 # from ..util import first_sentence
 
@@ -135,10 +135,10 @@ class GTEnder(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
-            print("GT complete", event)
-            self.get_eagerness(gi)
-        elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
+        # if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
+        #     print("GT complete", event)
+        #     self.get_eagerness(gi)
+        if isinstance(event, NeedToAcquire) and event.is_groundtruth:
             print("GT Required Objects:", event.objnames)
             for itemname in event.objnames:
                 # gi.gt.entities_with_name()
@@ -156,8 +156,8 @@ class GTEnder(DecisionModule):
             print("GT Need To Do:", event.steps)
             for acttext in event.steps:
                 self.add_step(acttext)
-        elif isinstance(event, AlreadyDone) and event.is_groundtruth:
-            print("GT AlreadyDone:", event.instr_step)
+        elif isinstance(event, AlreadyAcquired) and event.is_groundtruth:
+            print("GT AlreadyAcquired:", event.instr_step)
             self.remove_step(event.instr_step)
 
     def check_response(self, response):
@@ -184,7 +184,7 @@ class GTEnder(DecisionModule):
                 if verb in CUT_WITH and entity.state.cuttable and entity.state.is_cut.startswith(verb) \
                  or verb in COOK_WITH and entity.state.cookable and entity.state.is_cooked.startswith(verb)\
                  or verb == 'fry' and entity.state.cookable and entity.state.is_cooked == 'fried':
-                    # # gi.event_stream.push(AlreadyDone(instr, groundtruth=True))
+                    # # gi.event_stream.push(AlreadyAcquired(instr, groundtruth=True))
                     self.remove_step(instr)
                     if with_objs:
                         for obj in with_objs:

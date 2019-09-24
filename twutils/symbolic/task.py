@@ -1,4 +1,7 @@
+# from abc import ABC, abstractmethod
 from typing import List
+from .action import Action
+
 
 class Preconditions:
     def __init__(self):
@@ -10,8 +13,9 @@ class Preconditions:
 
 class Task:
     """ Base class for Tasks. """
-    def __init__(self, description=''):
+    def __init__(self, description='', use_groundtruth=False):
         self._done = False
+        self.use_groundtruth = use_groundtruth
         self.description = description
         self.prereq = Preconditions()
 
@@ -49,6 +53,12 @@ class Task:
             not missing.required_tasks
         return all_satisfied, missing
 
+    def generate_actions(self, gi) -> Action:
+        """ Generates a sequence of actions.
+        :type gi: GameInstance
+        """
+        ignored = yield
+        return None
 
     def __str__(self):
         return self.description
@@ -68,10 +78,10 @@ class CompositeTask(Task):
     @property
     def done(self) -> bool:
         if not self._done:  #one-way caching: once it's done, it stays done (until reset() is called)
-            self._done = self.check_done()
+            self._done = self._check_done()
         return self._done
 
-    def check_done(self) -> bool:
+    def _check_done(self) -> bool:
         return all(map(lambda t: t.done, self.tasks))
 
     def reset_all(self):
@@ -87,10 +97,24 @@ class CompositeTask(Task):
 class SequentialTasks(CompositeTask):
     def __init__(self, tasks: List[Task], description=None):
         super().__init__(tasks, description=description)
+        self._current_idx = 0
 
     @property
     def done(self) -> bool:
+        if self._current_idx > 0 and len(self.tasks) > 0 and not self._done:
+            for idx in range(self._current_idx):
+                assert idx < len(self.tasks)
+                assert self.tasks[idx].done
         return super().done
+
+    def get_next_action(self, obs: str, gi) -> Action:
+        """ Generates a sequence of actions.
+        SequentialTask simply invokes the corresponding method on the currently active subtask."""
+        if self.tasks and self._current_idx >= 0 and not self.done:
+            task = self.tasks[self._current_idx].get_next_action(gi)
+            if task:
+                result = yield task
+        return None
 
 
 class ParallelTasks(CompositeTask):
