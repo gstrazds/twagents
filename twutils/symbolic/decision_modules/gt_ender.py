@@ -4,6 +4,7 @@ from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
 from ..action import Portable
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
 from ..event import NeedSequentialSteps, AlreadyAcquired, NeedToGoTo, NeedToFind
+from ..task_modules import SingleActionTask
 from ..game import GameInstance
 # from ..util import first_sentence
 
@@ -72,7 +73,7 @@ class GTEnder(DecisionModule):
                 if not self._active:
                     print("GT Ender: ACTIVATING!")
                 self._active = True
-                self._eagerness = 0.99
+                self._eagerness = 0.95
             else:
                 print("GT Ender: not at correct location")
                 if self.required_objs:
@@ -179,7 +180,7 @@ class GTEnder(DecisionModule):
                 if not entity:
                     print(f"WARNING: expected but failed to find {obj_name} in Inventory!")
                     gi.event_stream.push(NeedToAcquire(objnames=[obj_name], groundtruth=True))
-                    return None  # maybe we can re-acquire it
+                    return None, None  # maybe we can re-acquire it
                     # continue  #try the next instruction
                 if verb in CUT_WITH and entity.state.cuttable and entity.state.is_cut.startswith(verb) \
                  or verb in COOK_WITH and entity.state.cookable and entity.state.is_cooked.startswith(verb)\
@@ -200,19 +201,19 @@ class GTEnder(DecisionModule):
                         if Portable in entity.attributes:
                             if not gi.gt.inventory.get_entity_by_name(objname):
                                 gi.event_stream.push(NeedToAcquire(objnames=[objname], groundtruth=True))
-                                return None
+                                return None, None
                         else:  # need to navigate to this object
                             if not gi.gt.player_location.get_entity_by_name(objname):
                                 gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=True))
-                                return None
+                                return None, None
             act = StandaloneAction(" ".join(enhanced_instr_words))
             self.remove_step(instr)
             if with_objs:
                 for obj in with_objs:
                     self.remove_required_obj(obj)
                 gi.event_stream.push(NoLongerNeed(objnames=with_objs, groundtruth=True))
-            return act
-        return None
+            return act, instr
+        return None, None
 
     def take_control(self, gi: GameInstance):
         obs = yield
@@ -231,8 +232,9 @@ class GTEnder(DecisionModule):
                 gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
                 self.deactivate()
                 return None
-            step = self.convert_next_instruction_to_action(gi)
+            step, instr = self.convert_next_instruction_to_action(gi)
             if step:
+                task = SingleActionTask(step, description=instr)
                 response = yield step
                 success = self.check_response(response)
             else:

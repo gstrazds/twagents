@@ -32,20 +32,20 @@ class TestTask(unittest.TestCase):
         subtasks = [Task("Task1"), Task("Task2"), Task("Task3")]
         p = cls(subtasks)
         self.assertEqual(len(p.tasks), 3)
-        self.assertFalse(p.done)
+        self.assertFalse(p.is_done)
         for t in subtasks:
             t._done = True
-        self.assertTrue(p.done)
+        self.assertTrue(p.is_done)
         subtasks[1]._done = False
-        self.assertTrue(p.done)
+        self.assertTrue(p.is_done)
         p.reset()
-        self.assertFalse(p.done)
+        self.assertFalse(p.is_done)
         subtasks[1]._done = True
-        self.assertTrue(p.done)
+        self.assertTrue(p.is_done)
         p.reset_all()
-        self.assertFalse(p.done)
+        self.assertFalse(p.is_done)
         for t in subtasks:
-            self.assertFalse(t.done, "reset_all() should also reset all subtasks")
+            self.assertFalse(t.is_done, "reset_all() should also reset all subtasks")
 
     def test_composite_done(self):
         self._check_composite_done(ParallelTasks)

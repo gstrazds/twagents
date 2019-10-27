@@ -18,7 +18,7 @@ class TaskExecutor(DecisionModule):
         self.task_stack = []  # stack of currently active tasks (of which the top most is currently in control)
         self.task_queue = []  # tasks waiting to begin
         self.completed_tasks = []
-        self._action_generator = None
+        # self._action_generator = None
 
     def get_eagerness(self, gi: GameInstance):
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
@@ -34,14 +34,14 @@ class TaskExecutor(DecisionModule):
         if not self._active:
             print("TaskExec: ACTIVATING.")
         self._active = True
-        self._eagerness = 0.5
+        self._eagerness = 0.9
 
     def deactivate(self):
         if self._active:
             print("TaskExec: DEACTIVATING.")
         self._active = False
         self._eagerness = 0.0
-        self._action_generator = None
+        # self._action_generator = None
 
     def queue_task(self, task: Task):
         print(f"TaskExec.queue_task({task})")
@@ -59,9 +59,11 @@ class TaskExecutor(DecisionModule):
 
     def pop_task(self, task: Task = None):
         popped = self.task_queue.pop()
+        print(f"TaskExec.pop_task({task})")
         if task:
             assert task == popped
-        self._action_generator = None
+            # task.deactivate()
+        # self._action_generator = None
         return popped
 
     def process_event(self, event, gi: GameInstance):
@@ -93,13 +95,14 @@ class TaskExecutor(DecisionModule):
         pass
 
     def _activate_next_task(self, gi: GameInstance):
-        assert self._action_generator is None, "Shouldn't be called if a task is already active"
+        # assert self._action_generator is None, "Shouldn't be called if a task is already active"
         if not self.task_stack:
             if self.task_queue:
                 next_task = self.task_queue.pop(0)
                 self.push_task(next_task)
         if self.task_stack:
-            self._action_generator = self.task_stack[0].generate_actions(gi)
+            # self._action_generator = self.task_stack[0].generate_actions(gi)
+            self.task_stack[0].activate(gi)
 
     def take_control(self, gi: GameInstance):
         observation = yield   # a newly activated decision module always gets a .send(None) first. Ignore it.
@@ -112,9 +115,9 @@ class TaskExecutor(DecisionModule):
         assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
         self._activate_next_task(gi)
         failed_counter = 0
-        while self._action_generator:
+        while self.task_stack and self.task_stack[0].is_active:
             try:
-                next_action = self.action_generator.send(observation)
+                next_action = self.task_stack[0].get_next_action(observation, gi)   # _action_generator.send(observation)
                 if not next_action:
                     failed_counter += 1
                 if failed_counter > 10:
@@ -125,9 +128,11 @@ class TaskExecutor(DecisionModule):
                 print(f"[NAIL] (generate_next_action): ({str(self.task_stack[0])} -> |{next_action}|")
                 if next_action:
                     observation = yield next_action
-            except StopIteration:  # current task is stopping (might be .done, paused missing preconditions, or failed)
-                if self.task_stack[0].done:
-                    self.completed_tasks.append(self.pop_task())
+            except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed)
+                if self.task_stack[0].is_done:
+                    t = self.pop_task()
+                    t.deactivate(gi)
+                    self.completed_tasks.append(t)
                     self._activate_next_task(gi)
         self.deactivate()
         return None

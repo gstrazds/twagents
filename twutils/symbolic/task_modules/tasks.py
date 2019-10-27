@@ -10,6 +10,8 @@ class SingleActionTask(Task):
     def __init__(self, act: Action, description=None):
         if not description:
             description = f"SingleActionTask[{str(act)}]"
+        else:
+            description = f"SingleActionTask['{description}']"
         super().__init__(description=description)
         self.action = act
 
@@ -19,10 +21,11 @@ class SingleActionTask(Task):
     def check_result(self, result: str, gi: GameInstance) -> bool:
         return True
 
-    def generate_actions(self, gi) -> Action:
+    def _generate_actions(self, gi) -> Action:
         """ Generates a sequence of actions.
         :type gi: GameInstance
         """
+        ignored = yield   # required handshake
         all_satisfied, missing = self.check_preconditions(gi)
         if all_satisfied:
             result = yield self.action

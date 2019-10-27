@@ -146,8 +146,8 @@ class NailAgent():
     decision modules. The modules then update how eager they are to take control.
 
     """
-    def __init__(self, seed, env, rom_name, output_subdir='.'):
-        self.setup_logging(rom_name, output_subdir)
+    def __init__(self, seed, rom_name, env_name, output_subdir='.'):
+        self.setup_logging(env_name, output_subdir)
         gv.rng.seed(seed)
         gv.dbg("RandomSeed: {}".format(seed))
         observed_knowledge_graph  = knowledge_graph.KnowledgeGraph()
@@ -174,8 +174,9 @@ class NailAgent():
         self.action_generator = None
         self.first_step       = True
         self._valid_detector  = None  #LearnedValidDetector()
-        if env and rom_name:
-            self.env = env
+        if env_name and rom_name:
+            self.rom_name = rom_name
+            self.env_name = env_name
             self.step_num = 0
 
     def setup_logging(self, rom_name, output_subdir):
@@ -239,7 +240,7 @@ class NailAgent():
             # world = World.from_facts(facts)
             # add obs_facts to our KnowledgeGraph (self.gi.kg)
             pass
-        if self.env and getattr(self.env, 'get_player_location', None):
+        if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
             if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
