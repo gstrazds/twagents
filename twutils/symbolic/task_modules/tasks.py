@@ -29,7 +29,7 @@ class SingleActionTask(Task):
         all_satisfied, missing = self.check_preconditions(gi)
         if all_satisfied:
             result = yield self.action
-            if self.check_result(result):
+            if self.check_result(result, gi):
                 self._done = True
             else:
                 self._failed = True

@@ -1,7 +1,13 @@
 import unittest
 
 from symbolic.task import *
+from symbolic.task_modules import SingleActionTask
+from symbolic.action import StandaloneAction
 
+action1 = StandaloneAction('action1')
+action2 = StandaloneAction('action2')
+action3 = StandaloneAction('action3')
+action4 = StandaloneAction('action4')
 
 class TestTask(unittest.TestCase):
     def test_list_int(self):
@@ -64,6 +70,16 @@ class TestTask(unittest.TestCase):
         self.assertEqual(len(missing.required_locations), 0)
         self.assertEqual(len(missing.required_tasks), 1)
         self.assertEqual(missing.required_tasks[0], subt2)
+
+    def test_singleaction(self):
+        t = SingleActionTask(act=action1)
+        gen1 = t.activate(None)
+        print(gen1)
+        act = t.get_next_action("nothing to see here", None)
+        self.assertIs(act, action1)
+        next = t.get_next_action("should be done now", None)
+        self.assertIsNone(next)
+        self.assertFalse(t.is_active)
 
 
 if __name__ == '__main__':

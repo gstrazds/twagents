@@ -116,24 +116,31 @@ class TaskExecutor(DecisionModule):
         self._activate_next_task(gi)
         failed_counter = 0
         while self.task_stack and self.task_stack[0].is_active:
-            try:
-                next_action = self.task_stack[0].get_next_action(observation, gi)   # _action_generator.send(observation)
-                if not next_action:
-                    failed_counter += 1
+            # try:
+            next_action = self.task_stack[0].get_next_action(observation, gi)   # _action_generator.send(observation)
+            if not next_action:
+            #     failed_counter += 1
+            # if failed_counter > 10:
+            #     dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
+                break
+                # self.deactivate()
+                # return None
+            print(f"[NAIL] (generate_next_action): ({str(self.task_stack[0])} -> |{next_action}|")
+            if next_action:
+                observation = yield next_action
+            # except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed)
+            if self.task_stack[0].is_done:
+                t = self.pop_task()
+                t.deactivate(gi)
+                self.completed_tasks.append(t)
+                self._activate_next_task(gi)
+            else:
+                failed_counter += 1
                 if failed_counter > 10:
                     dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
-                    break
-                    # self.deactivate()
-                    # return None
-                print(f"[NAIL] (generate_next_action): ({str(self.task_stack[0])} -> |{next_action}|")
-                if next_action:
-                    observation = yield next_action
-            except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed)
-                if self.task_stack[0].is_done:
-                    t = self.pop_task()
-                    t.deactivate(gi)
-                    self.completed_tasks.append(t)
-                    self._activate_next_task(gi)
+                break
+                # self.deactivate()
+                # return None
         self.deactivate()
         return None
 

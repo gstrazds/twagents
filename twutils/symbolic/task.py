@@ -67,7 +67,9 @@ class Task:
         return None
 
     def activate(self, gi):
+        print(f"{self} ACTIVATING")
         self._action_generator = self._generate_actions(gi) #proxy waiting for.send(obs) at initial "ignored = yield"
+        self._action_generator.send(None)
         return self._action_generator
 
     def deactivate(self, gi):
@@ -75,10 +77,13 @@ class Task:
         self._action_generator = None
 
     def get_next_action(self, observation, gi) -> Action:
-        act = None
+        # act = None
         gen = self._action_generator
         if gen:
-            act = gen.send(observation)
+            try:
+                act = gen.send(observation)
+            except StopIteration:
+                act = None
             if not act:
                 self.deactivate(gi)
         else:
