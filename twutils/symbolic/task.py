@@ -135,6 +135,7 @@ class SequentialTasks(CompositeTask):
     def get_current_task(self, gi):
         if self.tasks and 0 <= self._current_idx < len(self.tasks):
             return self.tasks[self._current_idx]
+        # print("SequentialTasks.get_current_task(idx={}) => None (tasks:{})".format(self._current_idx, self.tasks))
         return None
 
     def activate(self, gi):
@@ -147,7 +148,7 @@ class SequentialTasks(CompositeTask):
         t = self.get_current_task(gi)
         if t:
             t.deactivate(gi)
-        super.deactivate(gi)
+        super().deactivate(gi)
 
     @property
     def is_done(self) -> bool:
@@ -169,7 +170,7 @@ class SequentialTasks(CompositeTask):
         else:
             if self.tasks[self._current_idx].is_done:
                 self._current_idx += 1  # move on to the next task, if there is one
-                if self._current_idx < self.tasks:
+                if self._current_idx < len(self.tasks):
                     self.activate(gi)  # reactivate with new current task
                     return self.get_next_action(observation, gi)  # RECURSE to next Task
                 else:

@@ -4,10 +4,9 @@ from symbolic.task import *
 from symbolic.task_modules import SingleActionTask
 from symbolic.action import StandaloneAction
 
-action1 = StandaloneAction('action1')
-action2 = StandaloneAction('action2')
-action3 = StandaloneAction('action3')
-action4 = StandaloneAction('action4')
+
+def create_simple_tasks(start_num=1, count=4):
+    return [SingleActionTask(act=StandaloneAction(f"action{i}")) for i in range(start_num, start_num+count)]
 
 class TestTask(unittest.TestCase):
     def test_list_int(self):
@@ -72,6 +71,7 @@ class TestTask(unittest.TestCase):
         self.assertEqual(missing.required_tasks[0], subt2)
 
     def test_singleaction(self):
+        action1 = StandaloneAction('action1')
         t = SingleActionTask(act=action1)
         gen1 = t.activate(None)
         print(gen1)
@@ -81,6 +81,64 @@ class TestTask(unittest.TestCase):
         self.assertIsNone(next)
         self.assertFalse(t.is_active)
 
+    def test_sequential(self):
+        tasklist = create_simple_tasks(start_num=1, count=4)
+        t1,t2,t3,t4 = tasklist
+        self.assertFalse(t1.is_done)
+        self.assertFalse(t2.is_done)
+        self.assertFalse(t3.is_done)
+        self.assertFalse(t4.is_done)
+        mt = SequentialTasks(tasklist)
+        mt.activate(None)
+        obsnum = 0
+        while mt.is_active:
+            obsnum += 1
+            act = mt.get_next_action(f"obs:{obsnum}", None)
+            if act:
+                self.assertEqual(act.verb, f"action{obsnum}")
+            else:
+                self.assertEqual(obsnum, len(tasklist)+1)
+        self.assertFalse(mt.is_active)
+        self.assertTrue(mt.is_done)
+        self.assertTrue(t1.is_done)
+        self.assertFalse(t1.is_active)
+        self.assertTrue(t2.is_done)
+        self.assertFalse(t2.is_active)
+        self.assertTrue(t3.is_done)
+        self.assertFalse(t4.is_active)
+        self.assertTrue(t4.is_done)
+        self.assertFalse(t4.is_active)
+
+    def test_sequential_nested(self):
+        t0 = SingleActionTask(act=StandaloneAction("action0"))
+        tasks1 = create_simple_tasks(start_num=1, count=4)
+        t5 = SingleActionTask(act=StandaloneAction("action5"))
+        t6 = SingleActionTask(act=StandaloneAction("action6"))
+        tasks2 = create_simple_tasks(start_num=7, count=3)
+        mt1 = SequentialTasks(tasks1)
+        mt2 = SequentialTasks(tasks2)
+        tasklist = [t0, mt1, t5, t6, mt2]
+        mt = SequentialTasks(tasklist)
+        mt.activate(None)
+        obsnum = 0
+        done_tasks = []
+        while mt.is_active:
+            # print("+++NESTED SEQ OBSNUM: ", obsnum)
+            act = mt.get_next_action(f"obs:{obsnum}", None)
+            if act:
+                self.assertEqual(act.verb, f"action{obsnum}")
+            else:
+                self.assertEqual(obsnum, len(tasklist)+len(tasks1)+len(tasks2)-2)
+            obsnum += 1
+        self.assertFalse(mt.is_active)
+        self.assertTrue(mt.is_done)
+        self.assertTrue(mt1.is_done)
+        self.assertFalse(mt1.is_active)
+        self.assertTrue(mt2.is_done)
+        self.assertFalse(mt2.is_active)
+        for t in done_tasks:
+            self.assertTrue(t.is_done)
+            self.assertFalse(t.is_active)
 
 if __name__ == '__main__':
     unittest.main()
