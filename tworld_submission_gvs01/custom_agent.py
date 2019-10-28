@@ -417,6 +417,36 @@ class WordVocab:
         return res_str
 
 
+def parse_gameid(game_id: str) -> str:
+    segments = game_id.split('-')
+    if len(segments) >= 4:
+        code, guid = segments[2:4]
+        guid = guid.split('.')[0]
+        guid = "{}..{}".format(guid[0:4],guid[-4:])
+        segments = code.split('+')
+        r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
+        for seg in segments:
+            if seg.startswith('recipe'):
+                r = seg[len('recipe'):]
+            elif seg.startswith('go'):
+                g = seg[len('go'):]
+            elif seg.startswith('take'):
+                t = seg[len('take'):]
+            elif seg == 'cook':
+                k = 'k'
+            elif seg == 'cut':
+                c = 'c'
+            elif seg == 'open':
+                o = 'o'
+            elif seg == 'drop':
+                d = 'd'
+            else:
+                assert False, "unparsable game_id: {}".format(game_id)
+        shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
+    else:
+        shortcode = game_id
+    return shortcode
+
 class CustomAgent:
     def __init__(self):
         """
@@ -569,14 +599,18 @@ class CustomAgent:
         self.scores = []
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
-        self.agents = [
-            NailAgent(
-                self.config['general']['random_seed'],
-                "TW", #env
-                "n_{}".format(infos['game_id'][idx] if 'game_id' in infos else idx),
-
-            ) for idx in range(len(obs))
-        ]
+        self.agents = []
+        for idx in range(len(obs)):
+            if 'game_id' in infos:
+                game_id = parse_gameid(infos['game_id'][idx])
+            else:
+                game_id = str(idx)
+            self.agents.append(
+                NailAgent(
+                    self.config['general']['random_seed'],  #seed
+                    "TW",     # rom_name
+                    game_id)  # env_name
+            )
 
         self.vocab.init_with_infos(infos)
         self.prev_obs = obs
@@ -649,7 +683,7 @@ class CustomAgent:
                     prevaction = self.prev_actions[idx]
                     agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
                     # Output this step.
-                    print("<Step {}> observe: [{}]{}  Action [{}]   Score {}\nobs::".format(
+                    print("<Step {}> [{}]{}  Action: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
                         prevaction, scores[idx],)) # obs[idx]))
