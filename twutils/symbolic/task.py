@@ -15,9 +15,11 @@ class Task:
     """ Base class for Tasks. """
     def __init__(self, description='', use_groundtruth=False):
         self._done = False
+        self._failed = False
         self.use_groundtruth = use_groundtruth
         self.description = description
         self.prereq = Preconditions()
+        self.missing = Preconditions()
         self._action_generator = None  # generator: current state of self._generate_actions()
 
     @property
@@ -28,8 +30,13 @@ class Task:
     def is_active(self) -> bool:
         return self._action_generator is not None
 
+    @property
+    def has_failed(self) -> bool:
+        return self._failed
+
     def reset(self):
         self._done = False
+        self._failed = False
         self._action_generator = None
 
     def check_preconditions(self, kg) -> (bool, Preconditions):
@@ -57,7 +64,8 @@ class Task:
             not missing.required_objects and \
             not missing.required_locations and \
             not missing.required_tasks
-        return all_satisfied, missing
+        self.missing = missing
+        return all_satisfied
 
     def _generate_actions(self, gi) -> Action:
         """ Generates a sequence of actions.
@@ -126,11 +134,18 @@ class CompositeTask(Task):
         super().reset()
 
 
-
 class SequentialTasks(CompositeTask):
     def __init__(self, tasks: List[Task], description=None):
         super().__init__(tasks, description=description)
         self._current_idx = 0
+
+    def reset_all(self):
+        self._current_idx = 0
+        super().reset_all()
+
+    def reset(self):
+        self._current_idx = 0
+        super().reset()
 
     def get_current_task(self, gi):
         if self.tasks and 0 <= self._current_idx < len(self.tasks):

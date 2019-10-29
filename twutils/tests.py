@@ -1,9 +1,12 @@
 import unittest
 
 from symbolic.task import *
-from symbolic.task_modules import SingleActionTask
+from symbolic.task_modules import SingleActionTask, SequentialActionsTask
 from symbolic.action import StandaloneAction
 
+
+def sequential_actions_task(start_num=1, count=4):
+    return SequentialActionsTask(actions=[StandaloneAction(f"action{i}") for i in range(start_num, start_num+count)])
 
 def create_simple_tasks(start_num=1, count=4):
     return [SingleActionTask(act=StandaloneAction(f"action{i}")) for i in range(start_num, start_num+count)]
@@ -62,13 +65,13 @@ class TestTask(unittest.TestCase):
         subt2 = Task("Task_sub2")
         t.prereq.required_tasks += [subt1, subt2]
         subt1._done = True
-        all_satisf, missing = t.check_preconditions(None)
+        all_satisf = t.check_preconditions(None)
         self.assertFalse(all_satisf)
-        self.assertEqual(len(missing.required_inventory), 0)
-        self.assertEqual(len(missing.required_objects), 0)
-        self.assertEqual(len(missing.required_locations), 0)
-        self.assertEqual(len(missing.required_tasks), 1)
-        self.assertEqual(missing.required_tasks[0], subt2)
+        self.assertEqual(len(t.missing.required_inventory), 0)
+        self.assertEqual(len(t.missing.required_objects), 0)
+        self.assertEqual(len(t.missing.required_locations), 0)
+        self.assertEqual(len(t.missing.required_tasks), 1)
+        self.assertEqual(t.missing.required_tasks[0], subt2)
 
     def test_singleaction(self):
         action1 = StandaloneAction('action1')
@@ -81,7 +84,23 @@ class TestTask(unittest.TestCase):
         self.assertIsNone(next)
         self.assertFalse(t.is_active)
 
-    def test_sequential(self):
+    def test_sequential_actions(self):
+        count = 4
+        mt = sequential_actions_task(start_num=1, count=count)
+        mt.activate(None)
+        obsnum = 0
+        while mt.is_active:
+            obsnum += 1
+            act = mt.get_next_action(f"obs:{obsnum}", None)
+            if act:
+                self.assertEqual(act.verb, f"action{obsnum}")
+            else:
+                self.assertEqual(obsnum, count+1)
+        self.assertFalse(mt.is_active)
+        self.assertTrue(mt.is_done)
+        self.assertFalse(mt.has_failed)
+
+    def test_sequential_tasks(self):
         tasklist = create_simple_tasks(start_num=1, count=4)
         t1,t2,t3,t4 = tasklist
         self.assertFalse(t1.is_done)
@@ -99,6 +118,7 @@ class TestTask(unittest.TestCase):
             else:
                 self.assertEqual(obsnum, len(tasklist)+1)
         self.assertFalse(mt.is_active)
+        self.assertFalse(mt.has_failed)
         self.assertTrue(mt.is_done)
         self.assertTrue(t1.is_done)
         self.assertFalse(t1.is_active)
@@ -131,6 +151,7 @@ class TestTask(unittest.TestCase):
                 self.assertEqual(obsnum, len(tasklist)+len(tasks1)+len(tasks2)-2)
             obsnum += 1
         self.assertFalse(mt.is_active)
+        self.assertFalse(mt.has_failed)
         self.assertTrue(mt.is_done)
         self.assertTrue(mt1.is_done)
         self.assertFalse(mt1.is_active)

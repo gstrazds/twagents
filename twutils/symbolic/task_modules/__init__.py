@@ -1,1 +1,1 @@
-from .tasks import SingleActionTask
+from .tasks import SingleActionTask, SequentialActionsTask
