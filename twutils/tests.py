@@ -137,7 +137,8 @@ class TestTask(unittest.TestCase):
         tasks2 = create_simple_tasks(start_num=7, count=3)
         mt1 = SequentialTasks(tasks1)
         mt2 = SequentialTasks(tasks2)
-        tasklist = [t0, mt1, t5, t6, mt2]
+        mt3 = sequential_actions_task(start_num=10, count=5)
+        tasklist = [t0, mt1, t5, t6, mt2, mt3]
         mt = SequentialTasks(tasklist)
         mt.activate(None)
         obsnum = 0
@@ -148,15 +149,20 @@ class TestTask(unittest.TestCase):
             if act:
                 self.assertEqual(act.verb, f"action{obsnum}")
             else:
-                self.assertEqual(obsnum, len(tasklist)+len(tasks1)+len(tasks2)-2)
+                self.assertEqual(obsnum, len(tasklist)+len(tasks1)+len(tasks2)+len(mt3.actions)-3)
             obsnum += 1
         self.assertFalse(mt.is_active)
         self.assertFalse(mt.has_failed)
         self.assertTrue(mt.is_done)
         self.assertTrue(mt1.is_done)
         self.assertFalse(mt1.is_active)
+        self.assertFalse(mt.has_failed)
         self.assertTrue(mt2.is_done)
         self.assertFalse(mt2.is_active)
+        self.assertFalse(mt2.has_failed)
+        self.assertTrue(mt2.is_done)
+        self.assertFalse(mt2.is_active)
+        self.assertFalse(mt2.has_failed)
         for t in done_tasks:
             self.assertTrue(t.is_done)
             self.assertFalse(t.is_active)
