@@ -21,12 +21,10 @@ class DecisionModule(ABC):
         for event in gi.event_stream.read():
             self.process_event(event, gi)
 
-
     def get_eagerness(self, gi: GameInstance):
         """ Returns a float in [0,1] indicating how eager this module is to take
         control. """
         return self._eagerness
-
 
     def record(self, action_successful):
         """ Record whether an action succeeds or fails. """

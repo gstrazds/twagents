@@ -3,8 +3,6 @@
 from symbolic.event import *
 from symbolic.action import Action
 from symbolic.location import Location, Inventory
-from fuzzywuzzy import fuzz
-
 
 class KnowledgeGraph:
     """
@@ -27,21 +25,6 @@ class KnowledgeGraph:
         """ Adds a new location object and broadcasts a NewLocation event. """
         self._locations.append(new_location)
         return NewLocationEvent(new_location, groundtruth=self.groundtruth)
-
-    def most_similar_location(self, description):
-        """ Returns the location with the highest similarity to the given description. """
-        possible_name = Location.extract_name(description)
-        existing_locs = self.locations_with_name(possible_name)
-        if not existing_locs:
-            existing_locs = self._locations
-        most_similar = None
-        best_similarity = 0
-        for loc in existing_locs:
-            similarity = fuzz.partial_ratio(loc.description, description)
-            if similarity > best_similarity:
-                best_similarity = similarity
-                most_similar = loc
-        return most_similar
 
     def locations_with_name(self, location_name):
         """ Returns all locations with a particular name. """

@@ -1,4 +1,5 @@
 import re
+from fuzzywuzzy import fuzz
 from symbolic import gv
 # from symbolic import event
 # from symbolic.game import GameInstance
@@ -21,6 +22,14 @@ def tokenize(description):
 def clean(s):
     """ Clean a string for compact output. """
     return s.replace('\n', ' ').strip()
+
+
+def text_similarity(str1: str, str2: str, substring_match=False):
+    if substring_match:
+        similarity = fuzz.partial_ratio(str1, str2)
+    else:
+        similarity = fuzz.ratio(str1, str2)
+    return similarity
 
 
 # This list covers the common paterns. However, some games like

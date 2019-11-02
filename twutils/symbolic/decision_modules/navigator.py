@@ -4,7 +4,30 @@ from ..decision_module import DecisionModule
 from ..knowledge_graph import *
 from ..action import *
 from ..gv import rng, dbg
-from ..util import tokenize
+from ..util import tokenize, text_similarity
+
+
+def _most_similar_loc(description, loc_list):
+    """Returns the location from loc_list with that best matches the
+    provided description."""
+    most_similar = None
+    best_similarity = 0
+    for loc in loc_list:
+        similarity = text_similarity(loc.description, description, substring_match=True)
+        if similarity > best_similarity:
+            best_similarity = similarity
+            most_similar = loc
+    return most_similar
+
+
+def find_most_similar_location(description, kg):
+    """ Returns the location with the highest similarity to the given description. """
+    possible_name = Location.extract_name(description)
+    existing_locs = kg.locations_with_name(possible_name)
+    if not existing_locs:
+        existing_locs = kg._locations
+    return _most_similar_loc(description, existing_locs)
+
 
 
 class Navigator(DecisionModule):
@@ -108,23 +131,10 @@ class Navigator(DecisionModule):
         dbg("[NAV] Trying random action: {}".format(act))
         return act
 
-
-    def find_most_similar_loc(self, description, loc_list):
-        """Returns the location from loc_list with that best matches the
-        provided description."""
-        most_similar = None
-        best_similarity = 0
-        for loc in loc_list:
-            similarity = fuzz.partial_ratio(loc.description, description)
-            if similarity > best_similarity:
-                best_similarity = similarity
-                most_similar = loc
-        return most_similar
-
     def relocalize(self, description, gi: GameInstance):
         """Resets the player's location to location best matching the
         provided description, creating a new location if needed. """
-        loc = gi.kg.most_similar_location(description)
+        loc = find_most_similar_location(description, gi.kg)
         if loc:
             dbg("[NAV](relocalizing) \"{}\" to {}".format(description, loc))
             gi.kg.set_player_location(loc, gi)
@@ -163,7 +173,7 @@ class Navigator(DecisionModule):
             # If multiple locations match, we need the most similar
             if len(existing_locs) > 1:
                 look = yield Look
-                existing_loc = self.find_most_similar_loc(look, existing_locs)
+                existing_loc = _most_similar_loc(look, existing_locs)
             else:
                 existing_loc = existing_locs[0]
             dbg("[NAV](revisited-location) {}".format(existing_loc.name))
@@ -188,8 +198,8 @@ class Navigator(DecisionModule):
 
             look = yield Look
 
-            p_stay = fuzz.ratio(look, curr_loc.description) / 100.
-            p_move = fuzz.ratio(look, response) / 100.
+            p_stay = text_similarity(look, curr_loc.description) / 100.
+            p_move = text_similarity(look, response) / 100.
             moved = p_move > p_stay
             dbg("[NAV]({}) p={} {} --> {}".format(
                 'val' if moved else 'inv', p_move, action, response))
@@ -200,7 +210,7 @@ class Navigator(DecisionModule):
                 existing_locs = gi.kg.locations_with_name(possible_loc_name)
                 if existing_locs:
                     if len(existing_locs) > 1:
-                        existing_loc = self.find_most_similar_loc(look, existing_locs)
+                        existing_loc = _most_similar_loc(look, existing_locs)
                     else:
                         existing_loc = existing_locs[0]
                     dbg("[NAV](revisited-location) {}".format(existing_loc.name))

@@ -1,9 +1,9 @@
 # from typing import Optional
-from fuzzywuzzy import fuzz
 # from symbolic import gv
 from .gv import logger
 from .game import GameInstance
 from .action import Action
+from .util import text_similarity
 # from .event import NewEntityEvent, NewActionRecordEvent
 
 
@@ -81,7 +81,7 @@ class Location:
 
         """
         for entity in self.entities:
-            if fuzz.partial_ratio(entity.description, entity_description) > 95:
+            if text_similarity(entity.description, entity_description, substring_match=True) > 95:
                 return entity
         return None
 
