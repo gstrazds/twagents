@@ -206,7 +206,6 @@ class TestTask(unittest.TestCase):
         print("......... TaskExecutor queue 3 SingleActionTasks ...")
         gi = GameInstance()
         te = TaskExecutor()
-        StandaloneAction('action1')
         t1 = SingleActionTask(act=StandaloneAction('act1'))
         t2 = SingleActionTask(act=StandaloneAction('act2'))
         t3 = SingleActionTask(act=StandaloneAction('act3'))
@@ -228,6 +227,104 @@ class TestTask(unittest.TestCase):
         # te.deactivate()
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
+
+    def test_taskexec_stack(self):
+        print("......... TaskExecutor stack 3 SingleActionTasks ...")
+        gi = GameInstance()
+        te = TaskExecutor()
+        t1 = SingleActionTask(act=StandaloneAction('act1'))
+        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t3 = SingleActionTask(act=StandaloneAction('act3'))
+        te.push_task(t1)
+        te.push_task(t2)
+        te.push_task(t3)
+        te.activate()
+        action_gen = te.take_control(gi)
+        action_gen.send(None)  # handshake: decision_module protocol
+        for counter, act in enumerate(action_gen):
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act3")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 2:
+                self.assertEqual(act.verb, "act1")
+        self.assertEqual(counter, 2)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
+
+    def test_taskexec_task_prereq(self):
+        print("......... TaskExecutor task with prereqs ...")
+        chain_prereqs = 2
+
+        def _consume_event_stream(module, gi):
+            print("CONSUME EVENTS")
+            module.process_event_stream(gi)
+            gi.event_stream.clear()
+
+        def _generate_next_action(action_generator, module, gi, observation):
+            """Returns the action selected by the current active module and
+            selects a new active module if the current one is finished.
+
+            """
+            next_action = None
+            failed_counter = 0
+
+            while not next_action:
+                if failed_counter > chain_prereqs+1:  #TODO: FIXME -- this number must be increased for chained prereqs
+                    print(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
+                    return None
+                try:
+                    # next_action = action_generator.send(observation)
+                    next_action = action_generator.send(None)
+                    _consume_event_stream(module, gi)
+
+                except StopIteration:
+                    pass
+                    # _consume_event_stream(module, gi)
+                failed_counter += 1
+            return next_action
+
+        gi = GameInstance()
+        te = TaskExecutor()
+        t1 = SingleActionTask(act=StandaloneAction('act1'))
+        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t3 = SingleActionTask(act=StandaloneAction('act3'))
+        t4 = SingleActionTask(act=StandaloneAction('act4'))
+        if chain_prereqs:
+            t1.prereq.required_tasks.append(t4)
+            t4.prereq.required_tasks.append(t3)
+            t3.prereq.required_tasks.append(t2)
+        else:
+            t1.prereq.required_tasks.append(t2)
+            t1.prereq.required_tasks.append(t3)
+            t1.prereq.required_tasks.append(t4)
+
+        te.queue_task(t1)
+        te.activate()
+        action_gen = te.take_control(gi)
+        print("SENDING INITIAL None")
+        action_gen.send(None)  # handshake: decision_module protocol
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act3")
+            elif counter == 2:
+                self.assertEqual(act.verb, "act4")
+            elif counter == 3:
+                self.assertEqual(act.verb, "act1")
+        self.assertEqual(counter, 4)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

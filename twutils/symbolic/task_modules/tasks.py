@@ -26,6 +26,7 @@ class SequentialActionsTask(Task):
         missing = self.missing
         if missing.required_tasks:
             for task in reversed(missing.required_tasks):
+                print(f"PUSHING EVENT for precondition {task}")
                 gi.event_stream.push(NeedToDo(task, groundtruth=self.use_groundtruth))
         elif missing.required_inventory:
             gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
@@ -48,17 +49,13 @@ class SequentialActionsTask(Task):
         """
         ignored = yield   # required handshake
         while self._current_idx < len(self.actions) and not self._failed:
-            all_satisfied = self.check_preconditions(gi)
-            if all_satisfied:
-                result = yield self.actions[self._current_idx]
-                self._current_idx += 1
-                if self.check_result(result, gi):
-                    if self._current_idx >= len(self.actions):
-                        self._done = True
-                else:
-                    self._failed = True
+            result = yield self.actions[self._current_idx]
+            self._current_idx += 1
+            if self.check_result(result, gi):
+                if self._current_idx >= len(self.actions):
+                    self._done = True
             else:
-                self.signal_missing_preconditions(gi)
+                self._failed = True
         return None
 
 

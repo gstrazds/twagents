@@ -77,11 +77,11 @@ class GTRecipeReader(DecisionModule):
                 if not is_in_ingredients:
                     unneeded_inventory.append(entity)
 
+            self.ingredients = ingredients
             for entity in unneeded_inventory:
                 response = yield Drop(entity)
             for entity_name in already_in_inventory:
                 ingredients.remove(entity_name)
-            self.ingredients = ingredients
             gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
         start_of_directions = start_of_ingredients + i + 1
         if start_of_directions < len(recipe_lines):

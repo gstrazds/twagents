@@ -65,6 +65,8 @@ class Task:
             not missing.required_locations and \
             not missing.required_tasks
         self.missing = missing
+        if not all_satisfied:
+            print(f"check_precondittions => missing:{missing}")
         return all_satisfied
 
     def _generate_actions(self, gi) -> Action:
