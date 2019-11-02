@@ -24,8 +24,8 @@ class TaskExecutor(DecisionModule):
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
         if self.task_stack or self.task_queue:  # if we have some tasks that need to be done
             if not self.task_stack:  # if nothing currently active, move a task from pending to active
-                self._activate_next_task(gi)
-            self.activate()
+                if self._activate_next_task(gi):
+                    self.activate()
         else:
             self.deactivate()
         return self._eagerness
@@ -49,7 +49,7 @@ class TaskExecutor(DecisionModule):
 
     def cancel_queued_task(self, task: Task):
         print(f"TaskExec.cancel_queued_task({task})")
-        self.task_stack.discard(task)
+        self.task_queue.discard(task)
 
     def push_task(self, task: Task):
         assert task not in self.task_queue
@@ -58,7 +58,7 @@ class TaskExecutor(DecisionModule):
         self.task_stack.append(task)
 
     def pop_task(self, task: Task = None):
-        popped = self.task_queue.pop()
+        popped = self.task_stack.pop()
         print(f"TaskExec.pop_task({task})")
         if task:
             assert task == popped
@@ -103,6 +103,8 @@ class TaskExecutor(DecisionModule):
         if self.task_stack:
             # self._action_generator = self.task_stack[0].generate_actions(gi)
             self.task_stack[0].activate(gi)
+            return True
+        return False
 
     def take_control(self, gi: GameInstance):
         observation = yield   # a newly activated decision module always gets a .send(None) first. Ignore it.
@@ -112,35 +114,36 @@ class TaskExecutor(DecisionModule):
         if not self._active:
             self._eagerness = 0.0
             return None  #ends the generator
-        assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
         self._activate_next_task(gi)
+        # assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
         failed_counter = 0
         while self.task_stack and self.task_stack[0].is_active:
             # try:
             next_action = self.task_stack[0].get_next_action(observation, gi)   # _action_generator.send(observation)
-            if not next_action:
+            # if not next_action:
             #     failed_counter += 1
             # if failed_counter > 10:
             #     dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
-                break
+            #     break
                 # self.deactivate()
                 # return None
-            print(f"[NAIL] (generate_next_action): ({str(self.task_stack[0])} -> |{next_action}|")
+            print(f"[TaskExecutor] (generate_next_action): ({str(self.task_stack[0])} -> |{next_action}|")
             if next_action:
                 observation = yield next_action
             # except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed)
-            if self.task_stack[0].is_done:
-                t = self.pop_task()
-                t.deactivate(gi)
-                self.completed_tasks.append(t)
-                self._activate_next_task(gi)
             else:
-                failed_counter += 1
-                if failed_counter > 10:
-                    dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
-                break
-                # self.deactivate()
-                # return None
+                if self.task_stack[0].is_done:
+                    t = self.pop_task()
+                    t.deactivate(gi)
+                    self.completed_tasks.append(t)
+                    self._activate_next_task(gi)
+                else:
+                    failed_counter += 1
+                    if failed_counter > 10:
+                        dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
+                    break
+                    # self.deactivate()
+                    # return None
         self.deactivate()
         return None
 

@@ -3,6 +3,9 @@ import unittest
 from symbolic.task import *
 from symbolic.task_modules import SingleActionTask, SequentialActionsTask
 from symbolic.action import StandaloneAction
+from symbolic.decision_modules import TaskExecutor
+from symbolic.game import GameInstance
+from symbolic .knowledge_graph import KnowledgeGraph
 
 
 def sequential_actions_task(start_num=1, count=4):
@@ -166,6 +169,65 @@ class TestTask(unittest.TestCase):
         for t in done_tasks:
             self.assertTrue(t.is_done)
             self.assertFalse(t.is_active)
+
+    def test_taskexec(self):
+        print("\n----- testing TaskExecutor------")
+        gi = GameInstance()
+        te = TaskExecutor()
+        te.activate()
+        self.assertTrue(te._active)
+        action_gen = te.take_control(gi)
+        action_gen.send(None)   #handshake: decision_module protocol
+        for counter, act in enumerate(action_gen):
+            print(counter, act)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
+
+    def test_taskexec_act1(self):
+        print("......... TaskExecutor with one SingleActionTask ...")
+        gi = GameInstance()
+        te = TaskExecutor()
+        StandaloneAction('action1')
+        t = SingleActionTask(act=StandaloneAction('act1'))
+        te.push_task(t)
+        te.activate()
+        action_gen = te.take_control(gi)
+        action_gen.send(None)   #handshake: decision_module protocol
+        for counter, act in enumerate(action_gen):
+            print(counter, act)
+            self.assertEqual(counter, 0)
+            self.assertEqual(act.verb, "act1")
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
+
+    def test_taskexec_queue(self):
+        print("......... TaskExecutor queue 3 SingleActionTasks ...")
+        gi = GameInstance()
+        te = TaskExecutor()
+        StandaloneAction('action1')
+        t1 = SingleActionTask(act=StandaloneAction('act1'))
+        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t3 = SingleActionTask(act=StandaloneAction('act3'))
+        te.queue_task(t1)
+        te.queue_task(t2)
+        te.queue_task(t3)
+        te.activate()
+        action_gen = te.take_control(gi)
+        action_gen.send(None)  # handshake: decision_module protocol
+        for counter, act in enumerate(action_gen):
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act1")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 2:
+                self.assertEqual(act.verb, "act3")
+        self.assertEqual(counter, 2)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
 
 if __name__ == '__main__':
     unittest.main()

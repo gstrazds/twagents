@@ -152,7 +152,7 @@ class NailAgent():
         gv.dbg("RandomSeed: {}".format(seed))
         observed_knowledge_graph  = knowledge_graph.KnowledgeGraph()
         groundtruth_graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
-        self.gi = GameInstance(observed_knowledge_graph, groundtruth_graph)
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.gt_nav = GTNavigator(False)

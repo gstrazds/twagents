@@ -31,7 +31,7 @@ def get_unrecognized(action, response):
 
 
 class GameInstance:
-    def __init__(self, kg, gt):  # kg : knowledge_graph.KnowledgeGraph
+    def __init__(self, kg=None, gt=None):  # kg : knowledge_graph.KnowledgeGraph
         self.event_stream = event.EventStream()
         self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]
         #
