@@ -371,6 +371,36 @@ class TestTask(unittest.TestCase):
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
+    def test_taskexec_missing_location(self):
+        print("......... TaskExecutor prereq location ...")
+
+        gi = GameInstance()
+        te = TaskExecutor()
+        t1 = SingleActionTask(act=StandaloneAction('act1'))
+        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t1.prereq.required_tasks.append(t2)
+        t2.prereq.required_locations.append("kitchen")
+
+        te.queue_task(t1)
+        te.activate()
+        action_gen = te.take_control(gi)
+        action_gen.send(None)  # handshake: decision_module protocol
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act1")
+        self.assertEqual(counter, 0)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertFalse(t1.is_done)
+        self.assertFalse(t2.is_done)
+        self.assertEqual(te.get_eagerness(gi), 0)
+
 if __name__ == '__main__':
     unittest.main()
-    

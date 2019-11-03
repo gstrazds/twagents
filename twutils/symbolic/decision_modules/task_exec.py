@@ -8,6 +8,11 @@ from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..gv import dbg
 
+def _check_preconditions(task: Task, gi: GameInstance) -> bool:
+    use_groundtruth = task.use_groundtruth
+    kg = gi.gt if task.use_groundtruth else gi.kg
+    return task.check_preconditions(kg)
+
 
 class TaskExecutor(DecisionModule):
     """
@@ -81,19 +86,19 @@ class TaskExecutor(DecisionModule):
         self.push_task(next_task)
         self._activate_next_task(gi)
 
-    def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance):
+    def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
         if missing.required_tasks:
             for task in reversed(missing.required_tasks):
                 print(f"handle precondition: {task}")
                 self.start_prereq_task(task, gi)
+        elif missing.required_locations:
+             loc = random.choice(missing.required_locations)
+             gi.event_stream.push(NeedToGoTo(loc, groundtruth=use_groundtruth))
         # elif missing.required_inventory:
         #     gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
         # elif missing.required_objects:
         #     obj = random.choice(missing.required_objects)
         #     gi.event_stream.push(NeedToFind(obj, groundtruth=self.use_groundtruth))
-        # elif missing.required_locations:
-        #     loc = random.choice(missing.required_locations)
-        #     gi.event_stream.push(NeedToGoTo(loc, groundtruth=self.use_groundtruth))
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
@@ -133,9 +138,10 @@ class TaskExecutor(DecisionModule):
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
             activating_task.activate(gi)
-            if not activating_task.check_preconditions(gi):
+            if not _check_preconditions(activating_task, gi):
                 print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
-                self.handle_missing_preconditions(activating_task.missing, gi)
+                self.handle_missing_preconditions(activating_task.missing, gi,
+                                                  use_groundtruth=activating_task.use_groundtruth)
             return True
         return False
 
@@ -156,13 +162,14 @@ class TaskExecutor(DecisionModule):
         while self.task_stack and self.task_stack[-1].is_active:
             # try:
             active_task = self.task_stack[-1]
-            all_satisfied = active_task.check_preconditions(gi)
+            all_satisfied = _check_preconditions(active_task, gi)
             if all_satisfied:
                 next_action = active_task.get_next_action(observation,gi)
             else:
                 print(f"TaskExecutor {active_task} has unsatisfied preconditions:\n{active_task.missing}")
 
-                self.handle_missing_preconditions(active_task.missing, gi)
+                self.handle_missing_preconditions(active_task.missing, gi,
+                                                  use_groundtruth=active_task.use_groundtruth)
                 next_action = None
 
             # if not next_action:
