@@ -10,6 +10,18 @@ class Preconditions:
         self.required_locations = []   # need to be at one of these locations
         self.required_tasks = []   # list of tasks that need to be done before this one should be attempted
 
+    def __str__(self):
+        desc_str = ""
+        if self.required_inventory:
+            desc_str += f"inventory: {self.required_inventory}\n"
+        if self.required_objects:
+            desc_str += f"objects: {self.required_objects}\n"
+        if self.required_locations:
+            desc_str += f"locations: {self.required_locations}\n"
+        if self.required_tasks:
+            desc_str += f"tasks: {self.required_tasks}\n"
+        return desc_str[:-1]
+
 
 class Task:
     """ Base class for Tasks. """
@@ -65,8 +77,6 @@ class Task:
             not missing.required_locations and \
             not missing.required_tasks
         self.missing = missing
-        if not all_satisfied:
-            print(f"check_precondittions => missing:{missing}")
         return all_satisfied
 
     def _generate_actions(self, gi) -> Action:

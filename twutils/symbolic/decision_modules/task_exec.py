@@ -133,6 +133,7 @@ class TaskExecutor(DecisionModule):
             activating_task = self.task_stack[-1]
             activating_task.activate(gi)
             if not activating_task.check_preconditions(gi):
+                print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
                 self.handle_missing_preconditions(activating_task.missing, gi)
             return True
         return False
@@ -158,6 +159,8 @@ class TaskExecutor(DecisionModule):
             if all_satisfied:
                 next_action = active_task.get_next_action(observation,gi)
             else:
+                print(f"TaskExecutor {active_task} has unsatisfied preconditions:\n{active_task.missing}")
+
                 self.handle_missing_preconditions(active_task.missing, gi)
                 next_action = None
 
