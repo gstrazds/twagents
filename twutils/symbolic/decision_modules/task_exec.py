@@ -62,7 +62,7 @@ class TaskExecutor(DecisionModule):
 
     def pop_task(self, task: Task = None):
         popped = self.task_stack.pop()
-        print(f"TaskExec.pop_task({task})")
+        print(f"TaskExec.pop_task({task}) => {popped}")
         if task:
             assert task == popped
             # task.deactivate()
@@ -74,6 +74,7 @@ class TaskExecutor(DecisionModule):
         assert pretask not in self.task_stack
         if pretask in self.task_queue:
             # required task is already queued: activate it now
+            print(f"...removing prereq task {pretask} from task_queue...")
             next_task = self.task_queue.pop(self.task_queue.index(pretask))
         else:
             next_task = pretask
@@ -83,7 +84,7 @@ class TaskExecutor(DecisionModule):
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance):
         if missing.required_tasks:
             for task in reversed(missing.required_tasks):
-                print(f"PUSHING precondition {task}")
+                print(f"handle precondition: {task}")
                 self.start_prereq_task(task, gi)
         # elif missing.required_inventory:
         #     gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
@@ -171,7 +172,7 @@ class TaskExecutor(DecisionModule):
             #     break
                 # self.deactivate()
                 # return None
-            print(f"[TaskExecutor] (generate_next_action): ({str(self.task_stack[-1])} -> |{next_action}|")
+            print(f"[TaskExecutor] (generate_next_action) active:{str(self.task_stack[-1])} -> |{next_action}|")
             if next_action:
                 observation = yield next_action
                 print(f"RECEIVED observation={observation}")
@@ -179,6 +180,7 @@ class TaskExecutor(DecisionModule):
             # except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed):
                 if self.task_stack[-1].is_done:
                     t = self.pop_task()
+                    print(f"    (popped because {t}.is_done)")
                     t.deactivate(gi)
                     self.completed_tasks.append(t)
                     self._activate_next_task(gi)

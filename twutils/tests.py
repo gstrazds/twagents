@@ -331,6 +331,46 @@ class TestTask(unittest.TestCase):
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
+    def test_taskexec_task_prereq_queued(self):
+        print("......... TaskExecutor task with queued prereqs ...")
+        chain_prereqs = 1
+
+        gi = GameInstance()
+        te = TaskExecutor()
+        t1 = SingleActionTask(act=StandaloneAction('act1'))
+        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t3 = SingleActionTask(act=StandaloneAction('act3'))
+        t4 = SingleActionTask(act=StandaloneAction('act4'))
+        t1.prereq.required_tasks.append(t4)
+        t4.prereq.required_tasks.append(t3)
+        t3.prereq.required_tasks.append(t2)
+
+        te.push_task(t1)
+        te.queue_task(t4)
+        te.queue_task(t2)
+        te.activate()
+        action_gen = te.take_control(gi)
+        print("SENDING INITIAL None")
+        action_gen.send(None)  # handshake: decision_module protocol
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act3")
+            elif counter == 2:
+                self.assertEqual(act.verb, "act4")
+            elif counter == 3:
+                self.assertEqual(act.verb, "act1")
+        self.assertEqual(counter, 4)
+        # te.deactivate()
+        self.assertFalse(te._active)
+        self.assertEqual(te.get_eagerness(gi), 0)
 
 if __name__ == '__main__':
     unittest.main()
+    
