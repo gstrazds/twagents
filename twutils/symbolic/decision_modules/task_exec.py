@@ -1,5 +1,6 @@
 import random
 from ..decision_module import DecisionModule
+from ..action import NoAction
 from ..event import NeedToDo
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
 from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind  #, AlreadyDone
@@ -69,7 +70,7 @@ class TaskExecutor(DecisionModule):
         return popped
 
     def start_prereq_task(self, pretask, gi: GameInstance):
-        print("GT Need To Do:", pretask)
+        print("start_prereq_task:", pretask)
         assert pretask not in self.task_stack
         if pretask in self.task_queue:
             # required task is already queued: activate it now
@@ -137,10 +138,11 @@ class TaskExecutor(DecisionModule):
         return False
 
     def take_control(self, gi: GameInstance):
+        observation = yield #NoAction
         print("++++TaskExecutor.take_control")
-        observation = yield   # a newly activated decision module always gets a .send(None) first. Ignore it.
         print("RECEIVED:", observation)
-        assert observation is None, f"TaskExec.take_control() got initial observation={observation}"
+        # assert observation is None, f"TaskExec.take_control() got initial observation={observation}"
+        print(f"TaskExec.take_control() got initial observation={observation}")
         assert self._active, \
             f"TaskExec.take_control() shouldn't be happening: _active={self._active}, _eagerness={self._eagerness}"
         if not self._active:
@@ -169,6 +171,7 @@ class TaskExecutor(DecisionModule):
             print(f"[TaskExecutor] (generate_next_action): ({str(self.task_stack[-1])} -> |{next_action}|")
             if next_action:
                 observation = yield next_action
+                print(f"RECEIVED observation={observation}")
             else:
             # except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed):
                 if self.task_stack[-1].is_done:

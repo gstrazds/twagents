@@ -14,6 +14,36 @@ def sequential_actions_task(start_num=1, count=4):
 def create_simple_tasks(start_num=1, count=4):
     return [SingleActionTask(act=StandaloneAction(f"action{i}")) for i in range(start_num, start_num+count)]
 
+
+def _consume_event_stream(module, gi):
+    print("CONSUME EVENTS")
+    module.process_event_stream(gi)
+    gi.event_stream.clear()
+
+
+def _generate_next_action(action_generator, module, gi, observation):
+    """Returns the action selected by the current active module and
+    selects a new active module if the current one is finished.
+
+    """
+    next_action = None
+    failed_counter = 0
+
+    while not next_action:
+        if failed_counter > 1:  # chain_prereqs+1:  #FIXED -- no longer needs to be increased for chained prereqs
+            print(f"[tests] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
+            return None
+        try:
+            _consume_event_stream(module, gi)
+            next_action = action_generator.send(observation)  # None)
+
+        except StopIteration:
+            pass
+            # _consume_event_stream(module, gi)
+        failed_counter += 1
+    return next_action
+
+
 class TestTask(unittest.TestCase):
     def test_list_int(self):
         """
@@ -178,7 +208,11 @@ class TestTask(unittest.TestCase):
         self.assertTrue(te._active)
         action_gen = te.take_control(gi)
         action_gen.send(None)   #handshake: decision_module protocol
-        for counter, act in enumerate(action_gen):
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
             print(counter, act)
         # te.deactivate()
         self.assertFalse(te._active)
@@ -257,34 +291,6 @@ class TestTask(unittest.TestCase):
     def test_taskexec_task_prereq(self):
         print("......... TaskExecutor task with prereqs ...")
         chain_prereqs = 1
-
-        def _consume_event_stream(module, gi):
-            print("CONSUME EVENTS")
-            module.process_event_stream(gi)
-            gi.event_stream.clear()
-
-        def _generate_next_action(action_generator, module, gi, observation):
-            """Returns the action selected by the current active module and
-            selects a new active module if the current one is finished.
-
-            """
-            next_action = None
-            failed_counter = 0
-
-            while not next_action:
-                if failed_counter > 1: #chain_prereqs+1:  #TODO: FIXME -- this number must be increased for chained prereqs
-                    print(f"[tests] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
-                    return None
-                try:
-                    # next_action = action_generator.send(observation)
-                    _consume_event_stream(module, gi)
-                    next_action = action_generator.send(None)
-
-                except StopIteration:
-                    pass
-                    # _consume_event_stream(module, gi)
-                failed_counter += 1
-            return next_action
 
         gi = GameInstance()
         te = TaskExecutor()

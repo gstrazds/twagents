@@ -63,6 +63,14 @@ class StandaloneAction(Action):
     def text(self):
         return self.verb
 
+class NoAction(Action):
+    """ An dummy action that should be ignored. """
+    def __init__(self):
+        super().__init__("<NOOP>")
+
+    def text(self):
+        return self.verb
+
 
 class SingleAction(Action):
     """ An action of the form: verb entity. """
