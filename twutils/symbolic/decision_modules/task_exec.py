@@ -1,9 +1,10 @@
+import random
 from ..decision_module import DecisionModule
 from ..event import NeedToDo
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
 from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind  #, AlreadyDone
 from ..game import GameInstance
-from ..task import Task, ParallelTasks, SequentialTasks
+from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..gv import dbg
 
 
@@ -67,19 +68,36 @@ class TaskExecutor(DecisionModule):
         # self._action_generator = None
         return popped
 
+    def start_prereq_task(self, pretask, gi: GameInstance):
+        print("GT Need To Do:", pretask)
+        assert pretask not in self.task_stack
+        if pretask in self.task_queue:
+            # required task is already queued: activate it now
+            next_task = self.task_queue.pop(self.task_queue.index(pretask))
+        else:
+            next_task = pretask
+        self.push_task(next_task)
+        self._activate_next_task(gi)
+
+    def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance):
+        if missing.required_tasks:
+            for task in reversed(missing.required_tasks):
+                print(f"PUSHING precondition {task}")
+                self.start_prereq_task(task, gi)
+        # elif missing.required_inventory:
+        #     gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
+        # elif missing.required_objects:
+        #     obj = random.choice(missing.required_objects)
+        #     gi.event_stream.push(NeedToFind(obj, groundtruth=self.use_groundtruth))
+        # elif missing.required_locations:
+        #     loc = random.choice(missing.required_locations)
+        #     gi.event_stream.push(NeedToGoTo(loc, groundtruth=self.use_groundtruth))
+
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         print("PROCESS EVENT: ", event)
         if isinstance(event, NeedToDo):
-            print("GT Need To Do:", event.task)
-            assert event.task not in self.task_stack
-            if event.task in self.task_queue:
-                # required task is already queued: activate it now
-                next_task = self.task_queue.pop(self.task_queue.index(event.task))
-            else:
-                next_task = event.task
-            self.push_task(next_task)
-            self._activate_next_task(gi)
+            self.start_prereq_task(event.task, gi)
 
         # if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
         #     print("GT complete", event)
@@ -111,7 +129,10 @@ class TaskExecutor(DecisionModule):
                 self.push_task(next_task)
         if self.task_stack:
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
-            self.task_stack[-1].activate(gi)
+            activating_task = self.task_stack[-1]
+            activating_task.activate(gi)
+            if not activating_task.check_preconditions(gi):
+                self.handle_missing_preconditions(activating_task.missing, gi)
             return True
         return False
 
@@ -135,7 +156,7 @@ class TaskExecutor(DecisionModule):
             if all_satisfied:
                 next_action = active_task.get_next_action(observation,gi)
             else:
-                active_task.signal_missing_preconditions(gi)
+                self.handle_missing_preconditions(active_task.missing, gi)
                 next_action = None
 
             # if not next_action:
@@ -159,7 +180,7 @@ class TaskExecutor(DecisionModule):
                     yield None
                     failed_counter += 1
                     if failed_counter > 10:
-                        dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
+                        print(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
                         break
                     # self.deactivate()
                     # return None

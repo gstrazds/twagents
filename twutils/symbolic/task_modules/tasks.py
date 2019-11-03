@@ -1,4 +1,3 @@
-import random
 from typing import List
 from ..event import NeedToGoTo, NeedToAcquire, NeedToFind, NeedToDo
 from ..task import Task
@@ -21,21 +20,6 @@ class SequentialActionsTask(Task):
     def reset(self):
         self._current_idx = 0
         super().reset()
-
-    def signal_missing_preconditions(self, gi: GameInstance):
-        missing = self.missing
-        if missing.required_tasks:
-            for task in reversed(missing.required_tasks):
-                print(f"PUSHING EVENT for precondition {task}")
-                gi.event_stream.push(NeedToDo(task, groundtruth=self.use_groundtruth))
-        elif missing.required_inventory:
-            gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
-        elif missing.required_objects:
-            obj = random.choice(missing.required_objects)
-            gi.event_stream.push(NeedToFind(obj, groundtruth=self.use_groundtruth))
-        elif missing.required_locations:
-            loc = random.choice(missing.required_locations)
-            gi.event_stream.push(NeedToGoTo(loc, groundtruth=self.use_groundtruth))
 
     def check_postconditions(self, gi: GameInstance) -> bool:
         return True

@@ -256,7 +256,7 @@ class TestTask(unittest.TestCase):
 
     def test_taskexec_task_prereq(self):
         print("......... TaskExecutor task with prereqs ...")
-        chain_prereqs = 2
+        chain_prereqs = 1
 
         def _consume_event_stream(module, gi):
             print("CONSUME EVENTS")
@@ -272,13 +272,13 @@ class TestTask(unittest.TestCase):
             failed_counter = 0
 
             while not next_action:
-                if failed_counter > chain_prereqs+1:  #TODO: FIXME -- this number must be increased for chained prereqs
-                    print(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
+                if failed_counter > 1: #chain_prereqs+1:  #TODO: FIXME -- this number must be increased for chained prereqs
+                    print(f"[tests] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
                     return None
                 try:
                     # next_action = action_generator.send(observation)
-                    next_action = action_generator.send(None)
                     _consume_event_stream(module, gi)
+                    next_action = action_generator.send(None)
 
                 except StopIteration:
                     pass
