@@ -28,23 +28,36 @@ class TaskExecutor(DecisionModule):
         self.completed_tasks = []
         # self._action_generator = None
 
+    def _have_a_runnable_task(self, gi: GameInstance):
+        if self.task_stack:
+            active_task = self.task_stack[-1]
+            all_satisfied = _check_preconditions(active_task, gi)
+            if all_satisfied:
+                return True
+        return False
+
     def get_eagerness(self, gi: GameInstance):
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
         if self.task_stack or self.task_queue:  # if we have some tasks that need to be done
             if not self.task_stack:  # if nothing currently active, move a task from pending to active
                 if self._activate_next_task(gi):
-                    self.activate()
+                    self.activate(gi)
         else:
-            self.deactivate()
+            self.deactivate(gi)
         return self._eagerness
 
-    def activate(self):
+    def activate(self, gi: GameInstance):
         if not self._active:
-            print("TaskExec: ACTIVATING.")
-        self._active = True
-        self._eagerness = 0.9
+            print("TaskExecutor: ACTIVATING?...", end='')
+            self._activate_next_task(gi)
+            if self._have_a_runnable_task(gi):
+                print("ACTIVATING!")
+                self._active = True
+                self._eagerness = 0.9
+            else:
+                print("no runnable task, canceling TaskExecutor activation/")
 
-    def deactivate(self):
+    def deactivate(self, gi: GameInstance):
         if self._active:
             print("TaskExec: DEACTIVATING.")
         self._active = False
@@ -137,12 +150,13 @@ class TaskExecutor(DecisionModule):
         if self.task_stack:
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
-            activating_task.activate(gi)
+            if not activating_task.is_active:
+                activating_task.activate(gi)
             if not _check_preconditions(activating_task, gi):
                 print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
                 self.handle_missing_preconditions(activating_task.missing, gi,
                                                   use_groundtruth=activating_task.use_groundtruth)
-            return True
+            return self.task_stack and self.task_stack[-1].is_active
         return False
 
     def take_control(self, gi: GameInstance):
@@ -151,8 +165,9 @@ class TaskExecutor(DecisionModule):
         print("RECEIVED:", observation)
         # assert observation is None, f"TaskExec.take_control() got initial observation={observation}"
         print(f"TaskExec.take_control() got initial observation={observation}")
-        assert self._active, \
-            f"TaskExec.take_control() shouldn't be happening: _active={self._active}, _eagerness={self._eagerness}"
+        # assert self._active, \
+        if not self._active:
+            f"WARNING!: TaskExec.take_control() shouldn't be happening: _active={self._active}, _eagerness={self._eagerness}"
         if not self._active:
             self._eagerness = 0.0
             return None  #ends the generator
@@ -177,7 +192,7 @@ class TaskExecutor(DecisionModule):
             # if failed_counter > 10:
             #     dbg(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
             #     break
-                # self.deactivate()
+                # self.deactivate(gi)
                 # return None
             print(f"[TaskExecutor] (generate_next_action) active:{str(self.task_stack[-1])} -> |{next_action}|")
             if next_action:
@@ -197,8 +212,8 @@ class TaskExecutor(DecisionModule):
                     if failed_counter > 10:
                         print(f"[TaskExec] generate_next_action FAILED {failed_counter} times! => self.deactivate()")
                         break
-                    # self.deactivate()
+                    # self.deactivate(gi)
                     # return None
-        self.deactivate()
+        self.deactivate(gi)
         return None
 

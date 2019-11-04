@@ -204,8 +204,8 @@ class TestTask(unittest.TestCase):
         print("\n----- testing TaskExecutor------")
         gi = GameInstance()
         te = TaskExecutor()
-        te.activate()
-        self.assertTrue(te._active)
+        te.activate(gi)
+        self.assertFalse(te._active)
         action_gen = te.take_control(gi)
         action_gen.send(None)   #handshake: decision_module protocol
         counter = -1
@@ -214,7 +214,8 @@ class TestTask(unittest.TestCase):
             if not act:
                 break
             print(counter, act)
-        # te.deactivate()
+            # self.assertIsNone(act)
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -225,14 +226,14 @@ class TestTask(unittest.TestCase):
         StandaloneAction('action1')
         t = SingleActionTask(act=StandaloneAction('act1'))
         te.push_task(t)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         action_gen.send(None)   #handshake: decision_module protocol
         for counter, act in enumerate(action_gen):
             print(counter, act)
             self.assertEqual(counter, 0)
             self.assertEqual(act.verb, "act1")
-        # te.deactivate()
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -246,10 +247,14 @@ class TestTask(unittest.TestCase):
         te.queue_task(t1)
         te.queue_task(t2)
         te.queue_task(t3)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         action_gen.send(None)  # handshake: decision_module protocol
-        for counter, act in enumerate(action_gen):
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
             print(counter, act)
             if counter == 0:
                 self.assertEqual(act.verb, "act1")
@@ -257,8 +262,8 @@ class TestTask(unittest.TestCase):
                 self.assertEqual(act.verb, "act2")
             elif counter == 2:
                 self.assertEqual(act.verb, "act3")
-        self.assertEqual(counter, 2)
-        # te.deactivate()
+        self.assertEqual(counter, 3)
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -272,7 +277,7 @@ class TestTask(unittest.TestCase):
         te.push_task(t1)
         te.push_task(t2)
         te.push_task(t3)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         action_gen.send(None)  # handshake: decision_module protocol
         for counter, act in enumerate(action_gen):
@@ -284,7 +289,7 @@ class TestTask(unittest.TestCase):
             elif counter == 2:
                 self.assertEqual(act.verb, "act1")
         self.assertEqual(counter, 2)
-        # te.deactivate()
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -308,7 +313,7 @@ class TestTask(unittest.TestCase):
             t1.prereq.required_tasks.append(t4)
 
         te.queue_task(t1)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         print("SENDING INITIAL None")
         action_gen.send(None)  # handshake: decision_module protocol
@@ -327,7 +332,7 @@ class TestTask(unittest.TestCase):
             elif counter == 3:
                 self.assertEqual(act.verb, "act1")
         self.assertEqual(counter, 4)
-        # te.deactivate()
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -348,7 +353,7 @@ class TestTask(unittest.TestCase):
         te.push_task(t1)
         te.queue_task(t4)
         te.queue_task(t2)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         print("SENDING INITIAL None")
         action_gen.send(None)  # handshake: decision_module protocol
@@ -367,7 +372,7 @@ class TestTask(unittest.TestCase):
             elif counter == 3:
                 self.assertEqual(act.verb, "act1")
         self.assertEqual(counter, 4)
-        # te.deactivate()
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
@@ -382,7 +387,7 @@ class TestTask(unittest.TestCase):
         t2.prereq.required_locations.append("kitchen")
 
         te.queue_task(t1)
-        te.activate()
+        te.activate(gi)
         action_gen = te.take_control(gi)
         action_gen.send(None)  # handshake: decision_module protocol
         counter = -1
@@ -396,7 +401,7 @@ class TestTask(unittest.TestCase):
             elif counter == 1:
                 self.assertEqual(act.verb, "act1")
         self.assertEqual(counter, 0)
-        # te.deactivate()
+        # te.deactivate(gi)
         self.assertFalse(te._active)
         self.assertFalse(t1.is_done)
         self.assertFalse(t2.is_done)
