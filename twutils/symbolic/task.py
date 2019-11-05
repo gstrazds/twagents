@@ -32,6 +32,8 @@ class Preconditions:
         return all_empty
 
     def check_current_state(self, kg):
+        if kg is None:
+            print("WARNING: Preconditions.check_current_state(kg==None)")
         missing = Preconditions()
         if self.required_inventory:
             for name in self.required_inventory:
@@ -129,11 +131,11 @@ class Task:
 
 
 class CompositeTask(Task):
-    def __init__(self, tasks: List[Task], description=None):
+    def __init__(self, tasks: List[Task], description=None, use_groundtruth=False):
         if not description:
             description = "{classname}{tasklist}".format(
                 classname=type(self).__name__, tasklist=str([t for t in tasks]))
-        super().__init__(description=description)
+        super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.tasks = tasks
 
     @property
@@ -156,8 +158,8 @@ class CompositeTask(Task):
 
 
 class SequentialTasks(CompositeTask):
-    def __init__(self, tasks: List[Task], description=None):
-        super().__init__(tasks, description=description)
+    def __init__(self, tasks: List[Task], description=None, use_groundtruth=False):
+        super().__init__(tasks, description=description, use_groundtruth=use_groundtruth)
         self._current_idx = 0
 
     def reset_all(self):
@@ -218,8 +220,8 @@ class SequentialTasks(CompositeTask):
 
 
 class ParallelTasks(CompositeTask):
-    def __init__(self, tasks: List[Task], description=None):
-        super().__init__(tasks, description=description)
+    def __init__(self, tasks: List[Task], description=None, use_groundtruth=False):
+        super().__init__(tasks, description=description, use_groundtruth=use_groundtruth)
 
     @property
     def is_done(self) -> bool:

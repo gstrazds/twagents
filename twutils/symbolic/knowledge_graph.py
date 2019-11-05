@@ -11,7 +11,7 @@ class KnowledgeGraph:
     """
     def __init__(self, groundtruth=False):
         self._locations          = []
-        self._player_location    = None
+        self._player_location    = Location("<UNKNOWN>")
         self._init_loc           = None
         self._inventory          = Inventory()
         self._connections        = ConnectionGraph()

@@ -377,15 +377,15 @@ class TestTask(unittest.TestCase):
         self.assertFalse(te._active)
         self.assertEqual(te.get_eagerness(gi), 0)
 
-    def test_taskexec_missing_location(self):
+    def test_taskexec_prereq_location(self):
         print("......... TaskExecutor missing prereq location ...")
         kg = KnowledgeGraph(groundtruth=True)
         gi = GameInstance(gt=kg)
         kitchen = Location(description="kitchen")
         kg.add_location(kitchen)
         te = TaskExecutor()
-        t1 = SingleActionTask(act=StandaloneAction('act1'))
-        t2 = SingleActionTask(act=StandaloneAction('act2'))
+        t1 = SingleActionTask(act=StandaloneAction('act1'), use_groundtruth=True)
+        t2 = SingleActionTask(act=StandaloneAction('act2'), use_groundtruth=True)
         t1.prereq.required_tasks.append(t2)
         t2.prereq.required_locations.append("kitchen")
 
@@ -433,11 +433,10 @@ class TestTask(unittest.TestCase):
         self.assertEqual(counter, 2)
         # te.deactivate(gi)
         self.assertFalse(te._active)
-        self.assertFalse(t1.is_done)
-        self.assertFalse(t2.is_done)
+        self.assertTrue(t1.is_done)
+        self.assertTrue(t2.is_done)
         self.assertEqual(te.get_eagerness(gi), 0)
-        self.assertGreater(len(te.task_stack), 0)
-        self.assertEqual(te.task_stack[-1], t2)
+        self.assertEqual(len(te.task_stack), 0)
 
 if __name__ == '__main__':
     unittest.main()
