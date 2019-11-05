@@ -157,7 +157,7 @@ class NailAgent():
         # gv.event_stream.clear()
         self.gt_nav = GTNavigator(False)
         self.modules = [
-                        TaskExecutor(),
+                        TaskExecutor(True),
                         GTEnder(True),
                         self.gt_nav,
                         GTRecipeReader(),

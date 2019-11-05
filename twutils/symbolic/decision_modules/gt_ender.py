@@ -3,7 +3,7 @@ from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, Look #, EatMeal
 from ..action import Portable
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
-from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind  #, AlreadyDone
+from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind, NeedToDo  #, AlreadyDone
 from ..task_modules import SingleActionTask
 from ..game import GameInstance
 # from ..util import first_sentence
@@ -130,8 +130,8 @@ class GTEnder(DecisionModule):
     def are_where_we_need_to_be(self, kg):
         if not self.recipe_steps:
             return True
-        if self.recipe_steps[0].startswith('prepare'):
-            return kg.player_location.name == 'kitchen'
+        # if self.recipe_steps[0].startswith('prepare'):
+        #     return kg.player_location.name == 'kitchen'
         return True
 
     def process_event(self, event, gi: GameInstance):
@@ -206,7 +206,10 @@ class GTEnder(DecisionModule):
                             if not gi.gt.player_location.get_entity_by_name(objname):
                                 gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=True))
                                 return None, None
-            act = StandaloneAction(" ".join(enhanced_instr_words))
+            if instr == 'prepare meal':  # explicit singleton for PrepareMeal
+                act = PrepareMeal
+            else:
+                act = StandaloneAction(" ".join(enhanced_instr_words))
             self.remove_step(instr)
             if with_objs:
                 for obj in with_objs:
@@ -235,8 +238,13 @@ class GTEnder(DecisionModule):
             step, instr = self.convert_next_instruction_to_action(gi)
             if step:
                 task = SingleActionTask(step, description=instr)
-                response = yield step
-                success = self.check_response(response)
+                if step == PrepareMeal:
+                    # gi.event_stream.push(NeedToDo(task, groundtruth=True))
+                    print("SHORTCIRCUITING PrepareMeal")
+                    success = True
+                else:
+                    response = yield step
+                    success = self.check_response(response)
             else:
                 print("GT Ender FAILED to convert next step to action", self.recipe_steps)
                 success = False
@@ -252,23 +260,33 @@ class GTEnder(DecisionModule):
     #     response = yield PrepareMeal
     #     # check to make sure meal object now exists in gi.gt.inventory
         meal = gi.gt.inventory.get_entity_by_name('meal')
-        success = meal is not None
+        have_meal = meal is not None
+
     #     self.record(success)
     #     #gv.dbg(
     #     print("[GT ENDER](1.success={}) {} --> {}".format(
     #         success, PrepareMeal, response))
-        if not success:
-            print("GTEnder FAILED TO PREPARE MEAL")
-            gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
-            if 'prepare meal' not in self.recipe_steps:
-                self.recipe_steps.append('prepare meal')
-            self.deactivate()
-            return None
-        act = Eat(meal)
-        response = yield act
-        # check to make sure meal object no longer exists in gi.gt.inventory
-        success = not gi.gt.inventory.has_entity_with_name('meal')
-        self.record(success)
-        #gv.dbg(
-        print("[GT ENDER](2.success={}) {} --> {}".format(
-            success, act, response))
+        if not have_meal:
+            print("GTEnder: FAILED TO PREPARE MEAL?")
+            # gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
+            # if 'prepare meal' not in self.recipe_steps:
+            #     self.recipe_steps.append('prepare meal')
+            eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=True)
+            prep = SingleActionTask(PrepareMeal, use_groundtruth=True)
+            prep.prereq.required_locations.append('kitchen')  # meals can be prepared only in the kitchen
+            eat.prereq.required_tasks.append(prep)
+        else:
+            eat = SingleActionTask(Eat(meal), use_groundtruth=True)
+
+        eat.prereq.required_inventory.append('meal')
+        gi.event_stream.push(NeedToDo(eat, groundtruth=True))
+
+        self.deactivate()
+        return None
+
+        # # check to make sure meal object no longer exists in gi.gt.inventory
+        # success = not gi.gt.inventory.has_entity_with_name('meal')
+        # self.record(success)
+        # #gv.dbg(
+        # print("[GT ENDER](2.success={}) {} --> {}".format(
+        #     success, act, response))

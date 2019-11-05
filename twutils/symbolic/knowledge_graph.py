@@ -39,7 +39,8 @@ class KnowledgeGraph:
         """ Changes player location and broadcasts a LocationChangedEvent. """
         if new_location == self._player_location:
             return False
-        gi.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
+        if new_location:
+            gi.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
         self._player_location = new_location
         return True
 

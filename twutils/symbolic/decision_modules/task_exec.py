@@ -37,6 +37,7 @@ class TaskExecutor(DecisionModule):
         return False
 
     def get_eagerness(self, gi: GameInstance):
+        print("TaskExecutor.get_eagerness => ", end='')
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
         if self.task_stack or self.task_queue:  # if we have some tasks that need to be done
             if not self.task_stack:  # if nothing currently active, move a task from pending to active
@@ -44,16 +45,17 @@ class TaskExecutor(DecisionModule):
                     self.activate(gi)
         else:
             self.deactivate(gi)
+        print(self._eagerness)
         return self._eagerness
 
     def activate(self, gi: GameInstance):
-        if not self._active:
+        if True or not self._active:
             print("TaskExecutor: ACTIVATING?...", end='')
             self._activate_next_task(gi)
             if self._have_a_runnable_task(gi):
                 print("ACTIVATING!")
                 self._active = True
-                self._eagerness = 0.9
+                self._eagerness = 0.96  # higher than GTEnder
             else:
                 print("no runnable task, canceling TaskExecutor activation/")
 
@@ -87,7 +89,7 @@ class TaskExecutor(DecisionModule):
         # self._action_generator = None
         return popped
 
-    def start_prereq_task(self, pretask, gi: GameInstance):
+    def start_prereq_task(self, pretask, gi: GameInstance) -> bool:
         print("start_prereq_task:", pretask)
         assert pretask not in self.task_stack
         if pretask in self.task_queue:
@@ -97,7 +99,7 @@ class TaskExecutor(DecisionModule):
         else:
             next_task = pretask
         self.push_task(next_task)
-        self._activate_next_task(gi)
+        return self._activate_next_task(gi)
 
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
         if missing.required_tasks:
@@ -115,9 +117,10 @@ class TaskExecutor(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        print("PROCESS EVENT: ", event)
+        print("TaskExecutor PROCESS EVENT: ", event)
         if isinstance(event, NeedToDo):
             self.start_prereq_task(event.task, gi)
+            self.activate(gi)
 
         # if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
         #     print("GT complete", event)
