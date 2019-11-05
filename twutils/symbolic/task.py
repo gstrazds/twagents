@@ -22,6 +22,37 @@ class Preconditions:
             desc_str += f"tasks: {self.required_tasks}\n"
         return desc_str[:-1]
 
+    @property
+    def is_empty(self) -> bool:
+        all_empty = \
+            not self.required_inventory and \
+            not self.required_objects and \
+            not self.required_locations and \
+            not self.required_tasks
+        return all_empty
+
+    def check_current_state(self, kg):
+        missing = Preconditions()
+        if self.required_inventory:
+            for name in self.required_inventory:
+                if not kg or not kg.inventory.has_entity_with_name(name):
+                    missing.required_inventory.append(name)
+        if self.required_objects:
+            for name in self.required_objects:
+                if kg and kg.player_location.has_entity_with_name(name):
+                    missing.required_objects.clear()
+                    break  # we only need one: declare that none are missing
+                else:
+                    missing.required_objects.append(name)
+        if self.required_locations and \
+                (not kg or kg.player_location.name not in self.required_locations):
+            missing.required_locations += self.required_locations
+        # all(map(lambda t: t.is_done, self.prereq_tasks))
+        for t in self.required_tasks:
+            if not t.is_done:
+                missing.required_tasks.append(t)
+        return missing
+
 
 class Task:
     """ Base class for Tasks. """
@@ -52,32 +83,8 @@ class Task:
         self._action_generator = None
 
     def check_preconditions(self, kg) -> (bool, Preconditions):
-        missing = Preconditions()
-        if self.prereq.required_inventory:
-            for name in self.prereq.required_inventory:
-                if not kg or not kg.inventory.has_entity_with_name(name):
-                    missing.required_inventory.append(name)
-        if self.prereq.required_objects:
-            for name in self.prereq.required_objects:
-                if kg and kg.player_location.has_entity_with_name(name):
-                    missing.required_objects.clear()
-                    break  # we only need one: declare that none are missing
-                else:
-                    missing.required_objects.append(name)
-        if self.prereq.required_locations and \
-                (not kg or kg.player_location.name not in self.prereq.required_locations):
-            missing.required_locations += self.prereq.required_locations
-        # all(map(lambda t: t.is_done, self.prereq_tasks))
-        for t in self.prereq.required_tasks:
-            if not t.is_done:
-                missing.required_tasks.append(t)
-        all_satisfied = \
-            not missing.required_inventory and \
-            not missing.required_objects and \
-            not missing.required_locations and \
-            not missing.required_tasks
-        self.missing = missing
-        return all_satisfied
+        self.missing = self.prereq.check_current_state(kg)
+        return self.missing.is_empty
 
     def _generate_actions(self, gi) -> Action:
         """ Generates a sequence of actions.

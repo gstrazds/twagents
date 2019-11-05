@@ -5,7 +5,8 @@ from symbolic.task_modules import SingleActionTask, SequentialActionsTask
 from symbolic.action import StandaloneAction
 from symbolic.decision_modules import TaskExecutor
 from symbolic.game import GameInstance
-from symbolic .knowledge_graph import KnowledgeGraph
+from symbolic.knowledge_graph import KnowledgeGraph
+from symbolic.location import Location
 
 
 def sequential_actions_task(start_num=1, count=4):
@@ -377,9 +378,11 @@ class TestTask(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_missing_location(self):
-        print("......... TaskExecutor prereq location ...")
-
-        gi = GameInstance()
+        print("......... TaskExecutor missing prereq location ...")
+        kg = KnowledgeGraph(groundtruth=True)
+        gi = GameInstance(gt=kg)
+        kitchen = Location(description="kitchen")
+        kg.add_location(kitchen)
         te = TaskExecutor()
         t1 = SingleActionTask(act=StandaloneAction('act1'))
         t2 = SingleActionTask(act=StandaloneAction('act2'))
@@ -406,6 +409,35 @@ class TestTask(unittest.TestCase):
         self.assertFalse(t1.is_done)
         self.assertFalse(t2.is_done)
         self.assertEqual(te.get_eagerness(gi), 0)
+        self.assertGreater(len(te.task_stack), 0)
+        self.assertEqual(te.task_stack[-1], t2)
+
+        kg.set_player_location(kitchen, gi)
+
+        _consume_event_stream(te, gi)
+
+        te.activate(gi)
+        self.assertTrue(te._active)
+        action_gen = te.take_control(gi)
+        action_gen.send(None)  # handshake: decision_module protocol
+        counter = -1
+        for counter in range(100):
+            act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
+            if not act:
+                break
+            print(counter, act)
+            if counter == 0:
+                self.assertEqual(act.verb, "act2")
+            elif counter == 1:
+                self.assertEqual(act.verb, "act1")
+        self.assertEqual(counter, 2)
+        # te.deactivate(gi)
+        self.assertFalse(te._active)
+        self.assertFalse(t1.is_done)
+        self.assertFalse(t2.is_done)
+        self.assertEqual(te.get_eagerness(gi), 0)
+        self.assertGreater(len(te.task_stack), 0)
+        self.assertEqual(te.task_stack[-1], t2)
 
 if __name__ == '__main__':
     unittest.main()
