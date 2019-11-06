@@ -239,8 +239,8 @@ class GTEnder(DecisionModule):
             #     self.recipe_steps.append('prepare meal')
             eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=True)
             prep = SingleActionTask(PrepareMeal, use_groundtruth=True)
-            prep.prereq.required_locations.append('kitchen')  # meals can be prepared only in the kitchen
-            eat.prereq.required_tasks.append(prep)
+            prep.prereq.add_required_location('kitchen')  # meals can be prepared only in the kitchen
+            eat.prereq.add_required_task(prep)
         else:
             eat = SingleActionTask(Eat(meal), use_groundtruth=True)
 

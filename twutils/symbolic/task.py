@@ -22,6 +22,34 @@ class Preconditions:
             desc_str += f"tasks: {self.required_tasks}\n"
         return desc_str[:-1]
 
+    def add_required_item(self, item_name: str):
+        if item_name not in self.required_inventory:
+            self.required_inventory.append(item_name)
+            return True
+        else:
+            return False
+
+    def add_required_location(self, location_name: str):
+        if location_name not in self.required_locations:
+            self.required_locations.append(location_name)
+            return True
+        else:
+            return False
+
+    def add_required_object(self, object_name: str):
+        if object_name not in self.required_objects:
+            self.required_objects.append(object_name)
+            return True
+        else:
+            return False
+
+    def add_required_task(self, task):
+        if task not in self.required_tasks:
+            self.required_tasks.append(task)
+            return True
+        else:
+            return False
+
     @property
     def is_empty(self) -> bool:
         all_empty = \
@@ -124,7 +152,8 @@ class Task:
         return act
 
     def __str__(self):
-        return self.description
+        return "{} active:{} done:{} failed:{}".format(
+            self.description, self.is_active, self.is_done, self.has_failed)
 
     def __repr__(self):
         return str(self)

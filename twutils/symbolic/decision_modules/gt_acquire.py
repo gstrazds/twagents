@@ -131,7 +131,7 @@ class GTAcquire(DecisionModule):
                         else:
                             print("CAN'T DROP ANYTHING, NOTHING IN INVENTORY!!!")
                     else:
-                        print("WARNING: asdfad;lqwjerpoiu")
+                        print(f"SUCCESSFULLY ACQUIRED '{entityName}': {response}")
                         break
                 else: # can't take it, but we've found it, so consider it acquired...
                     self.remove_required_obj(entityName)
@@ -149,7 +149,7 @@ class GTAcquire(DecisionModule):
                 # assert False, f"Don't know GT location of {obj_to_find}"
                 self.remove_required_obj(obj_to_find)
                 gi.event_stream.push(NoLongerNeed([obj_to_find], groundtruth=True))
-                self._eagerness = 0
+                # self._eagerness = 0
         else:
             self._eagerness = 0
         return None  # terminate generator iteration

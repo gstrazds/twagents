@@ -1,8 +1,6 @@
 import random
 from ..decision_module import DecisionModule
-from ..event import NeedToDo
-from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
-from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind  #, AlreadyDone
+from ..event import NeedToDo, NeedToAcquire, NeedToFind, NeedToGoTo
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..gv import dbg
@@ -27,6 +25,21 @@ class TaskExecutor(DecisionModule):
         self.completed_tasks = []
         # self._action_generator = None
 
+    def print_state(self):
+        print("[[[[[ TaskExecutor:  ]]]]]")
+        print("[[       .task_stack:   ]]")
+        if not self.task_stack:
+            print("            EMPTY")
+        for t in self.task_stack:
+            print(t)
+        print("[[       .task_queue:   ]]")
+        if not self.task_queue:
+            print("            EMPTY")
+        for t in self.task_queue:
+            print(t)
+
+
+
     def _have_a_runnable_task(self, gi: GameInstance):
         if self.task_stack:
             active_task = self.task_stack[-1]
@@ -38,13 +51,16 @@ class TaskExecutor(DecisionModule):
     def get_eagerness(self, gi: GameInstance):
         print("TaskExecutor.get_eagerness => ", end='')
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
-        if self.task_stack or self.task_queue:  # if we have some tasks that need to be done
-            if not self.task_stack:  # if nothing currently active, move a task from pending to active
-                if self._activate_next_task(gi):
-                    self.activate(gi)
+        if self.task_stack or self.task_queue:  # if we have some tasks
+            if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
+                # if nothing currently active, move a task from pending to active
+                # if self._activate_next_task(gi):
+                self.activate(gi)
         else:
             self.deactivate(gi)
         print(self._eagerness)
+        if self._eagerness == 0:
+            self.print_state()
         return self._eagerness
 
     def activate(self, gi: GameInstance):
@@ -54,7 +70,7 @@ class TaskExecutor(DecisionModule):
             if self._have_a_runnable_task(gi):
                 print("ACTIVATING!")
                 self._active = True
-                self._eagerness = 0.96  # higher than GTEnder
+                self._eagerness = 0.7  # lower than GTAcquire -- #XXXhigher than GTEnder
             else:
                 print("no runnable task, canceling TaskExecutor activation/")
 
@@ -101,16 +117,18 @@ class TaskExecutor(DecisionModule):
         return self._activate_next_task(gi)
 
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
+        assert use_groundtruth is True
         if missing.required_tasks:
             for task in reversed(missing.required_tasks):
                 print(f"handle precondition: {task}")
                 self.start_prereq_task(task, gi)
-        elif missing.required_locations:
-             loc = random.choice(missing.required_locations)
-             gi.event_stream.push(NeedToGoTo(loc, groundtruth=use_groundtruth))
-        elif missing.required_inventory:
+        # else:
+        if missing.required_locations:
+            loc = random.choice(missing.required_locations)
+            gi.event_stream.push(NeedToGoTo(loc, groundtruth=use_groundtruth))
+        if missing.required_inventory:
             gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
-        elif missing.required_objects:
+        if missing.required_objects:
             obj = random.choice(missing.required_objects)
             gi.event_stream.push(NeedToFind(obj, groundtruth=use_groundtruth))
 
@@ -153,12 +171,12 @@ class TaskExecutor(DecisionModule):
         if self.task_stack:
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
-            if not activating_task.is_active:
+            if not activating_task.is_active and not activating_task.is_done:
                 activating_task.activate(gi)
-            if not _check_preconditions(activating_task, gi):
-                print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
-                self.handle_missing_preconditions(activating_task.missing, gi,
-                                                  use_groundtruth=activating_task.use_groundtruth)
+                if not _check_preconditions(activating_task, gi):
+                    print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
+                    self.handle_missing_preconditions(activating_task.missing, gi,
+                                                      use_groundtruth=activating_task.use_groundtruth)
             return self.task_stack and self.task_stack[-1].is_active
         return False
 
@@ -181,7 +199,7 @@ class TaskExecutor(DecisionModule):
             # try:
             active_task = self.task_stack[-1]
             all_satisfied = _check_preconditions(active_task, gi)
-            if all_satisfied:
+            if all_satisfied or active_task.is_done:
                 next_action = active_task.get_next_action(observation,gi)
             else:
                 print(f"TaskExecutor {active_task} has unsatisfied preconditions:\n{active_task.missing}")
