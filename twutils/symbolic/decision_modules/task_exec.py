@@ -1,6 +1,5 @@
 import random
 from ..decision_module import DecisionModule
-from ..action import NoAction
 from ..event import NeedToDo
 from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
 from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind  #, AlreadyDone
@@ -109,11 +108,12 @@ class TaskExecutor(DecisionModule):
         elif missing.required_locations:
              loc = random.choice(missing.required_locations)
              gi.event_stream.push(NeedToGoTo(loc, groundtruth=use_groundtruth))
-        # elif missing.required_inventory:
-        #     gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=self.use_groundtruth))
-        # elif missing.required_objects:
-        #     obj = random.choice(missing.required_objects)
-        #     gi.event_stream.push(NeedToFind(obj, groundtruth=self.use_groundtruth))
+        elif missing.required_inventory:
+            gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
+        elif missing.required_objects:
+            obj = random.choice(missing.required_objects)
+            gi.event_stream.push(NeedToFind(obj, groundtruth=use_groundtruth))
+
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """

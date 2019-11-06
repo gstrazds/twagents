@@ -63,15 +63,6 @@ class StandaloneAction(Action):
     def text(self):
         return self.verb
 
-class NoAction(Action):
-    """ An dummy action that should be ignored. """
-    def __init__(self):
-        super().__init__("<NOOP>")
-
-    def text(self):
-        return self.verb
-
-
 class SingleAction(Action):
     """ An action of the form: verb entity. """
     def __init__(self, verb, entity):
@@ -258,6 +249,7 @@ class MoveItemAction(DoubleAction):
 
 
 # Global Action Definitions
+NoOp       = StandaloneAction('<NOOP>')  # special singleton -- explicitly ignored
 DoNothing  = StandaloneAction('do nothing')
 Look       = StandaloneAction('look')
 Inventory  = StandaloneAction('inventory')

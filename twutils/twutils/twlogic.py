@@ -6,6 +6,21 @@ from textworld.generator import World
 OBSERVABLE_RELATIONS = ('at', 'in', 'on', 'chopped', 'roasted', 'baked', 'fried', 'sliced', 'peeled')
 DIRECTION_RELATIONS = ('north_of', 'south_of', 'west_of', 'east_of')
 
+COOK_WITH = {
+    "grill": "BBQ",
+    "bake": "oven",
+    "roast": "oven",
+    "fry": "stove",
+    "toast": "toaster",
+}
+
+CUT_WITH = {
+    "chop": "knife",
+    "dice": "knife",
+    "slice": "knife",
+    "mince": "knife",
+}
+
 
 def is_observable_relation(relname):
     return relname in OBSERVABLE_RELATIONS
@@ -261,3 +276,32 @@ def print_fact(game, fact):
 
 def format_adj(adj):
     return 'None' if adj is None else "'{}'".format(adj)
+
+
+def _convert_cooking_instruction(words, device: str, change_verb=None):
+    words_out = words.copy()
+    words_out.append("with")
+    words_out.append(device)
+    if change_verb:
+        words_out[0] = change_verb  # convert the verb to generic "cook" (the specific verbs don't work as is in TextWorld)
+    return words_out
+
+
+def adapt_tw_instr(words: str, gi) -> str:
+    # if instr.startswith("chop ") or instr.startswith("dice ") or instr.startswith("slice "):
+    #     return instr + " with the knife", ["knife"]
+    # words = instr.split()
+    with_objs = []
+    if words[0] in COOK_WITH:
+        device = COOK_WITH[words[0]]
+        with_objs.append(device)
+        return _convert_cooking_instruction(words, device, change_verb="cook"), with_objs
+    elif words[0] in CUT_WITH:
+        device = CUT_WITH[words[0]]
+        with_objs.append(device)
+        return _convert_cooking_instruction(words, device), with_objs
+    else:
+        return words, []
+
+
+
