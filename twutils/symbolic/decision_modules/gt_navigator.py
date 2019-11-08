@@ -86,7 +86,7 @@ class GTNavigator(DecisionModule):
             if self._close_door:
                 close_door = Close(self._close_door)
                 self._close_door = None
-                return close_door
+                # return close_door
             return None
         next_step = self.path[self._path_idx]
         # TODO: check for closed door -> "open <the door>" and don't increment _path_idx
@@ -97,12 +97,12 @@ class GTNavigator(DecisionModule):
     #TODO: fix get_door_if_closed() to check for closed(door)...
         if door is not None and not self._opened_door:
             #Temporarily revert: don't close doors that we open
-            # self._opened_door = door
+            self._opened_door = door
             return Open(door)
         if self._close_door:
             close_door = Close(self._close_door)
             self._close_door = None
-            return close_door
+            # return close_door
         self._path_idx += 1
         if self._opened_door:
             self._close_door = self._opened_door   #Close(self._opened_door)

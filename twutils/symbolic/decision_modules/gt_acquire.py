@@ -44,7 +44,7 @@ class GTAcquire(DecisionModule):
         #     self._eagerness = 1.
         if event.is_groundtruth:
             if isinstance(event, NeedToAcquire) or isinstance(event, NeedToFind):
-                print("GT Acquire:", event.objnames)
+                # print("GT Acquire:", event.objnames)
                 for itemname in event.objnames:
                     self.add_required_obj(itemname)
                     # self._eagerness = 0.8
@@ -116,14 +116,15 @@ class GTAcquire(DecisionModule):
                                     drop_entity = gi.gt.inventory.get_entity_by_name(not_needed)
                                     break
                             if not_needed is not None:
-                                self._no_longer_needed.remove(name)
+                                self._no_longer_needed.remove(not_needed)
                             else:  # try temporarily dropping a random item from our inventory
                                 drop_entity = random.choice(gi.gt.inventory.entities)
                                 print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
-                                self._temporary_drop = drop_entity.name
+                                #NOTE: to disabling auto-reacquire ---> # self._temporary_drop = drop_entity.name
+                                # self._temporary_drop = drop_entity.name
                             self.remove_required_obj(drop_entity.name)
                             response = yield Drop(drop_entity)
-                            gi.event_stream.push(NoLongerNeed([drop_entity.name], groundtruth=True))
+                            ###gi.event_stream.push(NoLongerNeed([drop_entity.name], groundtruth=True))
                             response = yield take_action  # try again, now that we've dropped something
                             self._eagerness = 0
                             return None # let someone else do something with the new object (e.g. cut with knife)

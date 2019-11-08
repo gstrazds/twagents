@@ -356,6 +356,7 @@ class NailAgent():
             assert len(linkpath) == 1
             connection = linkpath[0]
             connection.doorway = door
+            door.state.open()   # assume that it's open, until we find a closed() fact...
         for fact in other_facts:
             if fact.name == 'closed' and fact.arguments[0].type == 'd':
                 doorname = fact.arguments[0].name

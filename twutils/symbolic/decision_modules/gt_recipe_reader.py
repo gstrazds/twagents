@@ -181,10 +181,10 @@ class GTRecipeReader(DecisionModule):
             for entity in unneeded_inventory:
                 response = yield Drop(entity)
 
-            if False:  # if Tasks have appropr prereqs, the following should no longer be necessary
-                for entity_name in already_in_inventory:
-                    ingredients.remove(entity_name)
-                gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
+            # if False:  # if Tasks have appropr prereqs, the following should no longer be necessary
+            #     for entity_name in already_in_inventory:
+            #         ingredients.remove(entity_name)
+            #     gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
 
         start_of_directions: int = start_of_ingredients + i + 1
         if start_of_directions < len(recipe_lines):
