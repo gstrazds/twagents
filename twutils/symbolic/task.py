@@ -152,8 +152,11 @@ class Task:
         return act
 
     def __str__(self):
-        return "{} active:{} done:{} failed:{}".format(
-            self.description, self.is_active, self.is_done, self.has_failed)
+        return "{}({}{}{})".format(
+            self.description,
+            "ACTIVE" if self.is_active else "idle",
+            " DONE" if self.is_done else '',
+            " FAILED" if self.has_failed else '')
 
     def __repr__(self):
         return str(self)
