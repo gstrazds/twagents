@@ -11,11 +11,11 @@ if [ -z "$2" ]
   else
     GAMESDIR=$2
 fi
-export TW_RESULTS_FILE=eval_${NUMRUN}
+export TW_RESULTS=eval_${NUMRUN}
 python $BASEDIR/MagD3/scripts/ingestion_local.py \
   --in-docker $BASEDIR/MagD3/tworld_submission_gvs01 \
-  $BASEDIR/0_magd3/CodaLab/${GAMESDIR}  $BASEDIR/MagD3/out/${TW_RESULTS_FILE}.json > $BASEDIR/MagD3/out/console_$NUMRUN.out
-python $BASEDIR/MagD3/scripts/score.py $BASEDIR/MagD3/out/${TW_RESULTS_FILE}.json $BASEDIR/MagD3/tworld_submission_gvs01/results/
-mv $BASEDIR/MagD3/tworld_submission_gvs01/results/scores.txt $BASEDIR/MagD3/tworld_submission_gvs01/results/scores_$TW_RESULTS_FILE.txt
+  $BASEDIR/0_magd3/CodaLab/${GAMESDIR}  $BASEDIR/MagD3/out/${TW_RESULTS}.json > $BASEDIR/MagD3/out/console_$NUMRUN.out
+python $BASEDIR/MagD3/scripts/score.py $BASEDIR/MagD3/out/${TW_RESULTS}.json $BASEDIR/MagD3/tworld_submission_gvs01/results/ > $BASEDIR/MagD3/out/console_scoring_${TW_RESULTS}.txt
+mv $BASEDIR/MagD3/tworld_submission_gvs01/results/scores.txt $BASEDIR/MagD3/tworld_submission_gvs01/results/scores_$TW_RESULTS.txt
 
 
