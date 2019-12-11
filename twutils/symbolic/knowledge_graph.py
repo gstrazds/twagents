@@ -126,6 +126,7 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return None
 
+
 class ConnectionGraph:
     """
     Graph of connections between locations.

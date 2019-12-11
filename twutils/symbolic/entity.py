@@ -147,6 +147,7 @@ class EntityState:
     def __init__(self):
         self.exists = True
 
+    @property
     def openable(self):
         return hasattr(self, 'is_open')
 

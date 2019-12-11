@@ -127,7 +127,8 @@ class TakeAction(SingleAction):
             gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
         # gi.kg.inventory.add_entity(self.entity)
         gi.entity_at_location(self.entity, gi.kg.inventory)
-        gi.add_entity_attribute(self.entity, Portable)
+        self.entity.add_attribute(Portable)
+        # gi.add_entity_attribute(self.entity, Portable)
 
     def validate(self, response_text):
         if 'taken' in response_text.lower() or \
@@ -150,7 +151,8 @@ class DropAction(SingleAction):
         assert self.entity in gi.kg.inventory
         gi.kg.inventory.remove(self.entity)
         gi.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
-        gi.add_entity_attribute(self.entity, Portable)
+        self.entity.add_attribute(Portable)
+        # gi.add_entity_attribute(self.entity, Portable)
 
     def validate(self, response_text):
         if 'dropped' in response_text.lower():
@@ -173,8 +175,9 @@ class CloseAction(SingleAction):
         super().__init__("close", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Openable)
         self.entity.state.close()
-        gi.add_entity_attribute(self.entity, Openable)
+        # gi.add_entity_attribute(self.entity, Openable)
 
 
 class LockAction(SingleAction):
@@ -182,40 +185,45 @@ class LockAction(SingleAction):
         super().__init__("lock", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Lockable)
         self.entity.state.lock()
-        gi.add_entity_attribute(self.entity, Lockable)
+        # gi.add_entity_attribute(self.entity, Lockable)
 
 class LockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
         super().__init__("lock", entity1, "with", entity2)
 
     def apply(self, gi: GameInstance):
+        self.entity1.add_attribute(Lockable)
         self.entity1.state.lock()
-        gi.add_entity_attribute(self.entity1, Lockable)
+        # gi.add_entity_attribute(self.entity1, Lockable)
 
 class UnlockAction(SingleAction):
     def __init__(self, entity):
         super().__init__("unlock", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Lockable)
         self.entity.state.unlock()
-        gi.add_entity_attribute(self.entity, Lockable)
+        # gi.add_entity_attribute(self.entity, Lockable)
 
 class UnlockWithAction(DoubleAction):
     def __init__(self, entity1, entity2):
         super().__init__("unlock", entity1, "with", entity2)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Lockable)
         self.entity1.state.unlock()
-        gi.add_entity_attribute(self.entity1, Lockable)
+        # gi.add_entity_attribute(self.entity1, Lockable)
 
 class TurnOnAction(SingleAction):
     def __init__(self, entity):
         super().__init__("turn on", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Switchable)
         self.entity.state.turn_on()
-        gi.add_entity_attribute(self.entity, Switchable)
+        #gi.add_entity_attribute(self.entity, Switchable)
 
 
 class TurnOffAction(SingleAction):
@@ -223,8 +231,9 @@ class TurnOffAction(SingleAction):
         super().__init__("turn off", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Switchable)
         self.entity.state.turn_off()
-        gi.add_entity_attribute(self.entity, Switchable)
+        #gi.add_entity_attribute(self.entity, Switchable)
 
 
 class ConsumeAction(SingleAction):
@@ -233,8 +242,9 @@ class ConsumeAction(SingleAction):
         super().__init__(verb, entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Edible)
         self.entity.state.remove()
-        gi.add_entity_attribute(self.entity, Edible)
+        # gi.add_entity_attribute(self.entity, Edible)
 
 
 class MoveItemAction(DoubleAction):
@@ -339,3 +349,4 @@ Sharp      = attribute.Attribute('cut_2',   [SliceWith, ChopWith, DiceWith])
 Cookable   = attribute.Attribute('cookable',   [CookWith])
 Cooker     = attribute.Attribute('cook_2',   [CookWith])
 Preparable = attribute.Attribute('preparable', [Prepare])
+

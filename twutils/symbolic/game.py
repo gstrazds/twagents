@@ -58,10 +58,11 @@ class GameInstance:
             ev = event.NewActionRecordEvent(entity, action, result_text)
             self.event_stream.push(ev)
 
-    def add_entity_attribute(self, entity, attribute):
-        if entity.add_attribute(attribute):
-            ev = event.NewAttributeEvent(entity, attribute)
-            self.event_stream.push(ev)
+    # def add_entity_attribute(self, entity, attribute, groundtruth=False):
+    #     if entity.add_attribute(attribute):
+    #         if not groundtruth:
+    #             ev = event.NewAttributeEvent(entity, attribute, groundtruth=groundtruth)
+    #             self.event_stream.push(ev)
 
     def move_entity(self, entity, origin, dest):
         """ Moves entity from origin to destination. """

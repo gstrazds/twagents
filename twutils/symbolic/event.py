@@ -85,12 +85,12 @@ class EntityMovedEvent(Event):
         self.origin = origin
         self.destination = destination
 
-class NewAttributeEvent(Event):
-    """ Generated whenever an object is given an attribute. """
-    def __init__(self, entity, new_attribute, groundtruth=False):
-        message = "{} is {}".format(entity.name, new_attribute.name)
-        super().__init__(message, groundtruth=groundtruth)
-        self.new_attribute = new_attribute
+# class NewAttributeEvent(Event):
+#     """ Generated whenever an object is given an attribute. """
+#     def __init__(self, entity, new_attribute, groundtruth=False):
+#         message = "{} is {}".format(entity.name, new_attribute.name)
+#         super().__init__(message, groundtruth=groundtruth)
+#         self.new_attribute = new_attribute
 
 class GroundTruthComplete(Event):
     """ Generated after all world facts have been incorporated into the Ground Truth knowledge graph. """
