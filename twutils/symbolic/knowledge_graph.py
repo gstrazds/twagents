@@ -126,6 +126,21 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return None
 
+    def get_location(self, roomname, gi, create_if_notfound=False):
+        locations = self.locations_with_name(roomname)
+        if locations:
+            assert len(locations) == 1
+            return locations[0]
+        elif create_if_notfound:
+            new_loc = Location(roomname)
+            ev = self.add_location(new_loc)
+            if ev and not self.groundtruth:
+                gi.event_stream.push(ev)
+            # if self.groundtruth: DISCARD NewlocationEvent else gi.event_stream.push(ev)
+#            print("created new GT Location:", new_loc)
+            return new_loc
+        return None
+
 
 class ConnectionGraph:
     """

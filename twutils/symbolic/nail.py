@@ -336,7 +336,7 @@ class NailAgent():
         pass
 
     # def gt_navigate(self, roomname):
-    #     dest_loc = self._get_gt_location(roomname, create_if_notfound=False)
+    #     dest_loc = self.gi.gt.get_location(roomname, self.gi, create_if_notfound=False)
     #     assert dest_loc is not None
     #     self.gt_nav.set_goal(dest_loc, self.gi)
     #     # self.elect_new_active_module()
@@ -344,16 +344,19 @@ class NailAgent():
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # sort into separate lists to control the order in which facts get processed
-        groundtruth = True
         graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
         self.gi.gt = graph  # reinit because we build full the full graph every time
+        self.add_facts(graph, gt_facts, self.gi)
+        self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
+
+    def add_facts(self, graph, obs_facts, gi):
         player_loc = None
         door_facts = []
         at_facts = []
         on_facts = []
         in_facts = []
         other_facts = []
-        for fact in gt_facts:
+        for fact in obs_facts:
             a0 = fact.arguments[0]
             a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
             if fact.name == 'link':
@@ -361,7 +364,7 @@ class NailAgent():
             elif fact.name == 'at':
                 at_facts.append(fact)
                 if a0.type == 'P' and a1.type == 'r':
-                    player_loc = self._get_gt_location(a1.name, create_if_notfound=True)
+                    player_loc = graph.get_location(a1.name, gi, create_if_notfound=True)
             elif fact.name == 'on':
                 on_facts.append(fact)
             elif fact.name == 'in':
@@ -370,8 +373,8 @@ class NailAgent():
                 if a0.type == 'r' and a1.type == 'r':
                     # During this initial pass we create locations and connections among them
                     # print('++CONNECTION:', fact)
-                    loc0 = self._get_gt_location(a0.name, create_if_notfound=True)
-                    loc1 = self._get_gt_location(a1.name, create_if_notfound=True)
+                    loc0 = graph.get_location(a0.name, gi, create_if_notfound=True)
+                    loc1 = graph.get_location(a1.name, gi, create_if_notfound=True)
                     # door_name = find_door(gt_facts, a1, a0)
                     # if door_name:
                     #     door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
@@ -397,8 +400,8 @@ class NailAgent():
             assert r0.type == 'r'
             assert r1.type == 'r'
             assert d.type == 'd'
-            loc0 = self._get_gt_location(r0.name, create_if_notfound=False)
-            loc1 = self._get_gt_location(r1.name, create_if_notfound=False)
+            loc0 = graph.get_location(r0.name, gi, create_if_notfound=False)
+            loc1 = graph.get_location(r1.name, gi, create_if_notfound=False)
             door, _ = self._get_gt_entity(d.name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
             linkpath = graph.connections.shortest_path(loc0, loc1)
             assert len(linkpath) == 1
@@ -415,7 +418,7 @@ class NailAgent():
         for fact in at_facts:
             o = fact.arguments[0]
             r = fact.arguments[1]
-            loc = self._get_gt_location(r.name, create_if_notfound=False)
+            loc = graph.get_location(r.name, gi, create_if_notfound=False)
             if r.type == 'r':
                 obj, _ = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=[loc], create_if_notfound=True)
             else:
@@ -462,20 +465,6 @@ class NailAgent():
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
-        self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
-
-    def _get_gt_location(self, roomname, create_if_notfound=False):
-        locations = self.gi.gt.locations_with_name(roomname)
-        if locations:
-            assert len(locations) == 1
-            return locations[0]
-        elif create_if_notfound:
-            new_loc = Location(roomname)
-            ev = self.gi.gt.add_location(new_loc)
-            # DISCARD NewlocationEvent -- self.gi.event_stream.push(ev)
-#            print("created new GT Location:", new_loc)
-            return new_loc
-        return None
 
     def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
         if create_if_notfound:
