@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from symbolic import gv   # global constants
 from symbolic.game import GameInstance
 from symbolic.entity import Entity
-from symbolic import attribute
+from symbolic.attribute import Attribute
 
 
 class Action(ABC):
@@ -330,23 +330,23 @@ PrepareMeal = StandaloneAction('prepare meal')
 EatMeal = StandaloneAction('eat meal')
 
 # Global Entity Attributes
-Portable   = attribute.Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,
-Edible     = attribute.Attribute('edible',     [Eat, Drink])  # Swallow, Consume])
-Drinkable  = attribute.Attribute('drinkable',     [Drink])  # Swallow, Consume])
-# Moveable   = attribute.Attribute('moveable',   [Move, Push, Pull, Drag, Lift])
-Switchable = attribute.Attribute('switchable', [TurnOn, TurnOff])
-# Flammable  = attribute.Attribute('flammable',  [Light, Extinguish])
-Openable   = attribute.Attribute('openable',   [Open, Close])
-Lockable   = attribute.Attribute('lockable',   [Lock, Unlock, LockWith, UnlockWith])
+Portable   = Attribute('portable',   [Take, Drop, TakeFrom, PutOn, PutIn])  # GiveTo,
+Edible     = Attribute('edible',     [Eat, Drink])  # Swallow, Consume])
+Drinkable  = Attribute('drinkable',     [Drink])  # Swallow, Consume])
+# Moveable   = Attribute('moveable',   [Move, Push, Pull, Drag, Lift])
+Switchable = Attribute('switchable', [TurnOn, TurnOff])
+# Flammable  = Attribute('flammable',  [Light, Extinguish])
+Openable   = Attribute('openable',   [Open, Close])
+Lockable   = Attribute('lockable',   [Lock, Unlock, LockWith, UnlockWith])
 # TODO: An Openable object may be a container. We should have logic to check for containment
-Container  = attribute.Attribute('container',  [PutIn, TakeFrom])  #, Search])
-Support    = attribute.Attribute('support',    [PutOn, TakeFrom])  #, Search])
-# Person     = attribute.Attribute('person',     [Ask, Talk, SayTo, Kiss, Bribe, GiveTo, BuyFrom])
-# Enemy      = attribute.Attribute('enemy',      [Attack, AttackWith, Kill, KillWith])
+Container  = Attribute('container',  [PutIn, TakeFrom])  #, Search])
+Support    = Attribute('support',    [PutOn, TakeFrom])  #, Search])
+# Person     = Attribute('person',     [Ask, Talk, SayTo, Kiss, Bribe, GiveTo, BuyFrom])
+# Enemy      = Attribute('enemy',      [Attack, AttackWith, Kill, KillWith])
 
-Cutable    = attribute.Attribute('cutable',   [SliceWith, ChopWith, DiceWith])
-Sharp      = attribute.Attribute('cut_2',   [SliceWith, ChopWith, DiceWith])
-Cookable   = attribute.Attribute('cookable',   [CookWith])
-Cooker     = attribute.Attribute('cook_2',   [CookWith])
-Preparable = attribute.Attribute('preparable', [Prepare])
+Cutable    = Attribute('cutable',   [SliceWith, ChopWith, DiceWith])
+Sharp      = Attribute('cut_2',   [SliceWith, ChopWith, DiceWith])
+Cookable   = Attribute('cookable',   [CookWith])
+Cooker     = Attribute('cook_2',   [CookWith])
+Preparable = Attribute('preparable', [Prepare])
 

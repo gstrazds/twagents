@@ -735,7 +735,7 @@ class CustomAgent:
                         # exit(0)
                     # if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
                     #     self._debug_quit = self.current_step + 2  # early abort after executing one more action
-                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts, gt_facts=None)
+                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts)
                 else:
                     actiontxt = agent.take_action(desctext)
                 print("NAIL[{}] take_action -> {}".format(agent_id, actiontxt))

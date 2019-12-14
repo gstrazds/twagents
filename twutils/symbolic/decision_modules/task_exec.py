@@ -178,9 +178,6 @@ class TaskExecutor(DecisionModule):
             self.start_prereq_task(event.task, gi)
             self.activate(gi)
 
-        # if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
-        #     print("GT complete", event)
-        #     self.get_eagerness(gi)
         # if isinstance(event, NeedToAcquire) and event.is_groundtruth:
         #     print("GT Required Objects:", event.objnames)
         #     for itemname in event.objnames:

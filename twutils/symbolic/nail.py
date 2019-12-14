@@ -282,9 +282,7 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def take_action(self, observation, obs_facts=None, gt_facts=None):
-        if gt_facts:
-            self.set_ground_truth(gt_facts)
+    def take_action(self, observation, obs_facts=None):
         if obs_facts:
             # world = World.from_facts(facts)
             # add obs_facts to our KnowledgeGraph (self.gi.kg)
@@ -347,8 +345,8 @@ class NailAgent():
         # print("GROUND TRUTH")
         # sort into separate lists to control the order in which facts get processed
         groundtruth = True
-        groundtruth_graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
-        self.gi.gt = groundtruth_graph  # reinit, because we build full the full graph every time
+        graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
+        self.gi.gt = graph  # reinit because we build full the full graph every time
         player_loc = None
         door_facts = []
         at_facts = []
@@ -381,7 +379,7 @@ class NailAgent():
                     #     door = None
                     door = None  # will add info about doors later
                     new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
-                    self.gi.gt.add_connection(new_connection, self.gi)  # does nothing if connection already present
+                    graph.add_connection(new_connection, self.gi)  # does nothing if connection already present
                 elif a0.type == 'd' and a1.type == 'r':
                     # print("\t\tset_ground_truth: TODO door fact -- ", fact)
                     pass
@@ -402,7 +400,7 @@ class NailAgent():
             loc0 = self._get_gt_location(r0.name, create_if_notfound=False)
             loc1 = self._get_gt_location(r1.name, create_if_notfound=False)
             door, _ = self._get_gt_entity(d.name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
-            linkpath = self.gi.gt.connections.shortest_path(loc0, loc1)
+            linkpath = graph.connections.shortest_path(loc0, loc1)
             assert len(linkpath) == 1
             connection = linkpath[0]
             connection.doorway = door
@@ -410,7 +408,7 @@ class NailAgent():
         for fact in other_facts:
             if fact.name == 'closed' and fact.arguments[0].type == 'd':
                 doorname = fact.arguments[0].name
-                doors = self.gi.gt.entities_with_name(doorname, entitytype=gv.DOOR)
+                doors = graph.entities_with_name(doorname, entitytype=gv.DOOR)
                 assert len(doors) == 1
                 door = list(doors)[0]
                 door.state.close()
@@ -436,7 +434,7 @@ class NailAgent():
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'in', o2)
         if player_loc:
-            if self.gi.gt.set_player_location(player_loc, self.gi):
+            if graph.set_player_location(player_loc, self.gi):
                 print("CHANGED GT player location:", player_loc)
 
         for fact in other_facts:

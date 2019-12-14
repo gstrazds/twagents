@@ -2,7 +2,7 @@ from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..action import StandaloneAction, PrepareMeal, Eat, NoOp, Look #, EatMeal
 from ..action import Portable
-from ..event import GroundTruthComplete, NeedToAcquire, NoLongerNeed
+from ..event import NeedToAcquire, NoLongerNeed
 from ..event import NeedSequentialSteps, NeedToGoTo, NeedToFind, NeedToDo  #, AlreadyDone
 from ..task_modules import SingleActionTask
 from ..game import GameInstance
@@ -95,9 +95,6 @@ class GTEnder(DecisionModule):
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        # if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
-        #     print("GT complete", event)
-        #     self.get_eagerness(gi)
         if isinstance(event, NeedToAcquire) and event.is_groundtruth:
             print("GT Required Objects:", event.objnames)
             for itemname in event.objnames:
