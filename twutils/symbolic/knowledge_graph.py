@@ -2,6 +2,7 @@
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from symbolic.event import *
 from symbolic.action import Action
+from symbolic.entity import Entity
 from symbolic.location import Location, Inventory
 
 class KnowledgeGraph:
@@ -141,6 +142,46 @@ class KnowledgeGraph:
             return new_loc
         return None
 
+    def get_entity(self, name, gi, locations=None, entitytype=None, create_if_notfound=False):
+        if create_if_notfound:
+            assert locations is not None, "Need to specify initial location for new entity"
+        entities = set()
+        if locations:
+            for l in locations:
+                e = l.get_entity_by_name(name)
+                if e:
+                    entities.add(e)
+        if not entities:  # none found
+            entities = self.entities_with_name(name, entitytype=entitytype)
+            if locations and entities:
+                # need to move it from wherever it was to its new location
+                print(f"WARNING - TODO: should move {entities} to {locations}")
+        if entities:
+            if len(entities) == 1:
+                return list(entities)[0], None
+            else:
+                found = None
+                for e in entities:
+                    if entitytype is None or e._type == entitytype:
+                        found = e
+                if found:
+                    return found, None
+        if create_if_notfound:
+            new_entity = Entity(name, locations[0], type=entitytype)
+
+            ev = locations[0].add_entity(new_entity)
+            if len(locations) > 0:
+                for l in locations[1:]:
+                    l.add_entity(new_entity)
+                    if entitytype != 'd':
+                        print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
+                        assert False, "Shouldn't be adding non-door entity to multiple locations"
+            # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
+#            print("created new GT Entity:", new_entity)
+            if not self.groundtruth and ev:
+                gi.event_stream.push(ev)
+            return new_entity, ev
+        return None, None
 
 class ConnectionGraph:
     """
