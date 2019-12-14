@@ -430,11 +430,11 @@ class NailAgent():
         for fact in on_facts:
             o1, o2 = self._add_obj_to_obj(fact, player_loc)
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'on', o2, groundtruth=groundtruth)
+                add_attributes_for_predicate(o1, 'on', o2)
         for fact in in_facts:
             o1, o2 = self._add_obj_to_obj(fact, player_loc)
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'in', o2, groundtruth=groundtruth)
+                add_attributes_for_predicate(o1, 'in', o2)
         if player_loc:
             if self.gi.gt.set_player_location(player_loc, self.gi):
                 print("CHANGED GT player location:", player_loc)
@@ -459,7 +459,7 @@ class NailAgent():
             if a1:
                 o2, _ = self._get_gt_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
             if o1:
-                add_attributes_for_predicate(o1, predicate, entity2=o2, groundtruth=groundtruth)
+                add_attributes_for_predicate(o1, predicate, entity2=o2)
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue

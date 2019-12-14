@@ -119,7 +119,7 @@ class GTNavigator(DecisionModule):
         #             return entity_from_variable(door)
 
         #TODO: check state of doorway, return None if the door is already open...
-        if connection.doorway and connection.doorway.state.openable() and not connection.doorway.state.is_open:
+        if connection.doorway and connection.doorway.state.openable and not connection.doorway.state.is_open:
             return connection.doorway
         return None
 

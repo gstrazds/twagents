@@ -101,7 +101,7 @@ class GTAcquire(DecisionModule):
                 entity = here.get_entity_by_name(entityName)
                 if Portable in entity.attributes:
                     container = gi.gt.get_containing_entity(entity)
-                    if container and container.state.openable() and not container.state.is_open:
+                    if container and container.state.openable and not container.state.is_open:
                         response = yield Open(container)
                     take_action = Take(entity)
                     response = yield take_action

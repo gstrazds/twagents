@@ -201,7 +201,7 @@ class ConnectionGraph:
 def _format_doorinfo(doorentity):
     if doorentity is None:
         return ''
-    if doorentity.state.openable() and not doorentity.state.is_open:
+    if doorentity.state.openable and not doorentity.state.is_open:
         return ":{}(closed)".format(doorentity.name)
     return ":{}(open)".format(doorentity.name)
 
