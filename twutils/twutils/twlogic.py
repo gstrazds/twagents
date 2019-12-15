@@ -134,6 +134,8 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
         if is_observable_relation(fact.name):
             if fact != where_fact:
                 observable_facts.append(fact)
+            else:  # consider the player's current location to be directly observable
+                observable_facts.append(fact)
         else:
             pass
 

@@ -109,7 +109,7 @@ class GTRecipeReader(DecisionModule):
                 continue    # ignore this one, try to convert next step
             elif act == PrepareMeal:
                 prep = SingleActionTask(PrepareMeal, use_groundtruth=True)
-                eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=True)
+                eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=False)
                 eat.prereq.required_tasks.append(prep)
             else:
                 actions.append((act, instr))

@@ -9,22 +9,11 @@ from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
 from symbolic.location import Location
 from symbolic import knowledge_graph
+from symbolic.knowledge_graph import add_attributes_for_predicate, entity_type_for_twvar
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 
-DIRECTION_ACTIONS = {
-        'north_of': GoNorth,
-        'south_of': GoSouth,
-        'east_of': GoEast,
-        'west_of': GoWest}
-
 LOCATION_RELATIONS = ['at', 'in', 'on']
-
-
-def entity_type_for_twvar(vartype):
-    if vartype in Entity.entity_types:
-        return vartype  # 1:1 mapping, for now
-    return None
 
 
 def find_door(fact_list, from_room, to_room):  # return name of door
@@ -35,155 +24,6 @@ def find_door(fact_list, from_room, to_room):  # return name of door
             return fact.arguments[1].name
     return None
 
-
-def get_attributes_for_type(twvartype:str):
-    attrib_list = []
-    if twvartype == 't' \
-    or twvartype == 'P' \
-    or twvartype == 'I' \
-    or twvartype == 'r':
-        pass
-    elif twvartype == 'o':
-        attrib_list.append(Portable)
-    elif twvartype == 'f':
-        attrib_list.append(Portable)
-        attrib_list.append(Edible)
-        attrib_list.append(Cutable)
-        attrib_list.append(Cookable)
-    elif twvartype == 'c':
-        attrib_list.append(Container)
-        attrib_list.append(Openable)
-    elif twvartype == 's':
-        attrib_list.append(Support)
-    elif twvartype == 'k':
-        attrib_list.append(Portable)
-    elif twvartype == 'd':
-        attrib_list.append(Openable)
-        # attrib_list.append(Lockable)
-    elif twvartype == 'oven':
-        attrib_list.append(Container)
-        attrib_list.append(Openable)
-    elif twvartype == 'stove':
-        attrib_list.append(Support)
-    elif twvartype == 'bbq':
-        attrib_list.append(Cooker)
-    elif twvartype == 'toaster':
-        attrib_list.append(Cooker)
-    elif twvartype == 'meal':
-        attrib_list.append(Preparable)
-    elif twvartype == 'ingredient':
-        pass
-    elif twvartype == 'slot':
-        pass
-    elif twvartype == 'RECIPE':
-        pass
-    else:
-        print("Warning -- get_attributes_for_type() unexpected variable type:", twvartype)
-    return attrib_list
-
-
-def get_attributes_for_predicate(predicate, entity2):
-    attrib_list = []
-    if predicate == 'sharp':
-        attrib_list.append(Sharp)
-    elif predicate == 'closed':
-        attrib_list.append(Openable)
-    elif predicate == 'open':
-        attrib_list.append(Openable)
-    elif predicate == 'locked':
-        attrib_list.append(Lockable)
-    elif predicate == 'in':
-        attrib_list.append(Portable)
-        if entity2:
-            entity2.add_attribute(Container)
-    elif predicate == 'on':
-        attrib_list.append(Portable)
-        if entity2:
-            entity2.add_attribute(Support)
-    elif predicate == 'raw':
-        attrib_list.append(Cookable)
-    # elif predicate == 'inedible':
-    #     entity.del_attribute(Edible)
-    elif predicate == 'edible':
-        attrib_list.append(Edible)
-    elif predicate == 'drinkable':
-        attrib_list.append(Drinkable)
-    elif predicate == 'cookable':
-        attrib_list.append(Cookable)
-    elif predicate == 'cooked' \
-      or predicate == 'fried' \
-      or predicate == 'baked' \
-      or predicate == 'toasted' \
-      or predicate == 'grilled' \
-      or predicate == 'roasted':
-        attrib_list.append(Edible)
-        attrib_list.append(Cookable)
-    elif predicate == 'needs_cooking':
-        attrib_list.append(Cookable)
-    elif predicate == 'uncut':
-        attrib_list.append(Cutable)
-    elif predicate == 'cuttable':
-        attrib_list.append(Cutable)
-    elif predicate == 'chopped' \
-     or predicate == 'sliced' \
-     or predicate == 'diced' \
-     or predicate == 'minced':
-        attrib_list.append(Cutable)
-    else:
-        print("Warning -- get_attributes_for_predicate() unexpected predicate:", predicate)
-    return attrib_list
-
-
-def add_attributes_for_type(entity, twvartype):
-    attrib_list = get_attributes_for_type(twvartype)
-    for attrib in attrib_list:
-        entity.add_attribute(attrib)
-    if twvartype == 'd':  # if a DOOR
-        if not entity.state.openable:
-            entity.state.open()  # assume default until we determine otherwise (via add_attributes_for_predicate)
-
-
-def add_attributes_for_predicate(entity, predicate, entity2=None):
-    attrib_list = get_attributes_for_predicate(predicate, entity2)
-    for attrib in attrib_list:
-        entity.add_attribute(attrib)
-
-    # inverse relationships
-    if predicate == 'in':
-        assert entity2 is not None
-        entity2.add_attribute(Container)
-    elif predicate == 'on':
-        assert entity2 is not None
-        entity2.add_attribute(Support)
-
-    if predicate == 'inedible':
-        entity.del_attribute(Edible)
-
-    # set entity state
-    if predicate == 'closed':
-        entity.state.close()
-    elif predicate == 'open':
-        entity.state.open()
-    elif predicate == 'locked':
-        entity.state.locked()
-    elif predicate == 'cooked' \
-      or predicate == 'fried' \
-      or predicate == 'baked' \
-      or predicate == 'toasted' \
-      or predicate == 'grilled' \
-      or predicate == 'roasted':
-        entity.state.cook(cooked_state=predicate)
-    elif predicate == 'needs_cooking':
-        entity.state.not_cooked()
-    elif predicate == 'uncut':
-        entity.state.not_cut()
-    elif predicate == 'cuttable':
-        entity.add_attribute(Cutable)
-    elif predicate == 'chopped' \
-     or predicate == 'sliced' \
-     or predicate == 'diced' \
-     or predicate == 'minced':
-        entity.state.cut(cut_state=predicate)
 
 
 class NailAgent():
@@ -286,7 +126,8 @@ class NailAgent():
         if obs_facts:
             # world = World.from_facts(facts)
             # add obs_facts to our KnowledgeGraph (self.gi.kg)
-            pass
+            self.gi.kg.add_facts(obs_facts, self.gi)
+
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
@@ -346,175 +187,8 @@ class NailAgent():
         # sort into separate lists to control the order in which facts get processed
         graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
         self.gi.gt = graph  # reinit because we build full the full graph every time
-        self.add_facts(graph, gt_facts, self.gi)
+        graph.add_facts(gt_facts, self.gi)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
-    def add_facts(self, graph, obs_facts, gi):
-        player_loc = None
-        door_facts = []
-        at_facts = []
-        on_facts = []
-        in_facts = []
-        other_facts = []
-        for fact in obs_facts:
-            a0 = fact.arguments[0]
-            a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
-            if fact.name == 'link':
-                door_facts.append(fact)
-            elif fact.name == 'at':
-                at_facts.append(fact)
-                if a0.type == 'P' and a1.type == 'r':
-                    player_loc = graph.get_location(a1.name, gi, create_if_notfound=True)
-            elif fact.name == 'on':
-                on_facts.append(fact)
-            elif fact.name == 'in':
-                in_facts.append(fact)
-            elif fact.name in DIRECTION_ACTIONS:
-                if a0.type == 'r' and a1.type == 'r':
-                    # During this initial pass we create locations and connections among them
-                    # print('++CONNECTION:', fact)
-                    loc0 = graph.get_location(a0.name, gi, create_if_notfound=True)
-                    loc1 = graph.get_location(a1.name, gi, create_if_notfound=True)
-                    # door_name = find_door(gt_facts, a1, a0)
-                    # if door_name:
-                    #     door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
-                    # else:
-                    #     door = None
-                    door = None  # will add info about doors later
-                    new_connection = knowledge_graph.Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
-                    graph.add_connection(new_connection, self.gi)  # does nothing if connection already present
-                elif a0.type == 'd' and a1.type == 'r':
-                    # print("\t\tset_ground_truth: TODO door fact -- ", fact)
-                    pass
-                else:
-                    # print("--IGNORING:", fact)
-                    pass
-            else:
-                other_facts.append(fact)
-        # 2nd pass, add doors to connections
-        for fact in door_facts:
-            assert len(fact.arguments) == 3
-            r0 = fact.arguments[0]
-            d = fact.arguments[1]
-            r1 = fact.arguments[2]
-            assert r0.type == 'r'
-            assert r1.type == 'r'
-            assert d.type == 'd'
-            loc0 = graph.get_location(r0.name, gi, create_if_notfound=False)
-            loc1 = graph.get_location(r1.name, gi, create_if_notfound=False)
-            door, _ = self._get_gt_entity(d.name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
-            linkpath = graph.connections.shortest_path(loc0, loc1)
-            assert len(linkpath) == 1
-            connection = linkpath[0]
-            connection.doorway = door
-            door.state.open()   # assume that it's open, until we find a closed() fact...
-        for fact in other_facts:
-            if fact.name == 'closed' and fact.arguments[0].type == 'd':
-                doorname = fact.arguments[0].name
-                doors = graph.entities_with_name(doorname, entitytype=gv.DOOR)
-                assert len(doors) == 1
-                door = list(doors)[0]
-                door.state.close()
-        for fact in at_facts:
-            o = fact.arguments[0]
-            r = fact.arguments[1]
-            loc = graph.get_location(r.name, gi, create_if_notfound=False)
-            if r.type == 'r':
-                obj, _ = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=[loc], create_if_notfound=True)
-            else:
-                gv.dbg("WARNING -- SET GROUND TRUTH: unexpected location for at(o,l): {}".format(r))
-            # add_attributes_for_type(obj, o.type)
 
-    #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
-    # and similarly, that "in" relations are not nested.
-    #TODO: this should be generalized to work correctly for arbitrary chains of 'on' and 'in'
-        for fact in on_facts:
-            o1, o2 = self._add_obj_to_obj(fact, player_loc)
-            if o1 and o2:
-                add_attributes_for_predicate(o1, 'on', o2)
-        for fact in in_facts:
-            o1, o2 = self._add_obj_to_obj(fact, player_loc)
-            if o1 and o2:
-                add_attributes_for_predicate(o1, 'in', o2)
-        if player_loc:
-            if graph.set_player_location(player_loc, self.gi):
-                print("CHANGED GT player location:", player_loc)
-
-        for fact in other_facts:
-            predicate = fact.name
-            if predicate == 'cooking_location' \
-            or predicate.startswith('ingredient_') \
-            or predicate == 'free' \
-            or predicate == 'base' \
-            or predicate == 'out':
-                continue
-
-            a0 = fact.arguments[0]
-            if a0.name.startswith('~'):
-                continue
-            if len(fact.arguments) > 1:
-                a1 = fact.arguments[1]
-            else:
-                a1 = None
-            o1, _ = self._get_gt_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
-            if a1:
-                o2, _ = self._get_gt_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
-            if o1:
-                add_attributes_for_predicate(o1, predicate, entity2=o2)
-            else:
-                if predicate == 'edible' and a0.name == 'meal':
-                    continue
-                print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
-
-    def _get_gt_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
-        entity, ev = self.gi.gt.get_entity(name, self.gi, locations=locations, entitytype=entitytype,
-                                           create_if_notfound=create_if_notfound)
-        if ev:  # this is a newly discovered entity
-            add_attributes_for_type(entity, entitytype)
-        return entity, ev
-
-    def _add_obj_to_obj(self, fact, player_loc):
-        o = fact.arguments[0]
-        h = fact.arguments[1]
-        if o.name.startswith('~') or h.name.startswith('~'):
-            print("_add_obj_to_obj: SKIPPING FACT", fact)
-            return None, None
-        if h.name == 'I':  # Inventory
-            holder = None  #self.gi.gt.inventory
-            loc = [ self.gi.gt.inventory ] #player_loc
-        else:
-            holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
-                                         create_if_notfound=False)
-            if holder is None:
-                loc = None
-            else:
-                # loc = holder._init_loc if holder is not None else None
-                locs = self.gi.gt.location_of_entity(holder.name)
-                if locs:
-                    loc = list(locs)
-                    if len(loc) > 1:
-                        print("WARNING: entity <{}> has multiple locations: {}".format(holder, loc))
-                    # loc = list(locs)[0]  # if multiple locations, choose just one
-        if not loc:
-            print("WARNING! NO LOCATION FOR HOLDER while adding GT Object {} {}".format(fact, holder))
-            loc = None
-
-    #NOTE TODO: handle objects that have moved from to or from Inventory
-        obj, ev = self._get_gt_entity(o.name, entitytype=entity_type_for_twvar(o.type), locations=loc,
-                                  create_if_notfound=True)
-        #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
-        if holder:
-            holder.add_entity(obj)
-
-        holder_for_logging = 'Inventory' if h.name == 'I' else holder
-        if ev:
-            #print("ADDED NEW GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            pass
-        else:
-            #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            if holder_for_logging == 'Inventory':
-                if not self.gi.gt.inventory.get_entity_by_name(obj.name):
-                    print(obj.name, "NOT IN INVENTORY", self.gi.gt.inventory.entities)
-                    assert False
-        return obj, holder
 

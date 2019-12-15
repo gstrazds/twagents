@@ -141,7 +141,7 @@ class TaskExecutor(DecisionModule):
         return self._activate_next_task(gi)
 
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
-        assert use_groundtruth is True
+        # assert use_groundtruth is True
         if missing.required_tasks:
             for task in reversed(missing.required_tasks):
                 print(f"handle precondition: {task}")
