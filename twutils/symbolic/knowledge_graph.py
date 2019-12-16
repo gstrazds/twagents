@@ -3,7 +3,7 @@
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import Entity
-from symbolic.location import Location, Inventory
+from symbolic.location import Location, Inventory, UnknownLocation
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,
@@ -174,7 +174,8 @@ class KnowledgeGraph:
     """
     def __init__(self, groundtruth=False):
         self._locations          = []
-        self._player_location    = Location("<UNKNOWN>")
+        self._unknown_location   = UnknownLocation()
+        self._player_location    = self._unknown_location
         self._init_loc           = None
         self._inventory          = Inventory()
         self._connections        = ConnectionGraph()
@@ -258,10 +259,14 @@ class KnowledgeGraph:
         #             for e2 in e._entities:
         #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
         #                     ret.add(e2)
+        if len(ret) == 0:  # check to see if entity has been previously mentioned, but not yet found
+            e = self._unknown_location.get_entity_by_name(entityname)
+            if e and (entitytype is None or e._type == entitytype):
+                ret.add(e)
         return ret
 
-    def location_of_entity(self, entityname, entitytype=None):
-        """ Returns locations where an entity with a specific name can be found """
+    def where_is_entity(self, entityname, entitytype=None):
+        """ Returns a set of locations where an entity with a specific name can be found """
         ret = set()
         for l in (self._locations + [self._inventory]):
             e = l.get_entity_by_name(entityname)
@@ -274,6 +279,18 @@ class KnowledgeGraph:
         #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
         #                     ret.add(l)
         return ret
+
+    def location_of_entity(self, entityname, entitytype=None, allow_unknown=False):
+        """ Returns a single location where an entity with a specific name can be found """
+        location_set = self.where_is_entity(entityname, entitytype=entitytype)
+        # print(f"DEBUG location_of_entity({entityname}:{entitytype}) => {location_set}")
+        if not allow_unknown:
+            location_set.discard(self._unknown_location)
+        if location_set:
+            if len(location_set) > 1:
+                print(f"WARNING: multiple locations for <{entityname}>: {location_set}")
+            return location_set.pop()  # choose one element from the set
+        return None
 
     def get_containing_entity(self, entity):
         """ Returns container (or support) where an entity with a specific name can be found """
@@ -300,13 +317,15 @@ class KnowledgeGraph:
             if ev and not self.groundtruth:
                 gi.event_stream.push(ev)
             # if self.groundtruth: DISCARD NewlocationEvent else gi.event_stream.push(ev)
-#            print("created new GT Location:", new_loc)
+            print("created new Location:", new_loc)
             return new_loc
+        print("LOCATION NOT FOUND:", roomname)
         return None
 
     def get_entity(self, name, gi, locations=None, entitytype=None, create_if_notfound=False):
         if create_if_notfound:
             assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
+            # print(f"DEBUG get_entity({name},locations={locations}, create_if_not_found=True)")
         entities = set()
         if locations:
             for l in locations:
@@ -318,17 +337,18 @@ class KnowledgeGraph:
             if locations and entities:
                 # need to move it from wherever it was to its new location
                 print(f"get_entity() WARNING - MOVING {entities} to {locations}")
-                prev_loc = self.location_of_entity(name, entitytype=entitytype)
-                if prev_loc and len(prev_loc) == 1:
-                    l = prev_loc.pop()
-                    e = list(entities)[0]
-                    # TODO: here we are assuming exactly one entity and one location
-                    l.del_entity(e)
-                    locations[0].add_entity(e)
-                    # TODO: send an EntityMovedEvent
-                    if not self.groundtruth:
-                        # gi.event_stream.push(EntityMovedEvent(e, l, locations[0], groundtruth=self.groundtruth))
-                        pass
+                prev_loc = self.where_is_entity(name, entitytype=entitytype)
+                if prev_loc:
+                    if len(prev_loc) == 1:
+                        l = prev_loc.pop()
+                        e = list(entities)[0]
+                        # TODO: here we are assuming exactly one entity and one location
+                        l.del_entity(e)
+                        locations[0].add_entity(e)
+                        # TODO: send an EntityMovedEvent
+                        if not self.groundtruth:
+                            # gi.event_stream.push(EntityMovedEvent(e, l, locations[0], groundtruth=self.groundtruth))
+                            pass
         if entities:
             if len(entities) == 1:
                 return list(entities)[0], None
@@ -340,22 +360,29 @@ class KnowledgeGraph:
                 if found:
                     return found, None
         if create_if_notfound:
-            new_entity = Entity(name, locations[0], type=entitytype)
-
-            added_new = locations[0].add_entity(new_entity)
-            if len(locations) > 0:
-                for l in locations[1:]:
-                    l.add_entity(new_entity)
-                    if entitytype != 'd':
-                        print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
-                        assert False, "Shouldn't be adding non-door entity to multiple locations"
+            known_locs = set(locations)
+            known_locs.discard(self._unknown_location)
+            if known_locs:
+                initial_loc = known_locs.pop()
+                assert initial_loc is not None, f"Must include a known location: {locations}"
+            else:
+                initial_loc = self._unknown_location
+                print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
+            new_entity = Entity(name, initial_loc, type=entitytype)
+            added_new = initial_loc.add_entity(new_entity)
+            if len(locations) > 1:
+                for l in locations:
+                    l.add_entity(new_entity)   # does nothing if already has_entity_with_name
+                if entitytype != gv.DOOR:
+                    print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
+                    assert False, "Shouldn't be adding non-door entity to multiple locations"
             # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
             ev = None
-            if added_new:  # this is a new entity
+            if added_new:  # this is a new entity with a known location
                 ev = NewEntityEvent(new_entity)
                 add_attributes_for_type(new_entity, entitytype)
-                if not self.groundtruth:
-                    print("created new:", new_entity)
+                if not self.groundtruth and initial_loc != self._unknown_location:
+                    print("DISCOVERED NEW entity:", new_entity)
                     gi.event_stream.push(ev)
             return new_entity, ev
         return None, None
@@ -368,7 +395,7 @@ class KnowledgeGraph:
             return None, None
         if h.name == 'I':  # Inventory
             holder = None  #self.gi.gt.inventory
-            loc = [ self.inventory ] #player_loc
+            loc = self.inventory   #player_loc
         else:
             # holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
             #                              create_if_notfound=False)
@@ -379,22 +406,24 @@ class KnowledgeGraph:
                     print("WARNING: found more than one matching entity for name <{}: {} + {}".format(
                         h.name, holder, entity_set))
             else:
+                print("WARNING: found no entities_with_name:", h.name)
                 holder = None
                 loc = None
             if holder:
                 # loc = holder._init_loc if holder is not None else None
-                locs = self.location_of_entity(holder.name)
-                if locs:
-                    loc = list(locs)  # we want a list of locations (ideally containing only one element)
-                    if len(locs) > 1:
-                        print("WARNING: entity <{}> has multiple locations: {}".format(holder, loc))
-                        loc = list(loc[0])  # if multiple locations, choose just one
+                loc = self.location_of_entity(holder.name)
         if not loc:
             print("WARNING! NO LOCATION FOR HOLDER while adding Object {} {}".format(fact, holder))
-            loc = None
+            print("unknown =", self._unknown_location)
+            print("self._locations:", self._locations)
+            loc_list = None
+        else:
+            loc_list = [loc]  # a list containing exactly one element
 
-    #NOTE TODO: handle objects that have moved from to or from Inventory
-        obj, ev = self.get_entity(o.name, gi, entitytype=entity_type_for_twvar(o.type), locations=loc,
+        #NOTE TODO: handle objects that have moved from to or from Inventory
+        obj, ev = self.get_entity(o.name, gi,
+                                  entitytype=entity_type_for_twvar(o.type),
+                                  locations=loc_list,
                                   create_if_notfound=True)
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
@@ -407,7 +436,7 @@ class KnowledgeGraph:
             #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
         else:
             #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            if holder_for_logging == 'Inventory':
+            if holder_for_logging == 'Inventory':   #SANITY CHECK
                 if not self.inventory.get_entity_by_name(obj.name):
                     print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
                     assert False
@@ -424,7 +453,7 @@ class KnowledgeGraph:
         for fact in obs_facts:
             a0 = fact.arguments[0]
             a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
-            if fact.name == 'link':
+            if fact.name == 'link' and self.groundtruth:
                 door_facts.append(fact)
             elif fact.name == 'at':
                 at_facts.append(fact)
@@ -435,7 +464,7 @@ class KnowledgeGraph:
             elif fact.name == 'in':
                 in_facts.append(fact)
             elif fact.name in DIRECTION_ACTIONS:
-                if a0.type == 'r' and a1.type == 'r':
+                if a0.type == 'r' and a1.type == 'r' and self.groundtruth:
                     # During this initial pass we create locations and connections among them
                     # print('++CONNECTION:', fact)
                     loc0 = self.get_location(a0.name, gi, create_if_notfound=True)
@@ -449,11 +478,11 @@ class KnowledgeGraph:
                     new_connection = Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
                     self.add_connection(new_connection, gi)  # does nothing if connection already present
                 elif a0.type == 'd' and a1.type == 'r':
-                    print("\t\tTODO door fact -- ", fact)
+                    print("\t\tdoor fact -- ", fact)
                     door_facts.append(fact)
                     # pass
                 else:
-                    # print("--IGNORING:", fact)
+                    print("--IGNORING DIRECTION_FACT:", fact)
                     pass
             else:
                 other_facts.append(fact)
@@ -470,6 +499,9 @@ class KnowledgeGraph:
                 assert r0.type == 'r'
                 assert r1.type == 'r'
                 assert d.type == 'd'
+                if not self.groundtruth:
+                    print("WARNING (assertion failure) link fact in door_facts but not groundtruth:", fact)
+                    continue   # link
             elif len(fact.arguments) == 2:
                 r0 = fact.arguments[1]
                 d = fact.arguments[0]
@@ -482,9 +514,12 @@ class KnowledgeGraph:
             if r1:
                 loc1 = self.get_location(r1.name, gi, create_if_notfound=False)
                 door_locations.append(loc1)
+            else:
+                door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
+
             door, _ = self.get_entity(d.name, gi, entitytype=gv.DOOR,
                                             locations=door_locations, create_if_notfound=True)
-            if len(door_locations) == 2:
+            if r1:  #len(door_locations) == 2:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
                 connection = linkpath[0]
@@ -498,27 +533,31 @@ class KnowledgeGraph:
                 door = list(doors)[0]
                 door.state.close()
         for fact in at_facts:
+            # print("DEBUG at_fact", fact)
             o = fact.arguments[0]
             r = fact.arguments[1]
             loc = self.get_location(r.name, gi, create_if_notfound=False)
+            # print("DEBUG at_facts: LOCATION for roomname", r.name, "->", loc)
             if loc:
                 locs = [loc]
             else:
-                print("WARNING: failed to find location: ", r.name)
+                print("WARNING: at_facts failed to find location: ", r.name)
                 print(self.player_location, self.locations)
                 locs = None
             if r.type == 'r':
                 obj, _ = self.get_entity(o.name, gi, entitytype=entity_type_for_twvar(o.type),
                                                locations=locs, create_if_notfound=True)
             else:
-                gv.dbg("WARNING -- SET GROUND TRUTH: unexpected location for at(o,l): {}".format(r))
+                gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
 
-    #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
-    # and similarly, that "in" relations are not nested.
-    #TODO: this should be generalized to work correctly for arbitrary chains of 'on' and 'in'
-    #(currently assumes only one level: container or holder is immobile, previously identified "at" a place)
+        #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
+        # and similarly, that "in" relations are not nested.
+        #TODO: this should be generalized to work correctly for arbitrary chains of 'on' and 'in'
+        #(currently assumes only one level: container or holder is immobile, previously identified "at" a place)
+
         for fact in on_facts:
+            # print("DEBUG on_fact", fact)
             o1, o2 = self.add_obj_to_obj(gi, fact, player_loc)
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'on', o2)

@@ -181,12 +181,10 @@ class TaskExecutor(DecisionModule):
         # if isinstance(event, NeedToAcquire) and event.is_groundtruth:
         #     print("GT Required Objects:", event.objnames)
         #     for itemname in event.objnames:
-        #         # gi.gt.entities_with_name()
         #         self.add_required_obj(itemname)
         # elif isinstance(event, NeedToFind) and event.is_groundtruth:
         #     print("GT Need to Find Objects:", event.objnames)
         #     for itemname in event.objnames:
-        #         # gi.gt.entities_with_name()
         #         self.add_required_obj(itemname)
         # elif isinstance(event, NoLongerNeed) and event.is_groundtruth:
         #     print("GT Not Needed Objects:", event.objnames)

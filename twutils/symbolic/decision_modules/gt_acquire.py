@@ -140,9 +140,8 @@ class GTAcquire(DecisionModule):
         still_needed = list(self.missing_objs(gi.gt))
         if still_needed:
             obj_to_find = still_needed[0]   # TODO: make it smarter - choose closest instead of first
-            locs = gi.gt.location_of_entity(obj_to_find)
-            if locs:
-                loc = list(locs)[0]
+            loc = gi.gt.location_of_entity(obj_to_find)
+            if loc:
                 print("GT_Acquire NeedToGoTo:", loc)
                 gi.event_stream.push(NeedToGoTo(loc.name, groundtruth=True))
             else:

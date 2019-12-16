@@ -137,7 +137,6 @@ class Location:
         return str(self)
 
 
-
 class Inventory(Location):
     """
     Player inventory is represented as a location.
@@ -162,7 +161,37 @@ class Inventory(Location):
         self._entities.remove(entity)
 
     def __str__(self):
-        return "Inventory: " + str(', '.join([item.name for item in self.entities]))
+        return "Inventory[" + str(', '.join([item.name for item in self.entities]))+"]"
+
+    def __repr__(self):
+        return str(self)
+
+
+class UnknownLocation(Location):
+    """
+    Holder for entities that we know about, but don't (yet) know where they are.
+
+    """
+    def __init__(self):
+        super().__init__()
+        self._name = 'Unknown Location'
+
+    def __iter__(self):
+        self._index = 0
+        return self
+
+    def __next__(self):
+        if self._index == len(self.entities):
+            raise StopIteration
+        entity = self.entities[self._index]
+        self._index += 1
+        return entity
+
+    def remove(self, entity):
+        self._entities.remove(entity)
+
+    def __str__(self):
+        return "<Unknown Location>[" + str(', '.join([item.name for item in self.entities]))+"]"
 
     def __repr__(self):
         return str(self)
