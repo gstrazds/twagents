@@ -340,20 +340,27 @@ class KnowledgeGraph:
             print(f"get_entity() WARNING - MOVING {entities} to {locations}")
             assert len(entities) == 1
             prev_loc_set = self.where_is_entity(name, entitytype=entitytype)
-            if prev_loc_set:
-                if len(prev_loc_set) == 1:
-                    l = prev_loc_set.pop()
-                    e = list(entities)[0]
+            loc_set = set(locations)
+            if prev_loc_set == loc_set:
+                pass   # don't need to do anything special here
+            elif len(prev_loc_set) != len(loc_set):
+                print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations )
+            elif prev_loc_set:  # available information about location object seems to have changed
+                if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
+                    assert len(locations) == 1
+                    loc_prev = prev_loc_set.pop()
+                    loc_new = loc_set.pop()
                     # TODO: here we are assuming exactly one found entity and one location
-                    l.del_entity(e)
-                    locations[0].add_entity(e)
-                    # TODO: send an EntityMovedEvent
-                    if not self.groundtruth:
-                        # gi.event_stream.push(EntityMovedEvent(e, l, locations[0], groundtruth=self.groundtruth))
-                        pass
-                else:
+                    e = list(entities)[0]
+                    if loc_prev != self._unknown_location:
+                        print(f"WARNING: UNEXPECTED: KG.get_entity() triggering move_entity(entity={e},"
+                              f" dest={loc_new}, origin={loc_prev})")
+                    gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
+                elif len(prev_loc_set) == 2 and len(prev_loc_set) == 2:
                     loc_set = set(locations)
-                    print("WARNING: TODO deal with multiple locations", prev_loc_set, loc_set)
+                else:
+                    print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
+
         if entities:
             if len(entities) == 1:
                 return list(entities)[0], None
