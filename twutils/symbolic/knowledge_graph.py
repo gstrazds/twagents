@@ -346,8 +346,23 @@ class KnowledgeGraph:
             elif len(prev_loc_set) != len(loc_set):
                 print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations )
             elif prev_loc_set:  # available information about location object seems to have changed
+                if len(prev_loc_set) == 2 and len(prev_loc_set) == 2:
+                    if list(entities)[0]._type != gv.DOOR:
+                        print("WARNING: expected type==DOOR:", entities[0])
+                    new_locs = loc_set - prev_loc_set   # set.difference()
+                    if len(new_locs):
+                        if len(new_locs) != 1 or self._unknown_location not in prev_loc_set:
+                            print("WARNING: UNEXPECTED previous locations for entities:",
+                                  entities, prev_loc_set, locations)
+                        else:
+                            prev_loc_set = set(self._unknown_location)
+                            loc_set = new_locs
+                            # drop through to if len(prev_loc_set) == 1 case, below...
+                    else:
+                        pass  # no new information
+
                 if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
-                    assert len(locations) == 1
+                    assert len(loc_set) == 1
                     loc_prev = prev_loc_set.pop()
                     loc_new = loc_set.pop()
                     # TODO: here we are assuming exactly one found entity and one location
@@ -356,8 +371,7 @@ class KnowledgeGraph:
                         print(f"WARNING: UNEXPECTED: KG.get_entity() triggering move_entity(entity={e},"
                               f" dest={loc_new}, origin={loc_prev})")
                     gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
-                elif len(prev_loc_set) == 2 and len(prev_loc_set) == 2:
-                    loc_set = set(locations)
+
                 else:
                     print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
