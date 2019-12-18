@@ -265,24 +265,21 @@ class KnowledgeGraph:
                 ret.add(e)
         return ret
 
-    def where_is_entity(self, entityname, entitytype=None):
+    def where_is_entity(self, entityname, entitytype=None, allow_unknown=True):
         """ Returns a set of locations where an entity with a specific name can be found """
         ret = set()
-        for l in (self._locations + [self._inventory]):
+        search_locations = self._locations + [self._inventory]
+        if allow_unknown:
+            search_locations.append(self._unknown_location)
+        for l in search_locations:
             e = l.get_entity_by_name(entityname)
             if e and (entitytype is None or e._type == entitytype):
                 ret.add(l)
-        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
-        #     for l in (self._locations + [self._inventory]):
-        #         for e in l.entities:
-        #             for e2 in e._entities:
-        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
-        #                     ret.add(l)
         return ret
 
     def location_of_entity(self, entityname, entitytype=None, allow_unknown=False):
         """ Returns a single location where an entity with a specific name can be found """
-        location_set = self.where_is_entity(entityname, entitytype=entitytype)
+        location_set = self.where_is_entity(entityname, entitytype=entitytype, allow_unknown=allow_unknown)
         # print(f"DEBUG location_of_entity({entityname}:{entitytype}) => {location_set}")
         if not allow_unknown:
             location_set.discard(self._unknown_location)
@@ -327,53 +324,50 @@ class KnowledgeGraph:
             assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
             # print(f"DEBUG get_entity({name},locations={locations}, create_if_not_found=True)")
         entities = set()
-        if locations:
-            for l in locations:
-                e = l.get_entity_by_name(name)
-                if e:
-                    entities.add(e)
+        # if locations:
+        #     for l in locations:
+        #         e = l.get_entity_by_name(name)
+        #         if e:
+        #             entities.add(e)
         if not entities:  # none found
             entities = self.entities_with_name(name, entitytype=entitytype)
         if locations and entities:   # ? and create_if_notfound:
             # might need to move it from wherever it was to its new location
 
-            print(f"get_entity() WARNING - MOVING {entities} to {locations}")
             assert len(entities) == 1
-            prev_loc_set = self.where_is_entity(name, entitytype=entitytype)
+            prev_loc_set = self.where_is_entity(name, entitytype=entitytype, allow_unknown=True)
             loc_set = set(locations)
-            if prev_loc_set == loc_set:
-                pass   # don't need to do anything special here
-            elif len(prev_loc_set) != len(loc_set):
-                print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations )
-            elif prev_loc_set:  # available information about location object seems to have changed
-                if len(prev_loc_set) == 2 and len(prev_loc_set) == 2:
-                    if list(entities)[0]._type != gv.DOOR:
-                        print("WARNING: expected type==DOOR:", entities[0])
-                    new_locs = loc_set - prev_loc_set   # set.difference()
-                    if len(new_locs):
-                        if len(new_locs) != 1 or self._unknown_location not in prev_loc_set:
-                            print("WARNING: UNEXPECTED previous locations for entities:",
-                                  entities, prev_loc_set, locations)
-                        else:
-                            prev_loc_set = set(self._unknown_location)
+            if prev_loc_set != loc_set:
+                print(f"get_entity() WARNING - MOVING {entities} to {locations}")
+                if len(prev_loc_set) != len(loc_set):
+                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations )
+                elif prev_loc_set:  # available information about location object seems to have changed
+                    if len(prev_loc_set) == 2 and len(loc_set) == 2:
+                        if list(entities)[0]._type != gv.DOOR:
+                            print("WARNING: expected type==DOOR:", entities[0])
+                        new_locs = loc_set - prev_loc_set   # set.difference()
+                        prev_locs = prev_loc_set - loc_set
+                        if len(new_locs) == 1 and len(prev_locs) == 1:
+                            prev_loc_set = set([self._unknown_location])
                             loc_set = new_locs
                             # drop through to if len(prev_loc_set) == 1 case, below...
+                        else:
+                            print(f"WARNING: UNEXPECTED previous locations for {entities} prev:{prev_loc_set} "
+                                  f"-> new:{new_locs}; {locations}")
+
+                    if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
+                        assert len(loc_set) == 1
+                        loc_prev = prev_loc_set.pop()
+                        loc_new = loc_set.pop()
+                        # TODO: here we are assuming exactly one found entity and one location
+                        e = list(entities)[0]
+                        if loc_prev != self._unknown_location:
+                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={e},"
+                                  f" dest={loc_new}, origin={loc_prev})")
+                        gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
+
                     else:
-                        pass  # no new information
-
-                if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
-                    assert len(loc_set) == 1
-                    loc_prev = prev_loc_set.pop()
-                    loc_new = loc_set.pop()
-                    # TODO: here we are assuming exactly one found entity and one location
-                    e = list(entities)[0]
-                    if loc_prev != self._unknown_location:
-                        print(f"WARNING: UNEXPECTED: KG.get_entity() triggering move_entity(entity={e},"
-                              f" dest={loc_new}, origin={loc_prev})")
-                    gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
-
-                else:
-                    print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
+                        print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
         if entities:
             if len(entities) == 1:
@@ -469,7 +463,7 @@ class KnowledgeGraph:
         return obj, holder
 
     def add_facts(self, obs_facts, gi):
-        print(f"ADDING FACTS (groundtruth={self.groundtruth})")
+        print(f"*********** ADDING FACTS (groundtruth={self.groundtruth})")
         player_loc = None
         door_facts = []
         at_facts = []
@@ -522,6 +516,7 @@ class KnowledgeGraph:
                 r0 = fact.arguments[0]
                 d = fact.arguments[1]
                 r1 = fact.arguments[2]
+                assert fact.name == 'link'
                 assert r0.type == 'r'
                 assert r1.type == 'r'
                 assert d.type == 'd'
@@ -531,9 +526,11 @@ class KnowledgeGraph:
             elif len(fact.arguments) == 2:
                 r0 = fact.arguments[1]
                 d = fact.arguments[0]
+                assert fact.name in DIRECTION_ACTIONS
                 assert r0.type == 'r'
                 assert d.type == 'd'
-
+                if self.groundtruth:
+                    continue   # rely on 'link' facts to create doors
             if r0:
                 loc0 = self.get_location(r0.name, gi, create_if_notfound=False)
                 door_locations.append(loc0)
