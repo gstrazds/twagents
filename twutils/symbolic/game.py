@@ -33,15 +33,10 @@ def get_unrecognized(action, response):
 class GameInstance:
     def __init__(self, kg=None, gt=None):  # kg : knowledge_graph.KnowledgeGraph
         self.event_stream = event.EventStream()
-        self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]
+        self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]  #makes a copy of list
         #
         self.kg = kg
         self.gt = gt  # ground truth knowledge graph
-
-    def action_at_location(self, action, location, p_valid, result_text):
-        location.add_action_record(action, p_valid, result_text)
-        ev = event.NewActionRecordEvent(location, action, result_text)
-        self.event_stream.push(ev)
 
     def entity_at_location(self, entity, location):
         if location.add_entity(entity):

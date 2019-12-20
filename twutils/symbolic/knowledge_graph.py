@@ -303,6 +303,13 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return None
 
+    def action_at_current_location(self, action, p_valid, result_text, gi):
+        loc = self.player_location
+        loc.add_action_record(action, p_valid, result_text)
+        if not self.groundtruth:
+            ev = NewActionRecordEvent(loc, action, result_text)
+            gi.event_stream.push(ev)
+
     def get_location(self, roomname, gi, create_if_notfound=False):
         locations = self.locations_with_name(roomname)
         if locations:
@@ -368,7 +375,6 @@ class KnowledgeGraph:
                             print(f"WARNING: not moving {e} to UnknownLocation")
                         else:
                             gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
-
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 

@@ -159,7 +159,7 @@ class Navigator(DecisionModule):
             if result.startswith(response):
                 tried_before = True
 
-        gi.action_at_location(action, curr_loc, p_valid, response)
+        gi.kg.action_at_current_location(action, p_valid, response, gi)
         self._suggested_directions = self.get_mentioned_directions(response)
         if self._suggested_directions:
             dbg("[NAV] Suggested Directions: {}".format(self._suggested_directions))

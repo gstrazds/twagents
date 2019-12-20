@@ -130,7 +130,7 @@ class Idler(DecisionModule):
         p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
         ent = None
         if isinstance(action, StandaloneAction):
-            gi.action_at_location(action, gi.kg.player_location, p_valid, response)
+            gi.kg.action_at_current_location(action, p_valid, response, gi)
         else:
             if isinstance(action, SingleAction):
                 ent = action.entity
