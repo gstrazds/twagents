@@ -338,9 +338,9 @@ class KnowledgeGraph:
             prev_loc_set = self.where_is_entity(name, entitytype=entitytype, allow_unknown=True)
             loc_set = set(locations)
             if prev_loc_set != loc_set:
-                print(f"get_entity() WARNING - MOVING {entities} to {locations}")
+                print(f"get_entity() WARNING - MOVING {entities} to {loc_set}")
                 if len(prev_loc_set) != len(loc_set):
-                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations )
+                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations)
                 elif prev_loc_set:  # available information about location object seems to have changed
                     if len(prev_loc_set) == 2 and len(loc_set) == 2:
                         if list(entities)[0]._type != gv.DOOR:
@@ -364,7 +364,10 @@ class KnowledgeGraph:
                         if loc_prev != self._unknown_location:
                             print(f"WARNING: KG.get_entity() triggering move_entity(entity={e},"
                                   f" dest={loc_new}, origin={loc_prev})")
-                        gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
+                        if loc_new == self._unknown_location:
+                            print(f"WARNING: not moving {e} to UnknownLocation")
+                        else:
+                            gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
 
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
@@ -388,7 +391,7 @@ class KnowledgeGraph:
             else:
                 initial_loc = self._unknown_location
                 print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
-            new_entity = Entity(name, initial_loc, type=entitytype)
+            new_entity = Entity(name, location=initial_loc, type=entitytype)
             added_new = initial_loc.add_entity(new_entity)
             if len(locations) > 1:
                 for l in locations:
@@ -568,8 +571,9 @@ class KnowledgeGraph:
                 print(self.player_location, self.locations)
                 locs = None
             if r.type == 'r':
-                obj, _ = self.get_entity(o.name, gi, entitytype=entity_type_for_twvar(o.type),
-                                               locations=locs, create_if_notfound=True)
+                obj, _ = self.get_entity(o.name, gi,
+                                         entitytype=entity_type_for_twvar(o.type),
+                                         locations=locs, create_if_notfound=True)
             else:
                 gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)

@@ -33,7 +33,7 @@ class Hoarder(DecisionModule):
                     entity = gi.kg.inventory.get_entity_by_name(entity_name)
                 else:
                     # Create the entity at the current location
-                    entity = Entity(entity_name, here)
+                    entity = Entity(entity_name, location=here)
                     entity.add_name(short_name)
                     gi.entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
 

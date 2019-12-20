@@ -21,7 +21,7 @@ class Entity:
         SLOT,
     ]
 
-    def __init__(self, name, location, description='', type=None):
+    def __init__(self, name, location=None, description='', type=None):
         self._names       = [name] # List of names for the entity
         self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
@@ -29,6 +29,7 @@ class Entity:
         self._state       = EntityState()
         self._attributes  = []
         self._init_loc    = location
+        self._current_loc = None
         self._type        = type
 
     @property
