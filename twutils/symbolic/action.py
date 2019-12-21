@@ -114,7 +114,7 @@ class ExamineAction(Action):
 
     def apply(self, gi: GameInstance):
         entity = Entity(self.entity_name, location=gi.kg.player_location, ) #description=response)
-        gi.entity_at_location(entity, gi.kg.player_location)
+        gi.kg.entity_at_location(entity, gi.kg.player_location)
 
 
 class TakeAction(SingleAction):
@@ -128,7 +128,7 @@ class TakeAction(SingleAction):
         else:
             gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
         # gi.kg.inventory.add_entity(self.entity)
-        gi.entity_at_location(self.entity, gi.kg.inventory)
+        gi.kg.entity_at_location(self.entity, gi.kg.inventory)
         self.entity.add_attribute(Portable)
         # gi.add_entity_attribute(self.entity, Portable)
 
@@ -152,7 +152,7 @@ class DropAction(SingleAction):
     def apply(self, gi: GameInstance):
         assert self.entity in gi.kg.inventory
         gi.kg.inventory.remove(self.entity)
-        gi.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
+        gi.kg.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
         self.entity.add_attribute(Portable)
         # gi.add_entity_attribute(self.entity, Portable)
 
@@ -168,8 +168,9 @@ class OpenAction(SingleAction):
         super().__init__("open", entity)
 
     def apply(self, gi: GameInstance):
+        self.entity.add_attribute(Openable)
         self.entity.state.open()
-        gi.add_entity_attribute(self.entity, Openable)
+        # gi.add_entity_attribute(self.entity, Openable)
 
 
 class CloseAction(SingleAction):

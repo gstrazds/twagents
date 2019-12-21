@@ -52,11 +52,6 @@ class GameInstance:
         else:
             self.kg = graph
 
-    def entity_at_location(self, entity, location):
-        if location.add_entity(entity):
-            ev = event.NewEntityEvent(entity)
-            self.event_stream.push(ev)
-
     def includes_unrecognized_words(self, textline):
         for word in textline.split(' '):
             if word in self._unrecognized_words:

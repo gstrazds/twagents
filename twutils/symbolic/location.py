@@ -117,9 +117,9 @@ class Location:
         for entity in self.entities:
             entity.reset()
             init_loc = entity._init_loc
-            if init_loc == self:
+            if init_loc is None or init_loc == self:
                 continue
-            gi.entity_at_location(entity, init_loc)
+            init_loc.add_entity(entity)
             to_remove.append(entity)
         for entity in to_remove:
             self.entities.remove(entity)

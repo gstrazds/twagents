@@ -304,6 +304,12 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return None
 
+    def entity_at_location(self, entity, location):
+        if location.add_entity(entity):
+            if self.event_stream and not self.groundtruth:
+                ev = NewEntityEvent(entity)
+                self.event_stream.push(ev)
+
     # def entity_at_entity(self, entity1, entity2):
     #     if entity1.add_entity(entity2):
     #         ev = event.NewEntityEvent(entity2)
