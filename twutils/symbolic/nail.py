@@ -8,7 +8,7 @@ from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAc
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
 from symbolic.entity import Entity
 from symbolic.location import Location
-from symbolic import knowledge_graph
+from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.knowledge_graph import add_attributes_for_predicate, entity_type_for_twvar
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
@@ -39,8 +39,8 @@ class NailAgent():
         self.setup_logging(env_name, output_subdir)
         gv.rng.seed(seed)
         gv.dbg("RandomSeed: {}".format(seed))
-        observed_knowledge_graph  = knowledge_graph.KnowledgeGraph()
-        groundtruth_graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
+        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False)
+        groundtruth_graph = KnowledgeGraph(None, groundtruth=True)
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
@@ -185,9 +185,9 @@ class NailAgent():
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # sort into separate lists to control the order in which facts get processed
-        graph = knowledge_graph.KnowledgeGraph(groundtruth=True)
-        self.gi.gt = graph  # reinit because we build full the full graph every time
-        graph.add_facts(gt_facts, self.gi)
+        # Reinitialize, build complete GT KG from scratch each time
+        self.gi._set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
+        self.gi.gt.add_facts(gt_facts, self.gi)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
 

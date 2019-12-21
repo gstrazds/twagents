@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
+from collections import namedtuple
 from symbolic import gv   # global constants
 from symbolic.game import GameInstance
 from symbolic.entity import Entity
 from symbolic.attribute import Attribute
 
+ActionRec = namedtuple('ActionRecord', 'p_valid, result_text', defaults=(0.7, ''))
 
 class Action(ABC):
     """

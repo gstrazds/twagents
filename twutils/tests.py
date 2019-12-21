@@ -379,7 +379,7 @@ class TestTask(unittest.TestCase):
 
     def test_taskexec_prereq_location(self):
         print("......... TaskExecutor missing prereq location ...")
-        kg = KnowledgeGraph(groundtruth=True)
+        kg = KnowledgeGraph(None, groundtruth=True)
         gi = GameInstance(gt=kg)
         kitchen = Location(description="kitchen")
         kg.add_location(kitchen)
@@ -412,8 +412,10 @@ class TestTask(unittest.TestCase):
         self.assertGreater(len(te.task_stack), 0)
         self.assertEqual(te.task_stack[-1], t2)
 
+        print("kg.player_location=", kg._player_location)
+        print("SETTING LOCATION=kitchen")
         kg.set_player_location(kitchen, gi)
-
+        print("kg.player_location=", kg._player_location)
         _consume_event_stream(te, gi)
 
         te.activate(gi)

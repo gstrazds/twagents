@@ -1,6 +1,6 @@
 from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
-from ..action import StandaloneAction, SingleAction, DoubleAction
+from ..action import StandaloneAction, SingleAction, DoubleAction, ActionRec
 from ..game import GameInstance
 from .. import gv
 from ..util import first_sentence
@@ -139,7 +139,7 @@ class Idler(DecisionModule):
             else:
                 assert False, "Expected either SingleAction or DoubleAction but got {}".format(str(action))
             if ent:
-                gi.act_on_entity(action, ent, p_valid, response)
+                gi.kg.act_on_entity(action, ent, ActionRec(p_valid, response))
         success = (p_valid > 0.5)
         self.record(success)
         gv.dbg("[IDLER]({}) p={:.2f} {} --> {}".format(

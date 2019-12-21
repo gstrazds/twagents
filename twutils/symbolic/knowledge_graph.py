@@ -172,13 +172,14 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, groundtruth=False):
+    def __init__(self, event_stream, groundtruth=False):
         self._locations          = []
         self._unknown_location   = UnknownLocation()
         self._player_location    = self._unknown_location
         self._init_loc           = None
         self._inventory          = Inventory()
         self._connections        = ConnectionGraph()
+        self.event_stream        = event_stream
         self.groundtruth         = groundtruth
 
     @property
@@ -303,6 +304,21 @@ class KnowledgeGraph:
         #                     ret.add(l)
         return None
 
+    # def entity_at_entity(self, entity1, entity2):
+    #     if entity1.add_entity(entity2):
+    #         ev = event.NewEntityEvent(entity2)
+    #         self.event_stream.push(ev)
+
+    def act_on_entity(self, action, entity, rec: ActionRec):
+        if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.groundtruth:
+            ev = NewActionRecordEvent(entity, action, rec.result_text)
+            self.event_stream.push(ev)
+
+    # def add_entity_attribute(self, entity, attribute, groundtruth=False):
+    #     if entity.add_attribute(attribute):
+    #         if not groundtruth:
+    #             ev = event.NewAttributeEvent(entity, attribute, groundtruth=groundtruth)
+    #             self.event_stream.push(ev)
     def action_at_current_location(self, action, p_valid, result_text, gi):
         loc = self.player_location
         loc.add_action_record(action, p_valid, result_text)

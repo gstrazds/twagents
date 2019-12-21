@@ -4,7 +4,7 @@ from ..decision_module import DecisionModule
 from ..game import GameInstance
 from .. import gv
 from ..util import clean, first_sentence
-from ..action import SingleAction, DoubleAction
+from ..action import SingleAction, DoubleAction, ActionRec
 
 
 class Interactor(DecisionModule):
@@ -86,7 +86,7 @@ class Interactor(DecisionModule):
         elif isinstance(action, DoubleAction):
             ent = action.entity1
         if ent:
-            gi.act_on_entity(action, ent, p_valid, response)
+            gi.kg.act_on_entity(action, ent, ActionRec(p_valid, response))
         else:
             print("WARNING Interactor.take_control(): expecting SingleAction or DoubleAction, but got:", action)
         success = (p_valid > 0.5)

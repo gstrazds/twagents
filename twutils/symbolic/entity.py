@@ -67,17 +67,15 @@ class Entity:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text) -> bool:
+    def add_action_record(self, action, rec) -> bool:
         """
         Record an action that was applied to this object and the
         resulting game text.
 
         """
-        self._action_records[action] = (p_valid, result_text)
-        if action not in self._action_records and p_valid > .5:
-            return True
-        else:
-            return False
+        was_new = action not in self._action_records
+        self._action_records[action] = rec
+        return was_new
 
     def has_action_record(self, action):
         return action in self._action_records

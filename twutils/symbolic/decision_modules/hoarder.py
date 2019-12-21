@@ -40,7 +40,7 @@ class Hoarder(DecisionModule):
                 take_action = gv.Take(entity)
                 p_valid = take_action.validate(resp)
                 gv.dbg("[Take] p={:.2f} {} --> {}".format(p_valid, entity_name, resp))
-                gi.act_on_entity(take_action, entity, p_valid, resp)
+                gi.kg.act_on_entity(take_action, entity, ActionRec(p_valid, resp))
                 if p_valid > 0.5:
                     take_action.apply(gi)
         self.record(success)

@@ -1,7 +1,7 @@
 from symbolic import gv
 from symbolic import event
 # from symbolic import action
-# from symbolic import knowledge_graph
+# from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic import util
 
 
@@ -34,30 +34,28 @@ class GameInstance:
     def __init__(self, kg=None, gt=None):  # kg : knowledge_graph.KnowledgeGraph
         self.event_stream = event.EventStream()
         self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]  #makes a copy of list
-        #
-        self.kg = kg
-        self.gt = gt  # ground truth knowledge graph
+        self.kg = None
+        self.gt = None
+        self._set_knowledge_graph(kg, groundtruth=False)
+        self._set_knowledge_graph(gt, groundtruth=True)
+
+    def _set_knowledge_graph(self, graph, groundtruth=False):  # graph: knowledge_graph.KnowledgeGraph):
+        old_graph = self.gt if groundtruth else self.kg
+        if old_graph is not None:
+            old_graph.event_stream = None
+        if graph is not None:
+            graph.event_stream = self.event_stream
+            assert graph.groundtruth == groundtruth
+            graph.groundtruth = groundtruth
+        if groundtruth:
+            self.gt = graph
+        else:
+            self.kg = graph
 
     def entity_at_location(self, entity, location):
         if location.add_entity(entity):
             ev = event.NewEntityEvent(entity)
             self.event_stream.push(ev)
-
-    # def entity_at_entity(self, entity1, entity2):
-    #     if entity1.add_entity(entity2):
-    #         ev = event.NewEntityEvent(entity2)
-    #         self.event_stream.push(ev)
-
-    def act_on_entity(self, action, entity, p_valid, result_text):
-        if entity.add_action_record(action, p_valid, result_text):
-            ev = event.NewActionRecordEvent(entity, action, result_text)
-            self.event_stream.push(ev)
-
-    # def add_entity_attribute(self, entity, attribute, groundtruth=False):
-    #     if entity.add_attribute(attribute):
-    #         if not groundtruth:
-    #             ev = event.NewAttributeEvent(entity, attribute, groundtruth=groundtruth)
-    #             self.event_stream.push(ev)
 
     def move_entity(self, entity, origin, dest, groundtruth=False):
         """ Moves entity from origin to destination. """
