@@ -57,19 +57,6 @@ class GameInstance:
             ev = event.NewEntityEvent(entity)
             self.event_stream.push(ev)
 
-    def move_entity(self, entity, origin, dest, groundtruth=False):
-        """ Moves entity from origin to destination. """
-        assert origin.has_entity(entity), \
-            "Can't move entity {} that isn't present at origin {}" \
-            .format(entity, origin)
-        origin.del_entity(entity)
-        if not dest.add_entity(entity):
-            msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
-            print("!!!WARNING: "+msg)
-            assert False, msg
-        if not groundtruth:
-            self.event_stream.push(event.EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
-
     def includes_unrecognized_words(self, textline):
         for word in textline.split(' '):
             if word in self._unrecognized_words:

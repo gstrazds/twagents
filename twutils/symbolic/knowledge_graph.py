@@ -342,7 +342,20 @@ class KnowledgeGraph:
         print("LOCATION NOT FOUND:", roomname)
         return None
 
-    def get_entity(self, name, gi, locations=None, entitytype=None, create_if_notfound=False):
+    def move_entity(self, entity, origin, dest, groundtruth=False):
+        """ Moves entity from origin to destination. """
+        assert origin.has_entity(entity), \
+            "Can't move entity {} that isn't present at origin {}" \
+            .format(entity, origin)
+        origin.del_entity(entity)
+        if not dest.add_entity(entity):
+            msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
+            print("!!!WARNING: "+msg)
+            assert False, msg
+        if not groundtruth:
+            self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
+
+    def get_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
         if create_if_notfound:
             assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
             # print(f"DEBUG get_entity({name},locations={locations}, create_if_not_found=True)")
@@ -390,7 +403,7 @@ class KnowledgeGraph:
                         if loc_new == self._unknown_location:
                             print(f"WARNING: not moving {e} to UnknownLocation")
                         else:
-                            gi.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
+                            self.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
@@ -428,7 +441,7 @@ class KnowledgeGraph:
                 add_attributes_for_type(new_entity, entitytype)
                 if not self.groundtruth and initial_loc != self._unknown_location:
                     print("DISCOVERED NEW entity:", new_entity)
-                    gi.event_stream.push(ev)
+                    self.event_stream.push(ev)
             return new_entity, ev
         return None, None
 
@@ -466,7 +479,7 @@ class KnowledgeGraph:
             loc_list = [loc]  # a list containing exactly one element
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
-        obj, ev = self.get_entity(o.name, gi,
+        obj, ev = self.get_entity(o.name,
                                   entitytype=entity_type_for_twvar(o.type),
                                   locations=loc_list,
                                   create_if_notfound=True)
@@ -565,8 +578,10 @@ class KnowledgeGraph:
             else:
                 door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
 
-            door, _ = self.get_entity(d.name, gi, entitytype=gv.DOOR,
-                                            locations=door_locations, create_if_notfound=True)
+            door, _ = self.get_entity(d.name,
+                                      entitytype=gv.DOOR,
+                                      locations=door_locations,
+                                      create_if_notfound=True)
             if r1:  #len(door_locations) == 2:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
@@ -593,9 +608,10 @@ class KnowledgeGraph:
                 print(self.player_location, self.locations)
                 locs = None
             if r.type == 'r':
-                obj, _ = self.get_entity(o.name, gi,
+                obj, _ = self.get_entity(o.name,
                                          entitytype=entity_type_for_twvar(o.type),
-                                         locations=locs, create_if_notfound=True)
+                                         locations=locs,
+                                         create_if_notfound=True)
             else:
                 gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
@@ -636,9 +652,9 @@ class KnowledgeGraph:
                 a1 = fact.arguments[1]
             else:
                 a1 = None
-            o1, _ = self.get_entity(a0.name, gi, entitytype=entity_type_for_twvar(a0.type))
+            o1, _ = self.get_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
             if a1:
-                o2, _ = self.get_entity(a1.name, gi, entitytype=entity_type_for_twvar(a1.type))
+                o2, _ = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
             if o1:
                 add_attributes_for_predicate(o1, predicate, entity2=o2)
             else:
