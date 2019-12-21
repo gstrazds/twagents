@@ -2,7 +2,6 @@
 # from symbolic import gv
 from .gv import logger
 from .game import GameInstance
-from .action import Action
 from .util import text_similarity
 # from .event import NewEntityEvent, NewActionRecordEvent
 
@@ -13,11 +12,14 @@ class Location:
     interactions, and connections to other locations.
 
     """
-    def __init__(self, description=''):
-        self._name        = self.extract_name(description)
+    def __init__(self, name='', description=''):
+        if name:
+            self._name = name
+        else:
+            self._name        = self.extract_name(description)
         self._description = description
         self._entities    = []
-        self._action_records = {} # action : (p_valid, response)
+        self._action_records = {}   # action : ActionRec(p_valid, response)
 
     @property
     def name(self):
@@ -92,23 +94,23 @@ class Location:
     def action_records(self):
         return self._action_records
 
-    def add_action_record(self, action, p_valid, result_text) -> bool:
-        """ Records an action, the probability it succeeded, and the text response. """
-        if not isinstance(action, Action):
-            raise ValueError("Expected Action. Got {}".format(type(action)))
-        self._action_records[action] = (p_valid, result_text)
-        return True
-
-    def has_action_record(self, action):
-        if not isinstance(action, Action):
-            raise ValueError("Expected Action. Got {}".format(type(action)))
-        return action in self._action_records
-
-    def get_action_record(self, action):
-        """ Returns (p_valid, result_text) for an action or None if it doesn't exist. """
-        if not isinstance(action, Action):
-            raise ValueError("Expected Action. Got {}".format(type(action)))
-        return self.action_records[action] if self.has_action_record(action) else None
+    # def add_action_record(self, action, p_valid, result_text) -> bool:
+    #     """ Records an action, the probability it succeeded, and the text response. """
+    #     if not isinstance(action, Action):
+    #         raise ValueError("Expected Action. Got {}".format(type(action)))
+    #     self._action_records[action] = (p_valid, result_text)
+    #     return True
+    #
+    # def has_action_record(self, action):
+    #     if not isinstance(action, Action):
+    #         raise ValueError("Expected Action. Got {}".format(type(action)))
+    #     return action in self._action_records
+    #
+    # def get_action_record(self, action):
+    #     """ Returns (p_valid, result_text) for an action or None if it doesn't exist. """
+    #     if not isinstance(action, Action):
+    #         raise ValueError("Expected Action. Got {}".format(type(action)))
+    #     return self.action_records[action] if self.has_action_record(action) else None
 
     def reset(self, gi: GameInstance):
         """ Reset to a state resembling start of game. """
@@ -125,7 +127,7 @@ class Location:
             self.entities.remove(entity)
 
     def to_string(self, prefix=''):
-        s = prefix + "Location: {}".format(self.name)
+        s = prefix + "Loc<{}>:".format(self.name)
         for entity in self._entities:
             s += "\n" + entity.to_string(prefix + "  ")
         return s

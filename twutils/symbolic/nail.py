@@ -146,7 +146,7 @@ class NailAgent():
             #GVS# return 'look' # Do a look to get rid of intro text
 
         if not self.gi.kg.player_location:
-            loc = Location(observation)
+            loc = Location(description=observation)
             ev = self.gi.kg.add_location(loc)
             self.gi.kg.set_player_location(loc, self.gi)
             self.gi.kg._init_loc = loc

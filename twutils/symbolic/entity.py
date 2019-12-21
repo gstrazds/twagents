@@ -2,6 +2,7 @@ from symbolic.gv import OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM
 from symbolic.gv import FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ
 from symbolic.gv import MEAL, RECIPE, INGREDIENT, SLOT
 from symbolic import util
+from symbolic.location import Location
 
 class Entity:
     """
@@ -25,11 +26,13 @@ class Entity:
         self._names       = [name] # List of names for the entity
         self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
-        self._entities    = []
+        # self._entities    = []
         self._state       = EntityState()
         self._attributes  = []
         self._init_loc    = location
-        self._current_loc = None
+        self._current_loc = None   # location where this entity can currently be found
+        self._contains    = None   # if not None, a location for objects contained by this entity
+        self._supports    = None   # if not None, a location with objects supported by/on this entity
         self._type        = type
 
     @property
@@ -80,13 +83,35 @@ class Entity:
     def has_action_record(self, action):
         return action in self._action_records
 
-    def add_entity(self, entity) -> bool:
-        self._entities.append(entity)
-        # gi.event_stream.push(event.NewEntityEvent(entity))
-        return True
+    def add_entity(self, entity, rel=None) -> bool:
+        if rel == 'on':
+            if self._supports is None:
+                self._supports = Location(name=f"on_{self.name}")
+            return self._supports.add_entity(entity)
+        elif rel == 'in':
+            if self._contains is None:
+                self._contains = Location(name=f"in_{self.name}")
+            return self._contains.add_entity(entity)
+        # elif rel == 'at':
+        else:
+            assert False, f"Unknown relation for Entity.add_entity({entity},rel={rel})"
+        # self._entities.append(entity)
+        return False
+
+    def contains_entity(self, entity) -> bool:
+        return self._contains and self._contains.has_entity(entity)
+
+    def supports_entity(self, entity) -> bool:
+        return self._supports and self._supports.has_entity(entity)
 
     def del_entity(self, entity):
-        self._entities.remove(entity)
+        if self.contains_entity(entity):
+            return self._contains.del_entity(entity)
+        elif self.supports_entity(entity):
+            return self._supports.del_entity(entity)
+        else:
+            print(f"ENTITY_NOT_FOUND: {self.name}.del_entity({entity.name})")
+        return False
 
     @property
     def attributes(self):
@@ -123,8 +148,10 @@ class Entity:
                 if p_valid > .5:
                     s += "\n  {}Action record: {} {} - {} (p={:.2f})".format(
                         prefix, action, self.name, util.clean(resp)[:80], p_valid)
-        for entity in self._entities:
-            s += "\n" + prefix + entity.to_string(prefix + "  ")
+        if self._contains:
+            s += ('\n' + prefix + self._contains.to_string(prefix + "  "))
+        if self._supports:
+            s += ('\n' + prefix + self._supports.to_string(prefix + "  "))
         if self._attributes:
             s += "\n  " + prefix + "Attributes: "
             for attribute in self._attributes:

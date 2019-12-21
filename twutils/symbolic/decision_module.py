@@ -19,7 +19,7 @@ class DecisionModule(ABC):
 
     def process_event_stream(self, gi: GameInstance):
         for event in gi.event_stream.read():
-            print(event)
+            # print(event)
             self.process_event(event, gi)
 
     def get_eagerness(self, gi: GameInstance):

@@ -107,7 +107,7 @@ class Navigator(DecisionModule):
         # First try to move in one of the directions mentioned in the description.
         likely_nav_actions = self.get_mentioned_directions(loc.description)
         for act in likely_nav_actions:
-            if not loc.has_action_record(act):
+            if act not in loc.action_records:
                 dbg("[NAV] Trying mentioned action: {}".format(act))
                 return act
 
@@ -154,7 +154,7 @@ class Navigator(DecisionModule):
 
         # Check if we've tried this action before
         tried_before = False
-        if curr_loc.has_action_record(action):
+        if action in curr_loc.action_records:
             prev_valid, result = curr_loc.action_records[action]
             if result.startswith(response):
                 tried_before = True
@@ -219,7 +219,7 @@ class Navigator(DecisionModule):
                     return
 
                 # Finally, create a new location
-                new_loc = Location(look)
+                new_loc = Location(description=look)
                 ev = gi.kg.add_location(new_loc)
                 gi.kg.add_connection(Connection(curr_loc, action, new_loc), gi)
                 gi.kg.set_player_location(new_loc, gi)

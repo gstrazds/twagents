@@ -294,7 +294,9 @@ class KnowledgeGraph:
         """ Returns container (or support) where an entity with a specific name can be found """
         for l in self._locations:
             for ce in l.entities:
-                if entity in ce._entities:
+                if ce.contains_entity(entity):
+                    return ce
+                elif ce._supports and ce._supports.has_entity(entity):
                     return ce
         # if len(ret) == 0:   # check also on or in other entities (just one level deep)
         #     for l in (self._locations + [self._inventory]):
@@ -327,7 +329,7 @@ class KnowledgeGraph:
     #             self.event_stream.push(ev)
     def action_at_current_location(self, action, p_valid, result_text, gi):
         loc = self.player_location
-        loc.add_action_record(action, p_valid, result_text)
+        loc.action_records[action] = ActionRec(p_valid, result_text)
         if not self.groundtruth:
             ev = NewActionRecordEvent(loc, action, result_text)
             gi.event_stream.push(ev)
@@ -338,7 +340,7 @@ class KnowledgeGraph:
             assert len(locations) == 1
             return locations[0]
         elif create_if_notfound:
-            new_loc = Location(roomname)
+            new_loc = Location(description=roomname)
             ev = self.add_location(new_loc)
             if ev and not self.groundtruth:
                 gi.event_stream.push(ev)
@@ -451,7 +453,9 @@ class KnowledgeGraph:
             return new_entity, ev
         return None, None
 
-    def add_obj_to_obj(self, gi, fact, player_loc):
+    def add_obj_to_obj(self, gi, fact, player_loc, rel=None):
+        assert rel == fact.name
+        # rel = fact.name
         o = fact.arguments[0]
         h = fact.arguments[1]
         if o.name.startswith('~') or h.name.startswith('~'):
@@ -491,7 +495,7 @@ class KnowledgeGraph:
                                   create_if_notfound=True)
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
-            holder.add_entity(obj)
+            holder.add_entity(obj, rel=rel)
 
         holder_for_logging = 'Inventory' if h.name == 'I' else holder
         if ev:
@@ -629,11 +633,11 @@ class KnowledgeGraph:
 
         for fact in on_facts:
             # print("DEBUG on_fact", fact)
-            o1, o2 = self.add_obj_to_obj(gi, fact, player_loc)
+            o1, o2 = self.add_obj_to_obj(gi, fact, player_loc, rel='on')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'on', o2)
         for fact in in_facts:
-            o1, o2 = self.add_obj_to_obj(gi, fact, player_loc)
+            o1, o2 = self.add_obj_to_obj(gi, fact, player_loc, rel='in')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'in', o2)
         if player_loc:

@@ -11,7 +11,7 @@ def _check_preconditions(task: Task, gi: GameInstance) -> bool:
     kg = gi.gt if use_groundtruth else gi.kg
     all_satisfied = task.check_preconditions(kg)
     if not all_satisfied:
-        print("_check_preconditions: using kg=", kg)
+        # print("_check_preconditions: using kg=", kg)
         print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
     else:
         print("task ... preconditions SATISFIED")
