@@ -113,7 +113,7 @@ class Examiner(DecisionModule):
             entity.description = response
             p_valid = self._estimate_action_validity(action, response, gi)
             gv.dbg("[EXM] p={:.2f} {} --> {}".format(p_valid, action, clean(response)))
-            gi.kg.action_at_current_location(action, 1., response, gi)
+            gi.kg.action_at_current_location(action, 1., response)
         else:
             entity_name = self._to_examine[curr_loc].pop()
             action = Examine(entity_name)
@@ -123,7 +123,7 @@ class Examiner(DecisionModule):
             self.record(success)
             gv.dbg("[EXM]({}) p={:.2f} {} --> {}".format(
                 "val" if success else "inv", p_valid, action, clean(response)))
-            gi.kg.action_at_current_location(action, p_valid, response, gi)
+            gi.kg.action_at_current_location(action, p_valid, response)
             if success:
                 entity = curr_loc.get_entity_by_description(response)
                 if entity is None:

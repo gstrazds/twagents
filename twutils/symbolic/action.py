@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 from symbolic import gv   # global constants
 from symbolic.game import GameInstance
-from symbolic.entity import Thing, Entity
+from symbolic.entity import Thing   # Entity
 from symbolic.attribute import Attribute
 
 ActionRec = namedtuple('ActionRecord', 'p_valid, result_text', defaults=(0.7, ''))
@@ -69,8 +69,8 @@ class SingleAction(Action):
     """ An action of the form: verb entity. """
     def __init__(self, verb, entity):
         super().__init__(verb)
-        if not isinstance(entity, Entity):
-            raise ValueError("Expected entity object, got {}".format(type(entity)))
+        if not isinstance(entity, Thing):
+            raise ValueError("Expected thing-like object, got {}".format(type(entity)))
         self.entity = entity
 
     def text(self):
@@ -81,10 +81,10 @@ class DoubleAction(Action):
     """ An action of the form: verb Entity1 preposition Entity2 """
     def __init__(self, verb, entity1, preposition, entity2):
         super().__init__(verb)
-        if not isinstance(entity1, Entity):
-            raise ValueError("Expected entity object, got {}".format(type(entity1)))
-        if not isinstance(entity2, Entity):
-            raise ValueError("Expected entity object, got {}".format(type(entity2)))
+        if not isinstance(entity1, Thing):
+            raise ValueError("Expected thing-like object, got {}".format(type(entity1)))
+        if not isinstance(entity2, Thing):
+            raise ValueError("Expected thing-like object, got {}".format(type(entity2)))
         self.entity1 = entity1
         self.prep = preposition
         self.entity2 = entity2
@@ -101,7 +101,7 @@ class NavAction(StandaloneAction):
     def apply(self, gi: GameInstance):
         to_loc = gi.kg.connections.navigate(gi.kg.player_location, self)
         assert to_loc, "Error: Unknown connection"
-        gi.kg.set_player_location(to_loc, gi)
+        gi.kg.set_player_location(to_loc)
 
 
 class ExamineAction(Action):

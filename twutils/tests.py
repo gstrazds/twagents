@@ -414,7 +414,7 @@ class TestTask(unittest.TestCase):
 
         print("kg.player_location=", kg._player_location)
         print("SETTING LOCATION=kitchen")
-        kg.set_player_location(kitchen, gi)
+        kg.set_player_location(kitchen)
         print("kg.player_location=", kg._player_location)
         _consume_event_stream(te, gi)
 

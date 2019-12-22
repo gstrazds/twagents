@@ -137,7 +137,7 @@ class Navigator(DecisionModule):
         loc = find_most_similar_location(description, gi.kg)
         if loc:
             dbg("[NAV](relocalizing) \"{}\" to {}".format(description, loc))
-            gi.kg.set_player_location(loc, gi)
+            gi.kg.set_player_location(loc)
         else:
             dbg("[NAV](relocalizing aborted) \"{}\" to {}".format(description, loc))
 
@@ -159,7 +159,7 @@ class Navigator(DecisionModule):
             if result.startswith(response):
                 tried_before = True
 
-        gi.kg.action_at_current_location(action, p_valid, response, gi)
+        gi.kg.action_at_current_location(action, p_valid, response)
         self._suggested_directions = self.get_mentioned_directions(response)
         if self._suggested_directions:
             dbg("[NAV] Suggested Directions: {}".format(self._suggested_directions))
@@ -177,8 +177,8 @@ class Navigator(DecisionModule):
             else:
                 existing_loc = existing_locs[0]
             dbg("[NAV](revisited-location) {}".format(existing_loc.name))
-            gi.kg.add_connection(Connection(curr_loc, action, existing_loc), gi)
-            gi.kg.set_player_location(existing_loc, gi)
+            gi.kg.add_connection(Connection(curr_loc, action, existing_loc))
+            gi.kg.set_player_location(existing_loc)
             return
 
         # This is either a new location or a failed action
@@ -187,7 +187,7 @@ class Navigator(DecisionModule):
             if known_destination:
                 # We didn't reach the expected destination. Likely mislocalized.
                 look = yield Look
-                self.relocalize(look)
+                self.relocalize(look, gi)
             else: # This has failed previously
                 dbg("[NAV-fail] p={:.2f} Response: {}".format(p_valid, response))
         else:
@@ -214,14 +214,14 @@ class Navigator(DecisionModule):
                     else:
                         existing_loc = existing_locs[0]
                     dbg("[NAV](revisited-location) {}".format(existing_loc.name))
-                    gi.kg.add_connection(Connection(curr_loc, action, existing_loc), gi)
-                    gi.kg.set_player_location(existing_loc, gi)
+                    gi.kg.add_connection(Connection(curr_loc, action, existing_loc))
+                    gi.kg.set_player_location(existing_loc)
                     return
 
                 # Finally, create a new location
                 new_loc = Location(description=look)
                 ev = gi.kg.add_location(new_loc)
-                gi.kg.add_connection(Connection(curr_loc, action, new_loc), gi)
-                gi.kg.set_player_location(new_loc, gi)
+                gi.kg.add_connection(Connection(curr_loc, action, new_loc))
+                gi.kg.set_player_location(new_loc)
                 gi.event_stream.push(ev)
 

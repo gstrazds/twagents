@@ -84,6 +84,9 @@ class Entity:
     def description(self, value):
         self._description = value
 
+    def reset(self, kg):   #kg: KnowledgeGraph
+        pass
+
 
 class EntityState:
     """
@@ -258,12 +261,12 @@ class Location(Entity):
     #         raise ValueError("Expected Action. Got {}".format(type(action)))
     #     return self.action_records[action] if self.has_action_record(action) else None
 
-    def reset(self, gi):  # GameInstance):
+    def reset(self, kg):  # KnowledgeGraph):
         """ Reset to a state resembling start of game. """
         # Move all the entities back to their original locations
         to_remove = []
         for entity in self.entities:
-            entity.reset()
+            entity.reset(kg)
             init_loc = entity._init_loc
             if init_loc is None or init_loc == self:
                 continue
@@ -435,7 +438,7 @@ class Thing(Entity):
     def state(self):
         return self._state
 
-    def reset(self):
+    def reset(self, kg):
         """ Reset the entity to a state similar to when the game started. """
         # Remove all successful action records
         to_remove = []
@@ -444,6 +447,12 @@ class Thing(Entity):
                 to_remove.append(action_record)
         for action_record in to_remove:
             del self.action_records[action_record]
+        if self._contains:
+            for e in self._contains.entities:
+                e.reset(kg)
+        if self._supports:
+            for e in self._supports.entities:
+                e.reset(kg)
 
     def to_string(self, prefix=''):
         s = prefix + "Entity: {}".format(self.name)

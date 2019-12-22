@@ -146,7 +146,7 @@ class NailAgent():
         if not self.gi.kg.player_location:
             loc = Location(description=observation)
             ev = self.gi.kg.add_location(loc)
-            self.gi.kg.set_player_location(loc, self.gi)
+            self.gi.kg.set_player_location(loc)
             self.gi.kg._init_loc = loc
             # self.gi.event_stream.push(ev)
 
@@ -175,7 +175,7 @@ class NailAgent():
         pass
 
     # def gt_navigate(self, roomname):
-    #     dest_loc = self.gi.gt.get_location(roomname, self.gi, create_if_notfound=False)
+    #     dest_loc = self.gi.gt.get_location(roomname, create_if_notfound=False)
     #     assert dest_loc is not None
     #     self.gt_nav.set_goal(dest_loc, self.gi)
     #     # self.elect_new_active_module()
