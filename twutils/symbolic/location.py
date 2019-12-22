@@ -18,8 +18,9 @@ class Location:
         else:
             self._name        = self.extract_name(description)
         self._description = description
+        self._action_records = {}  # action : ActionRec(p_valid, response)
         self._entities    = []
-        self._action_records = {}   # action : ActionRec(p_valid, response)
+        self._parent      = None   # link to a containing Entity (Location/Place or Thing )
 
     @property
     def name(self):

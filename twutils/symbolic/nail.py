@@ -1,15 +1,13 @@
 import os
 import logging
-from symbolic.game import GameInstance
-from symbolic import gv
+# from symbolic.game import GameInstance
+# from symbolic import gv
 # from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
 from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire, TaskExecutor
-# from symbolic.knowledge_graph import *
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
-from symbolic.entity import Entity
+# from symbolic.entity import Entity
 from symbolic.location import Location
 from symbolic.knowledge_graph import KnowledgeGraph
-from symbolic.knowledge_graph import add_attributes_for_predicate, entity_type_for_twvar
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 

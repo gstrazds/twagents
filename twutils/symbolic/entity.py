@@ -1,10 +1,51 @@
-from symbolic.gv import OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM
-from symbolic.gv import FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ
-from symbolic.gv import MEAL, RECIPE, INGREDIENT, SLOT
 from symbolic import util
 from symbolic.location import Location
 
+# Entity types for TextWorld CodaLab challenge #1 (recipe games)
+OBJECT = 'o'
+THING = 't'
+SUPPORT = 's'
+CONTAINER = 'c'
+FOOD = 'f'
+KEY = 'k'
+PERSON = 'P'
+ROOM = 'r'
+DOOR = 'd'
+OVEN = 'oven'
+STOVE = 'stove'
+TOASTER = 'toaster'
+BBQ = 'bbq'
+MEAL = 'meal'
+
+RECIPE = 'RECIPE'
+INGREDIENT = 'ingredient'
+SLOT = 'slot'
+
+# define some additional special type codes
+UNKNOWN_OBJ_TYPE = 'UNKNOWN'
+UNKNOWN_LOCATION = 'UNK_LOC'
+CONTAINED_LOCATION = 'C_LOC'
+
+
 class Entity:
+    entity_types = [
+        OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM,
+        FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ,
+        MEAL, RECIPE, INGREDIENT,
+        # NORTH, WEST, EAST, SOUTH,
+        SLOT,
+        UNKNOWN_OBJ_TYPE,
+        UNKNOWN_LOCATION,
+        CONTAINED_LOCATION
+    ]
+
+    def __init__(self, name='SOMETHING', description='', type=None):
+        self._names       = [name]  # List of names for the entity
+        self._description = description
+        self._type        = type
+
+
+class Thing(Entity):
     """
     An Entity represents an object or person encountered in a game.
 
@@ -14,24 +55,18 @@ class Entity:
     description: A long form description of the entity
 
     """
-    entity_types = [
-        OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM,
-        FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ,
-        MEAL, RECIPE, INGREDIENT,
-        # NORTH, WEST, EAST, SOUTH,
-        SLOT,
-    ]
 
-    def __init__(self, name, location=None, description='', type=None):
-        self._names       = [name] # List of names for the entity
+    def __init__(self, name, description='', location=None, type=None):
+        super().__init__(name=name, description=description, type=type)
+        self._names       = [name]  # List of names for the entity
         self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
-        # self._entities    = []
         self._state       = EntityState()
         self._attributes  = []
         self._init_loc    = location
         self._current_loc = None   # location where this entity can currently be found
-        self._contains    = None   # if not None, a location for objects contained by this entity
+        # self._entities    = []
+        self._contains    = None   # if not None, a location holding objects contained by this entity
         self._supports    = None   # if not None, a location with objects supported by/on this entity
         self._type        = type
 

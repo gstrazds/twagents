@@ -2,7 +2,7 @@
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from symbolic.event import *
 from symbolic.action import *
-from symbolic.entity import Entity
+from symbolic.entity import Entity, Thing, DOOR
 from symbolic.location import Location, Inventory, UnknownLocation
 
 DIRECTION_ACTIONS = {
@@ -387,7 +387,7 @@ class KnowledgeGraph:
                     print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations)
                 elif prev_loc_set:  # available information about location object seems to have changed
                     if len(prev_loc_set) == 2 and len(loc_set) == 2:
-                        if list(entities)[0]._type != gv.DOOR:
+                        if list(entities)[0]._type != DOOR:
                             print("WARNING: expected type==DOOR:", entities[0])
                         new_locs = loc_set - prev_loc_set   # set.difference()
                         prev_locs = prev_loc_set - loc_set
@@ -434,12 +434,12 @@ class KnowledgeGraph:
             else:
                 initial_loc = self._unknown_location
                 print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
-            new_entity = Entity(name, location=initial_loc, type=entitytype)
+            new_entity = Thing(name, location=initial_loc, type=entitytype)
             added_new = initial_loc.add_entity(new_entity)
             if len(locations) > 1:
                 for l in locations:
                     l.add_entity(new_entity)   # does nothing if already has_entity_with_name
-                if entitytype != gv.DOOR:
+                if entitytype != DOOR:
                     print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
                     assert False, "Shouldn't be adding non-door entity to multiple locations"
             # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
@@ -539,7 +539,7 @@ class KnowledgeGraph:
                     loc1 = self.get_location(a1.name, gi, create_if_notfound=True)
                     # door_name = find_door(gt_facts, a1, a0)
                     # if door_name:
-                    #     door = self._get_gt_entity(door_name, entitytype=gv.DOOR, locations=[loc1, loc0], create_if_notfound=True)
+                    #     door = self._get_gt_entity(door_name, entitytype=DOOR, locations=[loc1, loc0], create_if_notfound=True)
                     # else:
                     #     door = None
                     door = None  # will add info about doors later
@@ -589,7 +589,7 @@ class KnowledgeGraph:
                 door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
 
             door, _ = self.get_entity(d.name,
-                                      entitytype=gv.DOOR,
+                                      entitytype=DOOR,
                                       locations=door_locations,
                                       create_if_notfound=True)
             if r1:  #len(door_locations) == 2:
@@ -601,7 +601,7 @@ class KnowledgeGraph:
         for fact in other_facts:
             if fact.name == 'closed' and fact.arguments[0].type == 'd':
                 doorname = fact.arguments[0].name
-                doors = self.entities_with_name(doorname, entitytype=gv.DOOR)
+                doors = self.entities_with_name(doorname, entitytype=DOOR)
                 assert len(doors) == 1
                 door = list(doors)[0]
                 door.state.close()

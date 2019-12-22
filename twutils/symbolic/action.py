@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 from symbolic import gv   # global constants
 from symbolic.game import GameInstance
-from symbolic.entity import Entity
+from symbolic.entity import Thing, Entity
 from symbolic.attribute import Attribute
 
 ActionRec = namedtuple('ActionRecord', 'p_valid, result_text', defaults=(0.7, ''))
@@ -113,7 +113,7 @@ class ExamineAction(Action):
         return "{} {}".format(self.verb, self.entity_name)
 
     def apply(self, gi: GameInstance):
-        entity = Entity(self.entity_name, location=gi.kg.player_location, ) #description=response)
+        entity = Thing(self.entity_name, location=gi.kg.player_location, ) #description=response)
         gi.kg.entity_at_location(entity, gi.kg.player_location)
 
 

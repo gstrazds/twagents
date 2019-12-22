@@ -127,7 +127,7 @@ class Examiner(DecisionModule):
             if success:
                 entity = curr_loc.get_entity_by_description(response)
                 if entity is None:
-                    entity = Entity(entity_name, location=curr_loc, description=response)
+                    entity = Thing(entity_name, location=curr_loc, description=response)
                     # TODO: incorrect for entities discovered inside other entities
                     gi.kg.entity_at_location(entity, curr_loc)
                 else:
@@ -138,7 +138,7 @@ class Examiner(DecisionModule):
                 entity = curr_loc.get_entity_by_description(response)
                 inv_entity = gi.kg.inventory.get_entity_by_description(response)
                 if entity is None and inv_entity is None:
-                    entity = Entity(entity_name, location=curr_loc, description=response)
+                    entity = Thing(entity_name, location=curr_loc, description=response)
                     # TODO: incorrect for entities discovered inside other entities
                     gi.kg.entity_at_location(entity, curr_loc)
                     # curr_loc.add_entity(entity)

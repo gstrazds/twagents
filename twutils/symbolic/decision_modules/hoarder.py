@@ -33,11 +33,11 @@ class Hoarder(DecisionModule):
                     entity = gi.kg.inventory.get_entity_by_name(entity_name)
                 else:
                     # Create the entity at the current location
-                    entity = Entity(entity_name, location=here)
+                    entity = Thing(entity_name, location=here)
                     entity.add_name(short_name)
                     gi.kg.entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
 
-                take_action = gv.Take(entity)
+                take_action = Take(entity)
                 p_valid = take_action.validate(resp)
                 gv.dbg("[Take] p={:.2f} {} --> {}".format(p_valid, entity_name, resp))
                 gi.kg.act_on_entity(take_action, entity, ActionRec(p_valid, resp))
