@@ -3,7 +3,7 @@
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import Entity, Thing, DOOR
-from symbolic.location import Location, Inventory, UnknownLocation
+from symbolic.entity import Location, Inventory, UnknownLocation
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,

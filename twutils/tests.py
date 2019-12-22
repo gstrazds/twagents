@@ -6,7 +6,7 @@ from symbolic.action import StandaloneAction
 from symbolic.decision_modules import TaskExecutor
 from symbolic.game import GameInstance
 from symbolic.knowledge_graph import KnowledgeGraph
-from symbolic.location import Location
+from symbolic.entity import Location
 
 
 def sequential_actions_task(start_num=1, count=4):

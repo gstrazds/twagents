@@ -6,7 +6,7 @@ import logging
 from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire, TaskExecutor
 from symbolic.event import NewTransitionEvent, GroundTruthComplete
 # from symbolic.entity import Entity
-from symbolic.location import Location
+from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS

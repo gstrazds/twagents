@@ -1,7 +1,7 @@
 from ..decision_module import DecisionModule
 from ..knowledge_graph import *
 from ..action import *
-from ..location import Location
+from ..entity import Location
 from ..gv import rng, dbg
 
 
