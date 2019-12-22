@@ -18,6 +18,7 @@ STOVE = 'stove'
 TOASTER = 'toaster'
 BBQ = 'bbq'
 MEAL = 'meal'
+INVENTORY='I'
 
 RECIPE = 'RECIPE'
 INGREDIENT = 'ingredient'
@@ -30,18 +31,24 @@ CONTAINED_LOCATION = 'C_LOC'
 
 
 class Entity:
+    """ Something that has a name (possibly several) and possibly a description.
+    Locations are also entities."""
+
     entity_types = [
+        # (type codes specific to the TextWorld platform. TODO: fix this!)
         OBJECT, THING,  PERSON, CONTAINER, SUPPORT, ROOM,
         FOOD, DOOR, KEY, STOVE, OVEN, TOASTER, BBQ,
         MEAL, RECIPE, INGREDIENT,
         # NORTH, WEST, EAST, SOUTH,
         SLOT,
+        # and some non-TextWorld type codes
         UNKNOWN_OBJ_TYPE,
         UNKNOWN_LOCATION,
         CONTAINED_LOCATION
     ]
 
-    def __init__(self, name='SOMETHING', description='', type=None):
+    def __init__(self, name=None, description='', type=None):
+        assert name, "An Entity *must* have a name"
         self._names       = [name]  # List of names for the entity
         self._description = description
         self._type        = type
@@ -284,8 +291,8 @@ class Inventory(Location):
 
     """
     def __init__(self):
-        super().__init__()
-        self._name = 'Inventory'
+        super().__init__(name='Inventory', type=INVENTORY)
+        # self._name = 'Inventory'
 
     def __iter__(self):
         self._index = 0
@@ -314,8 +321,8 @@ class UnknownLocation(Location):
 
     """
     def __init__(self):
-        super().__init__()
-        self._name = 'Unknown Location'
+        super().__init__(name='Unknown Location', type=UNKNOWN_LOCATION)
+        # self._name = 'Unknown Location'
 
     def __iter__(self):
         self._index = 0
@@ -357,7 +364,7 @@ class Thing(Entity):
         self._state       = EntityState()
         self._attributes  = []
         self._init_loc    = location
-        self._current_loc = None   # location where this entity can currently be found
+        self._current_loc = location   # location where this entity can currently be found
         # self._entities    = []
         self._contains    = None   # if not None, a location holding objects contained by this entity
         self._supports    = None   # if not None, a location with objects supported by/on this entity
