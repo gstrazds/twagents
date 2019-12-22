@@ -2,7 +2,7 @@
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from symbolic.event import *
 from symbolic.action import *
-from symbolic.entity import Entity, Thing, DOOR
+from symbolic.entity import Entity, Thing, DOOR, ROOM
 from symbolic.entity import Location, Inventory, UnknownLocation
 
 DIRECTION_ACTIONS = {
@@ -272,10 +272,10 @@ class KnowledgeGraph:
         search_locations = self._locations + [self._inventory]
         if allow_unknown:
             search_locations.append(self._unknown_location)
-        for l in search_locations:
-            e = l.get_entity_by_name(entityname)
+        for loc in search_locations:
+            e = loc.get_entity_by_name(entityname)
             if e and (entitytype is None or e._type == entitytype):
-                ret.add(l)
+                ret.add(loc)
         return ret
 
     def location_of_entity(self, entityname, entitytype=None, allow_unknown=False):
@@ -292,11 +292,11 @@ class KnowledgeGraph:
 
     def get_containing_entity(self, entity):
         """ Returns container (or support) where an entity with a specific name can be found """
-        for l in self._locations:
-            for ce in l.entities:
+        for loc in self._locations:
+            for ce in loc.entities:
                 if ce.contains_entity(entity):
                     return ce
-                elif ce._supports and ce._supports.has_entity(entity):
+                elif ce.supports_entity(entity):
                     return ce
         # if len(ret) == 0:   # check also on or in other entities (just one level deep)
         #     for l in (self._locations + [self._inventory]):
@@ -334,13 +334,13 @@ class KnowledgeGraph:
             ev = NewActionRecordEvent(loc, action, result_text)
             self.event_stream.push(ev)
 
-    def get_location(self, roomname, create_if_notfound=False):
+    def get_location(self, roomname, create_if_notfound=False, type=ROOM):
         locations = self.locations_with_name(roomname)
         if locations:
             assert len(locations) == 1
             return locations[0]
         elif create_if_notfound:
-            new_loc = Location(description=roomname)
+            new_loc = Location(name=roomname, type=type)
             ev = self.add_location(new_loc)
             if ev and not self.groundtruth:
                 self.event_stream.push(ev)
