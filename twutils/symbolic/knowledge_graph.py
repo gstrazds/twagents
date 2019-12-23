@@ -363,7 +363,7 @@ class KnowledgeGraph:
         if not groundtruth:
             self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
 
-    def get_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
+    def get_entity(self, name, locations=None, entitytype=None):
         entities = set()
         # if locations:
         #     for l in locations:
@@ -414,17 +414,14 @@ class KnowledgeGraph:
 
         if entities:
             if len(entities) == 1:
-                return list(entities)[0], None
+                return entities.pop()
             else:
                 found = None
                 for e in entities:
                     if entitytype is None or e._type == entitytype:
                         found = e
-                if found:
-                    return found, None
-        if create_if_notfound:
-            return self.create_new_object(name, entitytype, locations=locations)
-        return None, None
+                return found
+        return None
 
     def create_new_object(self, name, entitytype, locations=None):
         assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
@@ -486,16 +483,12 @@ class KnowledgeGraph:
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
-        obj, ev = self.get_entity(o.name,
-                                  entitytype=entitytype,
-                                  locations=loc_list)
+        obj = self.get_entity(o.name, entitytype=entitytype, locations=loc_list)
         if not obj:
             obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
-        if ev:
-            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-            # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
-        # else:
-            #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+            if ev:
+                print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+                # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_create_new_object()
 
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
@@ -514,17 +507,13 @@ class KnowledgeGraph:
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
-        obj, ev = self.get_entity(o.name,
-                                  entitytype=entitytype,
-                                  locations=loc_list)
+        obj = self.get_entity(o.name, entitytype=entitytype, locations=loc_list)
         if not obj:
             obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
-
-        holder_for_logging = 'Inventory'
-        if ev:
-            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            # if not self.groundtruth:
-            #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
+            if ev:
+                print("ADDED NEW Object {} :in: Inventory".format(obj))
+                # if not self.groundtruth:
+                #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
         else:
             #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
             if not self.inventory.get_entity_by_name(obj.name):
@@ -618,9 +607,7 @@ class KnowledgeGraph:
             #                           entitytype=DOOR,
             #                           locations=door_locations,
             #                           create_if_notfound=True)
-            door, _ = self.get_entity(d.name,
-                                      entitytype=DOOR,
-                                      locations=door_locations)
+            door = self.get_entity(d.name, entitytype=DOOR, locations=door_locations)
             if not door:
                 door, _ = self.create_new_object(d.name, DOOR, locations=door_locations)
 
@@ -651,9 +638,7 @@ class KnowledgeGraph:
                 locs = None
             if r.type == 'r':
                 entitytype = entity_type_for_twvar(o.type)
-                obj, _ = self.get_entity(o.name,
-                                         entitytype=entitytype,
-                                         locations=locs)
+                obj = self.get_entity(o.name, entitytype=entitytype, locations=locs)
                 if not obj:
                     obj, _ = self.create_new_object(o.name, entitytype, locations=locs)
             else:
@@ -698,9 +683,9 @@ class KnowledgeGraph:
                 a1 = fact.arguments[1]
             else:
                 a1 = None
-            o1, _ = self.get_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
+            o1 = self.get_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
             if a1:
-                o2, _ = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
+                o2 = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
             if o1:
                 add_attributes_for_predicate(o1, predicate, entity2=o2)
             else:
