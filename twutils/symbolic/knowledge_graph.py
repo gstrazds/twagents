@@ -295,9 +295,7 @@ class KnowledgeGraph:
         """ Returns container (or support) where an entity with a specific name can be found """
         for loc in self._locations:
             for ce in loc.entities:
-                if ce.contains_entity(entity):
-                    return ce
-                elif ce.supports_entity(entity):
+                if ce.has_entity(entity):
                     return ce
         # if len(ret) == 0:   # check also on or in other entities (just one level deep)
         #     for l in (self._locations + [self._inventory]):
@@ -430,7 +428,7 @@ class KnowledgeGraph:
         else:
             initial_loc = self._unknown_location
             print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
-        new_entity = Thing(name, location=initial_loc, type=entitytype)
+        new_entity = Thing(name=name, location=initial_loc, type=entitytype)
         added_new = initial_loc.add_entity(new_entity)
         if len(locations) > 1:
             for l in locations:

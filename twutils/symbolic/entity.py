@@ -348,17 +348,6 @@ class UnknownLocation(Location):
         return str(self)
 
 
-class Person(Entity):
-    def __init__(self, name='Player', description='The protagonist', inventory=None):
-        super().__init__(name=name, description=description, type=PERSON)
-        self._parent = None
-        self._inventory = Inventory(self)
-
-    @property
-    def inventory(self):
-        return self._inventory
-
-
 class Thing(Entity):
     """
     An Entity represents an object or person encountered in a game.
@@ -370,7 +359,7 @@ class Thing(Entity):
 
     """
 
-    def __init__(self, name, description='', location=None, type=None):
+    def __init__(self, name=None, description='', location=None, type=None):
         super().__init__(name=name, description=description, type=type)
         # self._names       = [name]  # List of names for the entity
         # self._description = description
@@ -380,7 +369,7 @@ class Thing(Entity):
         self._init_loc    = location
         self._current_loc = location   # location where this entity can currently be found
         # self._entities    = []
-        self._contains    = None   # if not None, a location holding objects contained by this entity
+        self._container   = None   # if not None, a location holding objects contained by this entity
         self._supports    = None   # if not None, a location with objects supported by/on this entity
         self._type        = type
 
@@ -407,24 +396,27 @@ class Thing(Entity):
                 self._supports = Location(name=f"on_{self.name}")
             return self._supports.add_entity(entity)
         elif rel == 'in':
-            if self._contains is None:
-                self._contains = Location(name=f"in_{self.name}")
-            return self._contains.add_entity(entity)
+            if self._container is None:
+                self._container = Location(name=f"in_{self.name}")
+            return self._container.add_entity(entity)
         # elif rel == 'at':
         else:
             assert False, f"Unknown relation for Entity.add_entity({entity},rel={rel})"
         # self._entities.append(entity)
         return False
 
-    def contains_entity(self, entity) -> bool:
-        return self._contains and self._contains.has_entity(entity)
+    def holds_entity(self, entity) -> bool:
+        return self._container and self._container.has_entity(entity)
 
     def supports_entity(self, entity) -> bool:
         return self._supports and self._supports.has_entity(entity)
 
+    def has_entity(self, entity):
+        return self.holds_entity(entity) or self.supports_entity(entity)
+
     def del_entity(self, entity):
-        if self.contains_entity(entity):
-            return self._contains.del_entity(entity)
+        if self.holds_entity(entity):
+            return self._container.del_entity(entity)
         elif self.supports_entity(entity):
             return self._supports.del_entity(entity)
         else:
@@ -458,8 +450,8 @@ class Thing(Entity):
                 to_remove.append(action_record)
         for action_record in to_remove:
             del self.action_records[action_record]
-        if self._contains:
-            for e in self._contains.entities:
+        if self._container:
+            for e in self._container.entities:
                 e.reset(kg)
         if self._supports:
             for e in self._supports.entities:
@@ -472,8 +464,8 @@ class Thing(Entity):
                 if p_valid > .5:
                     s += "\n  {}Action record: {} {} - {} (p={:.2f})".format(
                         prefix, action, self.name, util.clean(resp)[:80], p_valid)
-        if self._contains:
-            s += ('\n' + prefix + self._contains.to_string(prefix + "  "))
+        if self._container:
+            s += ('\n' + prefix + self._container.to_string(prefix + "  "))
         if self._supports:
             s += ('\n' + prefix + self._supports.to_string(prefix + "  "))
         if self._attributes:
@@ -488,4 +480,14 @@ class Thing(Entity):
     def __repr__(self):
         return str(self)
 
+
+class Person(Thing):
+    def __init__(self, name='Player', description='The protagonist', inventory=None):
+        super().__init__(name=name, description=description, type=PERSON)
+        self._parent = None
+        self._container = Inventory(self)
+
+    @property
+    def inventory(self):
+        return self._container
 
