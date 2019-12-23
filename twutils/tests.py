@@ -412,10 +412,10 @@ class TestTask(unittest.TestCase):
         self.assertGreater(len(te.task_stack), 0)
         self.assertEqual(te.task_stack[-1], t2)
 
-        print("kg.player_location=", kg._player_location)
+        print("kg.player_location=", kg.player_location)
         print("SETTING LOCATION=kitchen")
         kg.set_player_location(kitchen)
-        print("kg.player_location=", kg._player_location)
+        print("kg.player_location=", kg.player_location)
         _consume_event_stream(te, gi)
 
         te.activate(gi)

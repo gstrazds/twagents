@@ -174,8 +174,8 @@ class KnowledgeGraph:
     """
     def __init__(self, event_stream, groundtruth=False):
         self._unknown_location   = UnknownLocation()
-        self._player             = Person()
-        self._player_location    = self._unknown_location
+        self._player             = Person(location=self._unknown_location)
+        # self._player_location    = self._unknown_location
         self._inventory          = self._player.inventory
         self._locations          = []
         self._init_loc           = None
@@ -198,16 +198,16 @@ class KnowledgeGraph:
 
     @property
     def player_location(self):
-        return self._player_location
+        return self._player.location
 
     # @player_location.setter
     def set_player_location(self, new_location):
         """ Changes player location and broadcasts a LocationChangedEvent. """
-        if new_location == self._player_location:
+        if new_location == self.player_location:
             return False
         if new_location:
             self.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
-        self._player_location = new_location
+        self._player.location = new_location
         return True
 
     @property
@@ -232,10 +232,10 @@ class KnowledgeGraph:
 
     def __str__(self):
         s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
-        if self._player_location == None:
+        if self.player_location == None:
             s += "PlayerLocation: None"
         else:
-            s += "PlayerLocation: {}".format(self._player_location.name)
+            s += "PlayerLocation: {}".format(self.player_location.name)
         s += "\n" + str(self.inventory)
         s += "\nKnownLocations:"
         if self._locations:

@@ -327,20 +327,6 @@ class UnknownLocation(Location):
         super().__init__(name='Unknown Location', type=UNKNOWN_LOCATION)
         # self._name = 'Unknown Location'
 
-    def __iter__(self):
-        self._index = 0
-        return self
-
-    def __next__(self):
-        if self._index == len(self.entities):
-            raise StopIteration
-        entity = self.entities[self._index]
-        self._index += 1
-        return entity
-
-    def remove(self, entity):
-        self._entities.remove(entity)
-
     def __str__(self):
         return "<Unknown Location>[" + str(', '.join([item.name for item in self.entities]))+"]"
 
@@ -438,6 +424,19 @@ class Thing(Entity):
             self._attributes.remove(attribute)
 
     @property
+    def location(self):
+        return self._current_loc
+
+    @location.setter
+    def location(self, new_location: Location):
+        if new_location != self._current_loc:
+            self._current_loc = new_location
+            if not isinstance(new_location, UnknownLocation):
+                if not self._init_loc or isinstance(self._init_loc, UnknownLocation):
+                    print(f"SETTING initial_location for {self} to: {new_location}")
+                    self._init_loc = new_location
+
+    @property
     def state(self):
         return self._state
 
@@ -482,8 +481,8 @@ class Thing(Entity):
 
 
 class Person(Thing):
-    def __init__(self, name='Player', description='The protagonist', inventory=None):
-        super().__init__(name=name, description=description, type=PERSON)
+    def __init__(self, name='Player', description='The protagonist', location=None):
+        super().__init__(name=name, description=description, type=PERSON, location=location)
         self._parent = None
         self._container = Inventory(self)
 
