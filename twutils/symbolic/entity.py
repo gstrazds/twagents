@@ -455,6 +455,8 @@ class Thing(Entity):
         if self._supports:
             for e in self._supports.entities:
                 e.reset(kg)
+        self.location = self._init_loc
+       #   TODO: reset self._state
 
     def to_string(self, prefix=''):
         s = prefix + "Entity: {}".format(self.name)
@@ -480,10 +482,29 @@ class Thing(Entity):
         return str(self)
 
 
+class Door(Thing):
+    def __init__(self, name=None, description=None, location=None):
+        super().__init__(name=name, description=description, type=DOOR, location=location)
+        self._other_loc = None   # location (room) to which the door leads
+        self._init_loc2 = None
+
+    @property
+    def location2(self):
+        return self._current_loc
+
+    @location2.setter
+    def location2(self, new_location: Location):
+        if new_location != self._other_loc:
+            self._other_loc = new_location
+            if not isinstance(new_location, UnknownLocation):
+                if not self._init_loc2 or isinstance(self._init_loc2, UnknownLocation):
+                    print(f"SETTING initial_location2 for {self} to: {new_location}")
+                    self._init_loc2 = new_location
+
+
 class Person(Thing):
     def __init__(self, name='Player', description='The protagonist', location=None):
         super().__init__(name=name, description=description, type=PERSON, location=location)
-        self._parent = None
         self._container = Inventory(self)
 
     @property

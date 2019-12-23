@@ -3,7 +3,7 @@
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import Entity, Thing, DOOR, ROOM
-from symbolic.entity import Location, Person, Inventory, UnknownLocation
+from symbolic.entity import Location, Person, UnknownLocation, Door
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,
@@ -418,7 +418,7 @@ class KnowledgeGraph:
                 return found
         return None
 
-    def create_new_object(self, name, entitytype, locations=None):
+    def create_new_object(self, name, entitytype, locations=None, description=''):
         assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
         known_locs = set(locations)
         known_locs.discard(self._unknown_location)
@@ -428,7 +428,10 @@ class KnowledgeGraph:
         else:
             initial_loc = self._unknown_location
             print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
-        new_entity = Thing(name=name, location=initial_loc, type=entitytype)
+        if entitytype == DOOR:
+            new_entity = Door(name=name, description=description, location=initial_loc)
+        else:
+            new_entity = Thing(name=name, location=initial_loc, type=entitytype)
         added_new = initial_loc.add_entity(new_entity)
         if len(locations) > 1:
             for l in locations:
