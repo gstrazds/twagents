@@ -364,9 +364,6 @@ class KnowledgeGraph:
             self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
 
     def get_entity(self, name, locations=None, entitytype=None, create_if_notfound=False):
-        if create_if_notfound:
-            assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
-            # print(f"DEBUG get_entity({name},locations={locations}, create_if_not_found=True)")
         entities = set()
         # if locations:
         #     for l in locations:
@@ -426,32 +423,36 @@ class KnowledgeGraph:
                 if found:
                     return found, None
         if create_if_notfound:
-            known_locs = set(locations)
-            known_locs.discard(self._unknown_location)
-            if known_locs:
-                initial_loc = known_locs.pop()
-                assert initial_loc is not None, f"Must include a known location: {locations}"
-            else:
-                initial_loc = self._unknown_location
-                print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
-            new_entity = Thing(name, location=initial_loc, type=entitytype)
-            added_new = initial_loc.add_entity(new_entity)
-            if len(locations) > 1:
-                for l in locations:
-                    l.add_entity(new_entity)   # does nothing if already has_entity_with_name
-                if entitytype != DOOR:
-                    print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
-                    assert False, "Shouldn't be adding non-door entity to multiple locations"
-            # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
-            ev = None
-            if added_new:  # this is a new entity with a known location
-                ev = NewEntityEvent(new_entity)
-                add_attributes_for_type(new_entity, entitytype)
-                if not self.groundtruth and initial_loc != self._unknown_location:
-                    print("DISCOVERED NEW entity:", new_entity)
-                    self.event_stream.push(ev)
-            return new_entity, ev
+            return self.create_new_object(name, entitytype, locations=locations)
         return None, None
+
+    def create_new_object(self, name, entitytype, locations=None):
+        assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
+        known_locs = set(locations)
+        known_locs.discard(self._unknown_location)
+        if known_locs:
+            initial_loc = known_locs.pop()
+            assert initial_loc is not None, f"Must include a known location: {locations}"
+        else:
+            initial_loc = self._unknown_location
+            print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
+        new_entity = Thing(name, location=initial_loc, type=entitytype)
+        added_new = initial_loc.add_entity(new_entity)
+        if len(locations) > 1:
+            for l in locations:
+                l.add_entity(new_entity)  # does nothing if already has_entity_with_name
+            if entitytype != DOOR:
+                print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
+                assert False, "Shouldn't be adding non-door entity to multiple locations"
+        # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
+        ev = None
+        if added_new:  # this is a new entity with a known location
+            ev = NewEntityEvent(new_entity)
+            add_attributes_for_type(new_entity, entitytype)
+            if not self.groundtruth and initial_loc != self._unknown_location:
+                print("DISCOVERED NEW entity:", new_entity)
+                self.event_stream.push(ev)
+        return new_entity, ev
 
     def add_obj_to_obj(self, fact, player_loc, rel=None):
         assert rel == fact.name
@@ -461,25 +462,20 @@ class KnowledgeGraph:
         if o.name.startswith('~') or h.name.startswith('~'):
             print("_add_obj_to_obj: SKIPPING FACT", fact)
             return None, None
-        if h.name == 'I':  # Inventory
-            holder = None  #self.gi.gt.inventory
-            loc = self.inventory   #player_loc
+        assert h.name != 'I'   # Inventory
+        # holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
+        #                              create_if_notfound=False)
+        entity_set = self.entities_with_name(h.name, entitytype=entity_type_for_twvar(h.type))
+        if entity_set:
+            holder = entity_set.pop()  # choose one of them
+            if len(entity_set):
+                print("WARNING: found more than one matching entity for name <{}: {} + {}".format(
+                    h.name, holder, entity_set))
+            loc = self.location_of_entity(holder.name)
         else:
-            # holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
-            #                              create_if_notfound=False)
-            entity_set = self.entities_with_name(h.name, entitytype=entity_type_for_twvar(h.type))
-            if entity_set:
-                holder = entity_set.pop()  # choose one of them
-                if len(entity_set):
-                    print("WARNING: found more than one matching entity for name <{}: {} + {}".format(
-                        h.name, holder, entity_set))
-            else:
-                print("WARNING: found no entities_with_name:", h.name)
-                holder = None
-                loc = None
-            if holder:
-                # loc = holder._init_loc if holder is not None else None
-                loc = self.location_of_entity(holder.name)
+            print("WARNING: found no entities_with_name:", h.name)
+            holder = None
+            loc = None
         if not loc:
             print("WARNING! NO LOCATION FOR HOLDER while adding Object {} {}".format(fact, holder))
             print("unknown =", self._unknown_location)
@@ -489,26 +485,52 @@ class KnowledgeGraph:
             loc_list = [loc]  # a list containing exactly one element
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
+        entitytype = entity_type_for_twvar(o.type)
         obj, ev = self.get_entity(o.name,
-                                  entitytype=entity_type_for_twvar(o.type),
-                                  locations=loc_list,
-                                  create_if_notfound=True)
+                                  entitytype=entitytype,
+                                  locations=loc_list)
+        if not obj:
+            obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
+        if ev:
+            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
+        # else:
+            #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
             holder.add_entity(obj, rel=rel)
 
-        holder_for_logging = 'Inventory' if h.name == 'I' else holder
+        return obj, holder
+
+    def add_obj_to_inventory(self, fact, player_loc):
+        # rel = fact.name
+        o = fact.arguments[0]
+        h = fact.arguments[1]
+        if o.name.startswith('~'):
+            assert False, f"_add_obj_to_inventory: UNEXPECTED FACT {fact}"
+        assert h.name == 'I'   # Inventory
+        loc_list = [self.inventory]  # a list containing exactly one location
+
+        #NOTE TODO: handle objects that have moved from to or from Inventory
+        entitytype = entity_type_for_twvar(o.type)
+        obj, ev = self.get_entity(o.name,
+                                  entitytype=entitytype,
+                                  locations=loc_list)
+        if not obj:
+            obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
+
+        holder_for_logging = 'Inventory'
         if ev:
             print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
             # if not self.groundtruth:
             #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
         else:
             #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            if holder_for_logging == 'Inventory':   #SANITY CHECK
-                if not self.inventory.get_entity_by_name(obj.name):
-                    print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
-                    assert False
-        return obj, holder
+            if not self.inventory.get_entity_by_name(obj.name):
+                print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
+                assert False
+        return obj
 
     def add_facts(self, obs_facts, gi):
         print(f"*********** ADDING FACTS (groundtruth={self.groundtruth})")
@@ -517,6 +539,7 @@ class KnowledgeGraph:
         at_facts = []
         on_facts = []
         in_facts = []
+        inventory_facts = []
         other_facts = []
         for fact in obs_facts:
             a0 = fact.arguments[0]
@@ -530,7 +553,10 @@ class KnowledgeGraph:
             elif fact.name == 'on':
                 on_facts.append(fact)
             elif fact.name == 'in':
-                in_facts.append(fact)
+                if a1 and a1.name == 'I':  # Inventory
+                    inventory_facts.append(fact)
+                else:
+                    in_facts.append(fact)
             elif fact.name in DIRECTION_ACTIONS:
                 if a0.type == 'r' and a1.type == 'r' and self.groundtruth:
                     # During this initial pass we create locations and connections among them
@@ -588,10 +614,16 @@ class KnowledgeGraph:
             else:
                 door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
 
+            # door, _ = self.get_entity(d.name,
+            #                           entitytype=DOOR,
+            #                           locations=door_locations,
+            #                           create_if_notfound=True)
             door, _ = self.get_entity(d.name,
                                       entitytype=DOOR,
-                                      locations=door_locations,
-                                      create_if_notfound=True)
+                                      locations=door_locations)
+            if not door:
+                door, _ = self.create_new_object(d.name, DOOR, locations=door_locations)
+
             if r1:  #len(door_locations) == 2:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
@@ -618,10 +650,12 @@ class KnowledgeGraph:
                 print(self.player_location, self.locations)
                 locs = None
             if r.type == 'r':
+                entitytype = entity_type_for_twvar(o.type)
                 obj, _ = self.get_entity(o.name,
-                                         entitytype=entity_type_for_twvar(o.type),
-                                         locations=locs,
-                                         create_if_notfound=True)
+                                         entitytype=entitytype,
+                                         locations=locs)
+                if not obj:
+                    obj, _ = self.create_new_object(o.name, entitytype, locations=locs)
             else:
                 gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
@@ -640,6 +674,8 @@ class KnowledgeGraph:
             o1, o2 = self.add_obj_to_obj(fact, player_loc, rel='in')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'in', o2)
+        for fact in inventory_facts:
+            o1 = self.add_obj_to_inventory(fact, player_loc)
         if player_loc:
             if self.set_player_location(player_loc):
                 print("CHANGED player location:", player_loc)
