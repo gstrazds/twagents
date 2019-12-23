@@ -3,7 +3,7 @@
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import Entity, Thing, DOOR, ROOM
-from symbolic.entity import Location, Inventory, UnknownLocation
+from symbolic.entity import Location, Person, Inventory, UnknownLocation
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,
@@ -173,11 +173,12 @@ class KnowledgeGraph:
 
     """
     def __init__(self, event_stream, groundtruth=False):
-        self._locations          = []
         self._unknown_location   = UnknownLocation()
+        self._player             = Person()
         self._player_location    = self._unknown_location
+        self._inventory          = self._player.inventory
+        self._locations          = []
         self._init_loc           = None
-        self._inventory          = Inventory()
         self._connections        = ConnectionGraph()
         self.event_stream        = event_stream
         self.groundtruth         = groundtruth

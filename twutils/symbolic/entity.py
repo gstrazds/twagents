@@ -293,8 +293,8 @@ class Inventory(Location):
     Player inventory is represented as a location.
 
     """
-    def __init__(self):
-        super().__init__(name='Inventory', type=INVENTORY)
+    def __init__(self, player:Entity):
+        super().__init__(name='Inventory', type=INVENTORY, description="Inventory of items carried by Player")
         # self._name = 'Inventory'
 
     def __iter__(self):
@@ -346,6 +346,17 @@ class UnknownLocation(Location):
 
     def __repr__(self):
         return str(self)
+
+
+class Person(Entity):
+    def __init__(self, name='Player', description='The protagonist', inventory=None):
+        super().__init__(name=name, description=description, type=PERSON)
+        self._parent = None
+        self._inventory = Inventory(self)
+
+    @property
+    def inventory(self):
+        return self._inventory
 
 
 class Thing(Entity):
