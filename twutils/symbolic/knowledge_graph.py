@@ -363,29 +363,21 @@ class KnowledgeGraph:
         if not groundtruth:
             self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
 
-    def get_entity(self, name, locations=None, entitytype=None):
-        entities = set()
-        # if locations:
-        #     for l in locations:
-        #         e = l.get_entity_by_name(name)
-        #         if e:
-        #             entities.add(e)
-        if not entities:  # none found
-            entities = self.entities_with_name(name, entitytype=entitytype)
-        if locations and entities:   # ? and create_if_notfound:
+    def maybe_move_entity(self, entity, locations=None):
+        assert locations
+        if locations:   # ? and create_if_notfound:
             # might need to move it from wherever it was to its new location
 
-            assert len(entities) == 1
-            prev_loc_set = self.where_is_entity(name, entitytype=entitytype, allow_unknown=True)
+            prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
             loc_set = set(locations)
             if prev_loc_set != loc_set:
-                print(f"get_entity() WARNING - MOVING {entities} to {loc_set}")
+                print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
                 if len(prev_loc_set) != len(loc_set):
-                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", name, prev_loc_set, locations)
+                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
                 elif prev_loc_set:  # available information about location object seems to have changed
                     if len(prev_loc_set) == 2 and len(loc_set) == 2:
-                        if list(entities)[0]._type != DOOR:
-                            print("WARNING: expected type==DOOR:", entities[0])
+                        if entity._type != DOOR:
+                            print("WARNING: expected type==DOOR:", entity)
                         new_locs = loc_set - prev_loc_set   # set.difference()
                         prev_locs = prev_loc_set - loc_set
                         if len(new_locs) == 1 and len(prev_locs) == 1:
@@ -393,7 +385,7 @@ class KnowledgeGraph:
                             loc_set = new_locs
                             # drop through to if len(prev_loc_set) == 1 case, below...
                         else:
-                            print(f"WARNING: UNEXPECTED previous locations for {entities} prev:{prev_loc_set} "
+                            print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
                                   f"-> new:{new_locs}; {locations}")
 
                     if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
@@ -401,17 +393,21 @@ class KnowledgeGraph:
                         loc_prev = prev_loc_set.pop()
                         loc_new = loc_set.pop()
                         # TODO: here we are assuming exactly one found entity and one location
-                        e = list(entities)[0]
                         if loc_prev != self._unknown_location:
-                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={e},"
+                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
                                   f" dest={loc_new}, origin={loc_prev})")
                         if loc_new == self._unknown_location:
-                            print(f"WARNING: not moving {e} to UnknownLocation")
+                            print(f"WARNING: not moving {entity} to UnknownLocation")
                         else:
-                            self.move_entity(e, loc_prev, loc_new, groundtruth=self.groundtruth)
+                            self.move_entity(entity, loc_prev, loc_new, groundtruth=self.groundtruth)
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
+
+    def get_entity(self, name, locations=None, entitytype=None):
+        entities = set()
+        if not entities:  # none found
+            entities = self.entities_with_name(name, entitytype=entitytype)
         if entities:
             if len(entities) == 1:
                 return entities.pop()
@@ -489,6 +485,8 @@ class KnowledgeGraph:
             if ev:
                 print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
                 # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_create_new_object()
+        else:
+            self.maybe_move_entity(obj, locations=loc_list)
 
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
@@ -516,9 +514,11 @@ class KnowledgeGraph:
                 #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
         else:
             #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            if not self.inventory.get_entity_by_name(obj.name):
-                print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
-                assert False
+            self.maybe_move_entity(obj, locations=loc_list)
+        # DEBUGGING: redundant SANITY CHECK
+        if not self.inventory.get_entity_by_name(obj.name):
+            print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
+            assert False
         return obj
 
     def add_facts(self, obs_facts, gi):
@@ -610,7 +610,8 @@ class KnowledgeGraph:
             door = self.get_entity(d.name, entitytype=DOOR, locations=door_locations)
             if not door:
                 door, _ = self.create_new_object(d.name, DOOR, locations=door_locations)
-
+            else:
+                self.maybe_move_entity(door, locations=door_locations)
             if r1:  #len(door_locations) == 2:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
@@ -641,6 +642,8 @@ class KnowledgeGraph:
                 obj = self.get_entity(o.name, entitytype=entitytype, locations=locs)
                 if not obj:
                     obj, _ = self.create_new_object(o.name, entitytype, locations=locs)
+                else:
+                    self.maybe_move_entity(obj, locations=locs)
             else:
                 gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
