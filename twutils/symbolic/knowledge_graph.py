@@ -493,7 +493,6 @@ class KnowledgeGraph:
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
             holder.add_entity(obj, rel=rel)
-
         return obj, holder
 
     def add_obj_to_inventory(self, fact, player_loc):

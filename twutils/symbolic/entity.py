@@ -1,5 +1,6 @@
 from symbolic import util
 # from symbolic.location import Location
+from .entity_state import EntityState
 from .gv import logger
 from .util import text_similarity
 
@@ -85,69 +86,6 @@ class Entity:
         self._description = value
 
     def reset(self, kg):   #kg: KnowledgeGraph
-        pass
-
-
-class EntityState:
-    """
-    Keeps track of the current state of a thing.
-
-    """
-    def __init__(self):
-        self.exists = True
-
-    @property
-    def openable(self):
-        return hasattr(self, 'is_open')
-
-    def open(self):
-        self.is_open = True
-
-    def close(self):
-        self.is_open = False
-
-    def lockable(self):
-        return hasattr(self, 'is_locked')
-
-    def lock(self):
-        self.is_locked = True
-
-    def unlock(self):
-        self.is_locked = False
-
-    def switchable(self):
-        return hasattr(self, 'is_on')
-
-    def turn_on(self):
-        self.is_on = True
-
-    def turn_off(self):
-        self.is_on = False
-
-    def remove(self):
-        self.exists = False
-
-    @property
-    def cookable(self):
-        return hasattr(self, 'is_cooked')
-
-    def cook(self, cooked_state='cooked'):
-        self.is_cooked = cooked_state
-
-    def not_cooked(self):
-        self.is_cooked = ''  # equiv to False, but can also be tested with str.startswith()
-
-    @property
-    def cuttable(self):
-        return hasattr(self, 'is_cut')
-
-    def cut(self, cut_state='cut'):  # 'sliced', 'chopped', 'diced', etc...
-        self.is_cut = cut_state
-
-    def not_cut(self):
-        self.is_cut = ''  # equiv to False, but can also be tested with str.startswith()
-
-    def __str__(self):
         pass
 
 
@@ -490,7 +428,7 @@ class Door(Thing):
 
     @property
     def location2(self):
-        return self._current_loc
+        return self._other_loc
 
     @location2.setter
     def location2(self, new_location: Location):
