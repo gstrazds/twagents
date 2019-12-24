@@ -21,6 +21,15 @@ class EntityState:
         self._state_values = {}
         self._init_states = {}
 
+    def remove(self):
+        self.exists = False   # this Entity no longer exists within the world
+
+    def reset(self):
+        """ reset state to what it was when we first encountered this Entity"""
+        self.exists = True
+        for prop_name in self._init_states:
+            self._state_values[prop_name] = self._init_states[prop_name]
+
     def __getattr__(self, prop_name):
         if self._has_prop(prop_name):
             return self._get_state_val(prop_name)
@@ -56,6 +65,22 @@ class EntityState:
         """ state_prop should be a value from state_properties
             e.g. _is_x('is_open') or _is_x('is_locked')"""
         return state_prop in self._state_values
+
+    def add_state_variable(self, metaprop, stateprop, initial_value=None):
+        if metaprop in EntityState._meta_properties:
+            assert stateprop == EntityState._meta_properties[metaprop]
+            if self._has_prop(stateprop):
+                print(f"WARNING: {self} is already {metaprop}: {stateprop}={self._get_state_val(stateprop)}")
+                if initial_value != self._get_state_val(stateprop):
+                    if initial_value:   # Don't set it if it is indeterminate
+                        print(
+                            f"WARNING: overriding:{self._get_state_val(stateprop)}"
+                            " in add_state_variable({metaprop}) {stateprop}={initial_value}")
+                        self._set_state_val(stateprop, initial_value)
+        else:
+            EntityState._meta_properties[metaprop] = stateprop
+            EntityState._state_properties[stateprop] = metaprop
+            self._set_state_val(stateprop, initial_value)
 
     def _set_state_val(self, state_prop, val):
         # if not attr_name in EntityState.state_properties:
@@ -105,9 +130,6 @@ class EntityState:
 
     def turn_off(self):
         return self._set_state_val('is_on', False)
-
-    def remove(self):
-        self.exists = False
 
     # @property
     # def cookable(self):

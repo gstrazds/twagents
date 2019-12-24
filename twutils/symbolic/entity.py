@@ -394,6 +394,7 @@ class Thing(Entity):
             for e in self._supports.entities:
                 e.reset(kg)
         self.location = self._init_loc
+        self.state.reset()
        #   TODO: reset self._state
 
     def to_string(self, prefix=''):

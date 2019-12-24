@@ -113,9 +113,10 @@ def add_attributes_for_type(entity, twvartype):
     attrib_list = get_attributes_for_type(twvartype)
     for attrib in attrib_list:
         entity.add_attribute(attrib)
-    if twvartype == 'd':  # if a DOOR
+    if twvartype == 'd':  # DOOR   Hard-coded specific knowlege about doors (they can potentially be opened)
         if not entity.state.openable:
-            entity.state.open()  # assume default until we determine otherwise (via add_attributes_for_predicate)
+            entity.state.add_state_variable('openable', 'is_open', '')
+            # Indeterminate value until we discover otherwise (via add_attributes_for_predicate)
 
 
 def add_attributes_for_predicate(entity, predicate, entity2=None):
