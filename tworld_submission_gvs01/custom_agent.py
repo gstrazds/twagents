@@ -699,7 +699,8 @@ class CustomAgent:
             chosen_strings = []
             agent_id = 0
             game_id = None
-            for desctext, agent in zip(obs, self.agents):
+            for idx, (desctext, agent) in enumerate(zip(obs, self.agents)):
+                assert idx == agent_id
                 print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, agent_id, desctext))
                 if 'inventory' in infos:
                     print("\tINVENTORY:", infos['inventory'][agent_id])
@@ -735,9 +736,12 @@ class CustomAgent:
                         # exit(0)
                     # if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
                     #     self._debug_quit = self.current_step + 2  # early abort after executing one more action
-                    actiontxt = agent.take_action(desctext, obs_facts=observable_facts)
-                else:
-                    actiontxt = agent.take_action(desctext)
+                    if observable_facts:
+                        # world = World.from_facts(facts)
+                        # add obs_facts to our KnowledgeGraph (self.gi.kg)
+                        agent.gi.kg.update_facts(observable_facts, prev_action=self.prev_actions[agent_id])
+
+                actiontxt = agent.take_action(desctext)
                 print("NAIL[{}] take_action -> {}".format(agent_id, actiontxt))
 
                 chosen_strings.append(actiontxt)
