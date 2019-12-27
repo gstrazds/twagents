@@ -204,7 +204,8 @@ class KnowledgeGraph:
     # @player_location.setter
     def set_player_location(self, new_location):
         """ Changes player location and broadcasts a LocationChangedEvent. """
-        if new_location == self.player_location:
+        prev_location = self._player.location
+        if new_location == prev_location:
             return False
         if new_location:
             self.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
@@ -220,7 +221,8 @@ class KnowledgeGraph:
         return self._connections
 
     def add_connection(self, new_connection):
-        """ Adds a connection object. """
+        """ Adds a connection object.
+         Does nothing if a similar connection already exists"""
         self._connections.add(new_connection, self)
 
     def reset(self, gi):
@@ -523,7 +525,7 @@ class KnowledgeGraph:
             assert False
         return obj
 
-    def add_facts(self, obs_facts, gi):
+    def update_facts(self, obs_facts, prev_action=None):
         print(f"*********** ADDING FACTS (groundtruth={self.groundtruth})")
         player_loc = None
         door_facts = []
@@ -618,8 +620,9 @@ class KnowledgeGraph:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
                 connection = linkpath[0]
-                connection.doorway = door
-            door.state.open()   # assume that it's open, until we find a closed() fact...
+                connection.doorway = door  # add DOOR to the Connection
+            if self.groundtruth:
+                door.state.open()   # assume that it's open, until we find a closed() fact...
         for fact in other_facts:
             if fact.name == 'closed' and fact.arguments[0].type == 'd':
                 doorname = fact.arguments[0].name
@@ -627,6 +630,25 @@ class KnowledgeGraph:
                 assert len(doors) == 1
                 door = list(doors)[0]
                 door.state.close()
+
+        if player_loc:  # UPDATE player_location
+            prev_loc = self.player_location
+            if self.set_player_location(player_loc):
+                if self.groundtruth:
+                    print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
+                else:
+                    print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
+                    if prev_action and player_loc != self._unknown_location and prev_loc != self._unknown_location:
+                        verb = prev_action.split()[0]
+                        direction_rel = verb + '_of'
+                        if direction_rel in DIRECTION_ACTIONS:
+                            door = None   # TODO: remember door directions relative to rooms, and look up the appropr door
+                            new_connection = Connection(prev_loc,
+                                                        DIRECTION_ACTIONS[direction_rel],
+                                                        player_loc,
+                                                        doorway=door)
+                            self.add_connection(new_connection)
+                # if player_loc != self._unknown_location:
         for fact in at_facts:
             # print("DEBUG at_fact", fact)
             o = fact.arguments[0]
@@ -666,9 +688,6 @@ class KnowledgeGraph:
                 add_attributes_for_predicate(o1, 'in', o2)
         for fact in inventory_facts:
             o1 = self.add_obj_to_inventory(fact, player_loc)
-        if player_loc:
-            if self.set_player_location(player_loc):
-                print("CHANGED player location:", player_loc)
 
         for fact in other_facts:
             predicate = fact.name
@@ -715,7 +734,7 @@ class ConnectionGraph:
         kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
         if from_location in self._out_graph:
             if connection in self._out_graph[from_location]:
-                # print("IGNORING new_connection:", connection)
+                # print("IGNORING add(connection:", connection)
                 return
             self._out_graph[from_location].append(connection)
         else:
@@ -725,7 +744,8 @@ class ConnectionGraph:
                 self._in_graph[to_location].append(connection)
             else:
                 self._in_graph[to_location] = [connection]
-        #print("ADDED NEW {}CONNECTION".format('GT ' if groundtruth else ''), connection)
+        if not kg.groundtruth:
+            print("ADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """

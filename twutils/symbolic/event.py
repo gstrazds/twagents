@@ -31,16 +31,16 @@ class Event:
         self.is_groundtruth = groundtruth
 
 
-class NewTransitionEvent(Event):
-    """ Generated whenever an action is taken. """
-    def __init__(self, obs, action, score, new_obs, terminal, groundtruth=False):
-        message = '\"{}\" --> {} Score={}'.format(action, util.clean(new_obs), score)
-        super().__init__(message, groundtruth=groundtruth)
-        self.obs      = obs
-        self.action   = action
-        self.score    = score
-        self.new_obs  = new_obs
-        self.terminal = terminal
+# class NewTransitionEvent(Event):
+#     """ Generated whenever an action is taken. """
+#     def __init__(self, obs, action, score, new_obs, terminal, groundtruth=False):
+#         message = '\"{}\" --> {} Score={}'.format(action, util.clean(new_obs), score)
+#         super().__init__(message, groundtruth=groundtruth)
+#         self.obs      = obs
+#         self.action   = action
+#         self.score    = score
+#         self.new_obs  = new_obs
+#         self.terminal = terminal
 
 class NewLocationEvent(Event):
     """ Generated whenever a new location is discovered. """

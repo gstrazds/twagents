@@ -4,7 +4,7 @@ import logging
 # from symbolic import gv
 # from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
 from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire, TaskExecutor
-from symbolic.event import NewTransitionEvent, GroundTruthComplete
+from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 # from symbolic.entity import Entity
 from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
@@ -120,11 +120,7 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def take_action(self, observation, obs_facts=None):
-        if obs_facts:
-            # world = World.from_facts(facts)
-            # add obs_facts to our KnowledgeGraph (self.gi.kg)
-            self.gi.kg.add_facts(obs_facts, self.gi)
+    def take_action(self, observation):
 
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
@@ -164,7 +160,9 @@ class NailAgent():
 #        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 #        if kg.player_location:
 #            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
-        self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
+
+        # NewTransitionEvent unused by current code
+        # self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
             self.gi.kg.reset(self.gi)
@@ -185,7 +183,7 @@ class NailAgent():
         # sort into separate lists to control the order in which facts get processed
         # Reinitialize, build complete GT KG from scratch each time
         self.gi._set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
-        self.gi.gt.add_facts(gt_facts, self.gi)
+        self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
 
