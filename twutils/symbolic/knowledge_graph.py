@@ -406,7 +406,7 @@ class KnowledgeGraph:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
 
-    def get_entity(self, name, locations=None, entitytype=None):
+    def get_entity(self, name, entitytype=None):
         entities = set()
         if not entities:  # none found
             entities = self.entities_with_name(name, entitytype=entitytype)
@@ -430,7 +430,7 @@ class KnowledgeGraph:
             assert initial_loc is not None, f"Must include a known location: {locations}"
         else:
             initial_loc = self._unknown_location
-            print(f"WARNING get_entity({name},locations={locations}, create_if_not_found=True) with initial_loc=UNKNOWN!")
+            print(f"WARNING create_new_object({name},locations={locations}) with initial_loc=UNKNOWN!")
         if entitytype == DOOR:
             new_entity = Door(name=name, description=description, location=initial_loc)
         else:
@@ -484,7 +484,7 @@ class KnowledgeGraph:
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
-        obj = self.get_entity(o.name, entitytype=entitytype, locations=loc_list)
+        obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
             if ev:
@@ -509,7 +509,7 @@ class KnowledgeGraph:
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
-        obj = self.get_entity(o.name, entitytype=entitytype, locations=loc_list)
+        obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
             if ev:
@@ -611,7 +611,7 @@ class KnowledgeGraph:
             #                           entitytype=DOOR,
             #                           locations=door_locations,
             #                           create_if_notfound=True)
-            door = self.get_entity(d.name, entitytype=DOOR, locations=door_locations)
+            door = self.get_entity(d.name, entitytype=DOOR)
             if not door:
                 door, _ = self.create_new_object(d.name, DOOR, locations=door_locations)
             else:
@@ -663,7 +663,7 @@ class KnowledgeGraph:
                 locs = None
             if r.type == 'r':
                 entitytype = entity_type_for_twvar(o.type)
-                obj = self.get_entity(o.name, entitytype=entitytype, locations=locs)
+                obj = self.get_entity(o.name, entitytype=entitytype)
                 if not obj:
                     obj, _ = self.create_new_object(o.name, entitytype, locations=locs)
                 else:
