@@ -25,7 +25,7 @@ def find_most_similar_location(description, kg):
     possible_name = Location.extract_name(description)
     existing_locs = kg.locations_with_name(possible_name)
     if not existing_locs:
-        existing_locs = kg._locations
+        existing_locs = kg.locations
     return _most_similar_loc(description, existing_locs)
 
 

@@ -191,13 +191,26 @@ class KnowledgeGraph:
                                           description="The Protagonist",
                                           location=self._unknown_location)
         self._locations          = []   # a set of top-level locations (rooms)
-        # self._inventory          = self._player.inventory
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
-        self.groundtruth         = groundtruth   # bool: True means this is the Ground Truth knowledge graph
+        self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
+        self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
+        self._update_entity_index(self._unknown_location)
+        self._update_entity_index(self._player)
+        self._update_entity_index(self._player.inventory)  # add the player's inventory to index of Locations
+
+    # ASSUMPTIONS: name=>entity mapping is many-to-one. A given name can refer to at most one entity or location.
+    # ASSUMPTION: names are stable. A given name will always refer to the same entity. Entity names don't change over time.
+    def _update_entity_index(self, entity):
+        for name in entity.names:
+            if name in self._entities_by_name:
+                assert self._entities_by_name[name] is entity
+            self._entities_by_name[name] = entity
 
     @property
     def locations(self):
+        if not self._locations:
+            return []
         return self._locations
 
     def add_location(self, new_location: Location) -> NewLocationEvent:
@@ -207,7 +220,11 @@ class KnowledgeGraph:
 
     def locations_with_name(self, location_name):
         """ Returns all locations with a particular name. """
-        return [loc for loc in self._locations if loc.has_name(location_name)]
+        return [loc for loc in self.locations if loc.has_name(location_name)]
+
+    @property
+    def inventory(self):
+        return self._player.inventory
 
     @property
     def player_location(self):
@@ -226,10 +243,6 @@ class KnowledgeGraph:
         return True
 
     @property
-    def inventory(self):
-        return self._player.inventory
-
-    @property
     def connections(self):
         return self._connections
 
@@ -242,7 +255,7 @@ class KnowledgeGraph:
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
         kg = self
-        self.inventory.reset(kg)
+        # self.inventory.reset(kg)  -- done in _player.reset()
         self._player.reset(kg)
         for location in self.locations:
             location.reset(kg)
@@ -255,8 +268,7 @@ class KnowledgeGraph:
             s += "PlayerLocation: {}".format(self.player_location.name)
         s += "\n" + str(self.inventory)
         s += "\nKnownLocations:"
-        if self._locations:
-            for loc in self._locations:
+        for loc in self.locations:
                 s += "\n" + loc.to_string("  ")
                 outgoing = self.connections.outgoing(loc)
                 if outgoing:
@@ -270,18 +282,17 @@ class KnowledgeGraph:
         ret = set()
         for loc in (self._locations + [self.inventory]):
             e = loc.get_entity_by_name(entityname)
-            if e and (entitytype is None or e._type == entitytype):
+            if e:
                 ret.add(e)
-        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
-        #     for l in (self._locations + [self.inventory]):
-        #         for e in l.entities:
-        #             for e2 in e._entities:
-        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
-        #                     ret.add(e2)
         if len(ret) == 0:  # check to see if entity has been previously mentioned, but not yet found
             e = self._unknown_location.get_entity_by_name(entityname)
-            if e and (entitytype is None or e._type == entitytype):
+            if e:
                 ret.add(e)
+        if entitytype:
+            wrong_type = {e for e in ret if e._type != entitytype}
+            if wrong_type:
+                print(f"WARNING: filtering out entities with non-matching type != {entitytype}: {wrong_type}")
+                return ret - wrong_type
         return ret
 
     def where_is_entity(self, entityname, entitytype=None, allow_unknown=True):
@@ -314,12 +325,6 @@ class KnowledgeGraph:
             for ce in loc.entities:
                 if ce.has_entity(entity):
                     return ce
-        # if len(ret) == 0:   # check also on or in other entities (just one level deep)
-        #     for l in (self._locations + [self.inventory]):
-        #         for e in l.entities:
-        #             for e2 in e._entities:
-        #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
-        #                     ret.add(l)
         return None
 
     def entity_at_location(self, entity, location):
@@ -449,12 +454,12 @@ class KnowledgeGraph:
             initial_loc = self._unknown_location
             print(f"WARNING create_new_object({name},locations={locations}) with initial_loc=UNKNOWN!")
         if entitytype == DOOR:
-            new_entity = Door(name=name, description=description, location=initial_loc)
+            new_entity = Door(name=name, description=description)  # location=initial_loc)
         else:
-            new_entity = Thing(name=name, description=description, location=initial_loc, type=entitytype)
+            new_entity = Thing(name=name, description=description, type=entitytype)  # location=initial_loc,
         added_new = initial_loc.add_entity(new_entity)
         if len(locations) > 1:
-            for loc in locations:
+            for loc in known_locs:
                 loc.add_entity(new_entity)  # does nothing if already has_entity_with_name
             if entitytype != DOOR:
                 print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")

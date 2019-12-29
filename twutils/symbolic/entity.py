@@ -103,6 +103,8 @@ class Location(Entity):
     def __init__(self, name='', description='', parent=None, type=None):
         if not name:
             name = self.extract_name(description)
+        if type and type != 'r' and type != UNKNOWN_LOCATION:    # only ROOMs have no parent in the knowledge graph
+            assert parent is not None
         super().__init__(name=name, description=description, type=type)
         # if name:
         #     self._name = name
@@ -157,6 +159,15 @@ class Location(Entity):
         if not self.has_entity_with_name(entity.name):
             # gv.event_stream.push(NewEntityEvent(entity))
             self._entities.append(entity)
+            if isinstance(entity, Door):
+                if Location.is_unknown(entity.location):
+                    entity.location = self
+                elif Location.is_unknown(entity.location2):
+                    entity.location2 = self
+                else:
+                    assert False, f"Can't move door:{entity} with 2 known locations {entity.location, entity.location2}"
+            elif isinstance(entity, Thing):
+                entity.location = self
             return True
         return False
 
@@ -323,7 +334,7 @@ class Thing(Entity):
 
     """
 
-    def __init__(self, name=None, description='', location=None, type=None):
+    def __init__(self, name=None, description='', type=None, location=None):
         super().__init__(name=name, description=description, type=type)
         # self._names       = [name]  # List of names for the entity
         # self._description = description
@@ -362,7 +373,7 @@ class Thing(Entity):
     def is_container(self, boolval: bool):
         if boolval:
             if not self.is_container:
-                self._container = Location(name=f"in_{self.name}")
+                self._container = Location(name=f"in_{self.name}", parent=self)
         elif not boolval and self.is_container:
             assert False, "Cannot convert a container into a non-container"
         return
@@ -375,7 +386,7 @@ class Thing(Entity):
     def is_support(self, boolval: bool):
         if boolval:
             if not self.is_support:
-                self._supports = Location(name=f"on_{self.name}")
+                self._supports = Location(name=f"on_{self.name}", parent=self)
         elif not boolval and self.is_support:
             assert False, "Cannot convert a supporting object to non-supporting"
         return
@@ -457,11 +468,9 @@ class Thing(Entity):
         for action_record in to_remove:
             del self.action_records[action_record]
         if self._container:
-            for e in self._container.entities:
-                e.reset(kg)
+            self._container.reset(kg)
         if self._supports:
-            for e in self._supports.entities:
-                e.reset(kg)
+            self._supports.reset(kg)
         self.location = self._init_loc
         self.state.reset()
 
@@ -522,6 +531,7 @@ class Door(Thing):
         if new_location != self._2nd_loc:
             self._2nd_loc = new_location
             if not Location.is_unknown(new_location):
+                assert self.location != new_location, "Both sides of a door shouldn't be the same location"
                 # new_location.is_known:
                 # not isinstance(new_location, UnknownLocation):
                 if Location.is_unknown(self._init_loc2):
