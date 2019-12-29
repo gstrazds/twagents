@@ -187,14 +187,14 @@ class KnowledgeGraph:
     """
     def __init__(self, event_stream, groundtruth=False):
         self._unknown_location   = UnknownLocation()
-        self._player             = Person(location=self._unknown_location)
-        # self._player_location    = self._unknown_location
-        self._inventory          = self._player.inventory
-        self._locations          = []
-        self._init_loc           = None
-        self._connections        = ConnectionGraph()
+        self._player             = Person(name="You",
+                                          description="The Protagonist",
+                                          location=self._unknown_location)
+        self._locations          = []   # a set of top-level locations (rooms)
+        # self._inventory          = self._player.inventory
+        self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
-        self.groundtruth         = groundtruth
+        self.groundtruth         = groundtruth   # bool: True means this is the Ground Truth knowledge graph
 
     @property
     def locations(self):
@@ -227,7 +227,7 @@ class KnowledgeGraph:
 
     @property
     def inventory(self):
-        return self._inventory
+        return self._player.inventory
 
     @property
     def connections(self):
@@ -238,13 +238,14 @@ class KnowledgeGraph:
          Does nothing if a similar connection already exists"""
         self._connections.add(new_connection, self)
 
-    def reset(self, gi):
+    def reset(self):
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
-        self.set_player_location(self._init_loc)
-        self.inventory.reset(gi)
+        kg = self
+        self.inventory.reset(kg)
+        self._player.reset(kg)
         for location in self.locations:
-            location.reset(gi)
+            location.reset(kg)
 
     def __str__(self):
         s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
@@ -267,12 +268,12 @@ class KnowledgeGraph:
     def entities_with_name(self, entityname, entitytype=None):
         """ Returns all entities with a particular name. """
         ret = set()
-        for l in (self._locations + [self._inventory]):
-            e = l.get_entity_by_name(entityname)
+        for loc in (self._locations + [self.inventory]):
+            e = loc.get_entity_by_name(entityname)
             if e and (entitytype is None or e._type == entitytype):
                 ret.add(e)
         # if len(ret) == 0:   # check also on or in other entities (just one level deep)
-        #     for l in (self._locations + [self._inventory]):
+        #     for l in (self._locations + [self.inventory]):
         #         for e in l.entities:
         #             for e2 in e._entities:
         #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
@@ -286,7 +287,7 @@ class KnowledgeGraph:
     def where_is_entity(self, entityname, entitytype=None, allow_unknown=True):
         """ Returns a set of locations where an entity with a specific name can be found """
         ret = set()
-        search_locations = self._locations + [self._inventory]
+        search_locations = self._locations + [self.inventory]
         if allow_unknown:
             search_locations.append(self._unknown_location)
         for loc in search_locations:
@@ -314,7 +315,7 @@ class KnowledgeGraph:
                 if ce.has_entity(entity):
                     return ce
         # if len(ret) == 0:   # check also on or in other entities (just one level deep)
-        #     for l in (self._locations + [self._inventory]):
+        #     for l in (self._locations + [self.inventory]):
         #         for e in l.entities:
         #             for e2 in e._entities:
         #                 if e2 and e2.has_name(entityname) and (entitytype is None or e2._type == entitytype):
@@ -468,7 +469,7 @@ class KnowledgeGraph:
                 self.event_stream.push(ev)
         return new_entity, ev
 
-    def add_obj_to_obj(self, fact, player_loc, rel=None):
+    def add_obj_to_obj(self, fact, rel=None):
         assert rel == fact.name
         # rel = fact.name
         o = fact.arguments[0]
@@ -476,9 +477,7 @@ class KnowledgeGraph:
         if o.name.startswith('~') or h.name.startswith('~'):
             print("_add_obj_to_obj: SKIPPING FACT", fact)
             return None, None
-        assert h.name != 'I'   # Inventory
-        # holder, _ = self._get_gt_entity(h.name, entitytype=entity_type_for_twvar(h.type), locations=None,
-        #                              create_if_notfound=False)
+        assert h.type != 'I'   # Inventory
         entity_set = self.entities_with_name(h.name, entitytype=entity_type_for_twvar(h.type))
         if entity_set:
             holder = entity_set.pop()  # choose one of them
@@ -514,7 +513,7 @@ class KnowledgeGraph:
             holder.add_entity(obj, rel=rel)
         return obj, holder
 
-    def add_obj_to_inventory(self, fact, player_loc):
+    def add_obj_to_inventory(self, fact):
         # rel = fact.name
         o = fact.arguments[0]
         h = fact.arguments[1]
@@ -556,13 +555,14 @@ class KnowledgeGraph:
             if fact.name == 'link' and self.groundtruth:
                 door_facts.append(fact)
             elif fact.name == 'at':
-                at_facts.append(fact)
                 if a0.type == 'P' and a1.type == 'r':
                     player_loc = self.get_location(a1.name, create_if_notfound=True)
+                else:
+                    at_facts.append(fact)
             elif fact.name == 'on':
                 on_facts.append(fact)
             elif fact.name == 'in':
-                if a1 and a1.name == 'I':  # Inventory
+                if a1 and a1.type == 'I':  # Inventory
                     inventory_facts.append(fact)
                 else:
                     in_facts.append(fact)
@@ -695,15 +695,15 @@ class KnowledgeGraph:
 
         for fact in on_facts:
             # print("DEBUG on_fact", fact)
-            o1, o2 = self.add_obj_to_obj(fact, player_loc, rel='on')
+            o1, o2 = self.add_obj_to_obj(fact, rel='on')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'on', o2)
         for fact in in_facts:
-            o1, o2 = self.add_obj_to_obj(fact, player_loc, rel='in')
+            o1, o2 = self.add_obj_to_obj(fact, rel='in')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'in', o2)
         for fact in inventory_facts:
-            o1 = self.add_obj_to_inventory(fact, player_loc)
+            o1 = self.add_obj_to_inventory(fact)
 
         for fact in other_facts:
             predicate = fact.name

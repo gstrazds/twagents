@@ -111,7 +111,7 @@ class Location(Entity):
         #self._description = description
         self._action_records = {}  # action : ActionRec(p_valid, response)
         self._entities    = []
-        self._parent      = None   # link to a containing Entity (Location/Place or Thing )
+        self._parent      = parent   # link to a containing Entity (Location/Place or Thing )
         self._visit_count = 0
 
     # @property
@@ -162,9 +162,9 @@ class Location(Entity):
 
     def get_entity_by_name(self, entity_name):
         """
-        Returns an entity with the given name if it exists at this
-        location or None if no such entity exists.
-
+        Returns an entity with the given name if it exists at this Location
+        or None if no such entity exists.
+        This is a shallow search: does not recurse to find entities contained or supported in/by entities.
         """
         for entity in self.entities:
             if entity.has_name(entity_name):
@@ -252,8 +252,12 @@ class Inventory(Location):
     Player inventory is represented as a location.
 
     """
-    def __init__(self, player:Entity):
-        super().__init__(name='Inventory', type=INVENTORY, description="Inventory of items carried by Player")
+    def __init__(self, owner: Entity = None):
+        if owner:
+            super().__init__(name=f"{owner.name}'s Inventory", type=INVENTORY, parent=owner,
+                             description=f"Inventory of items carried by {owner.name}")
+        else:
+            super().__init__(name='Inventory', type=INVENTORY, description="Inventory of items carried by the Player")
         # self._name = 'Inventory'
 
     def __iter__(self):
@@ -528,9 +532,9 @@ class Door(Thing):
 
 
 class Person(Thing):
-    def __init__(self, name='Player', description='The protagonist', location=None):
+    def __init__(self, name='Somebody', description='An entity with volition', location=None):
         super().__init__(name=name, description=description, type=PERSON, location=location)
-        self._container = Inventory(self)
+        self._container = Inventory(owner=self)
 
     @property
     def inventory(self):

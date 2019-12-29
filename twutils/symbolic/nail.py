@@ -153,7 +153,7 @@ class NailAgent():
         # self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
-            self.gi.kg.reset(self.gi)
+            self.gi.kg.reset()
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:
