@@ -53,6 +53,7 @@ class Entity:
         self._names       = [name]  # List of names for the entity
         self._description = description
         self._type        = type
+        self._discovered = False
 
     @property
     def name(self):
@@ -61,6 +62,10 @@ class Entity:
     @name.setter
     def name(self, value):
         self._names[0] = value
+
+    @property
+    def is_known(self):
+        return self._discovered
 
     @property
     def names(self):
@@ -107,6 +112,7 @@ class Location(Entity):
         self._action_records = {}  # action : ActionRec(p_valid, response)
         self._entities    = []
         self._parent      = None   # link to a containing Entity (Location/Place or Thing )
+        self._visit_count = 0
 
     # @property
     # def name(self):
@@ -127,6 +133,21 @@ class Location(Entity):
         if "\n" in stripped:
             return stripped[:stripped.index("\n")]
         return stripped
+
+    @staticmethod
+    def is_unknown(location):  #NOTE: Location.is_unknown(None) => True
+        return not isinstance(location, Location) or not location.is_known
+
+    # @property    # use inherited version from Entity
+    # def is_known(self):
+    #     self._discovered
+    #     assert self._visit_count > 0 unless kg.groundtruth
+
+    def visit(self):
+        if self._visit_count == 0 or not self._discovered:
+            print(f"visit() DISCOVERED {self}")
+        self._visit_count += 1
+        self._discovered = True
 
     @property
     def entities(self):
@@ -246,6 +267,13 @@ class Inventory(Location):
         self._index += 1
         return entity
 
+    def visit(self):
+        assert False
+
+    @property
+    def is_known(self):
+        return True
+
     def remove(self, entity):
         self._entities.remove(entity)
 
@@ -264,6 +292,14 @@ class UnknownLocation(Location):
     def __init__(self):
         super().__init__(name='Unknown Location', type=UNKNOWN_LOCATION)
         # self._name = 'Unknown Location'
+
+    def visit(self):
+        assert False, "Should never be able to visit() the (conceptual, abstract) UnknownLocation"
+
+    @property
+    def is_known(self):
+        assert self._discovered is False
+        return False
 
     def __str__(self):
         return "<Unknown Location>[" + str(', '.join([item.name for item in self.entities]))+"]"
@@ -369,8 +405,12 @@ class Thing(Entity):
     def location(self, new_location: Location):
         if new_location != self._current_loc:
             self._current_loc = new_location
-            if not isinstance(new_location, UnknownLocation):
-                if not self._init_loc or isinstance(self._init_loc, UnknownLocation):
+            if not Location.is_unknown(new_location):
+                #new_location and new_location.is_known:
+                # not isinstance(new_location, UnknownLocation):
+                if Location.is_unknown(self._init_loc):
+                    #not self._init_loc or not self._init_loc.is_known:
+                    #isinstance(self._init_loc, UnknownLocation):
                     print(f"SETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
 
@@ -424,19 +464,23 @@ class Thing(Entity):
 class Door(Thing):
     def __init__(self, name=None, description=None, location=None):
         super().__init__(name=name, description=description, type=DOOR, location=location)
-        self._other_loc = None   # location (room) to which the door leads
+        self._2nd_loc = None   # location (room) to which the door leads
         self._init_loc2 = None
 
     @property
     def location2(self):
-        return self._other_loc
+        return self._2nd_loc
 
     @location2.setter
     def location2(self, new_location: Location):
-        if new_location != self._other_loc:
-            self._other_loc = new_location
-            if not isinstance(new_location, UnknownLocation):
-                if not self._init_loc2 or isinstance(self._init_loc2, UnknownLocation):
+        if new_location != self._2nd_loc:
+            self._2nd_loc = new_location
+            if not Location.is_unknown(new_location):
+                # new_location.is_known:
+                # not isinstance(new_location, UnknownLocation):
+                if Location.is_unknown(self._init_loc2):
+                    #not self._init_loc2 or not self._init_loc2.is_known:
+                    #isinstance(self._init_loc2, UnknownLocation):
                     print(f"SETTING initial_location2 for {self} to: {new_location}")
                     self._init_loc2 = new_location
 

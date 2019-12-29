@@ -208,6 +208,7 @@ class KnowledgeGraph:
         if new_location == prev_location:
             return False
         if new_location:
+            new_location.visit()
             self.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
         self._player.location = new_location
         return True
@@ -344,9 +345,12 @@ class KnowledgeGraph:
         elif create_if_notfound:
             new_loc = Location(name=roomname, type=type)
             ev = self.add_location(new_loc)
-            if ev and not self.groundtruth:
+            # if self.groundtruth: DISCARD NewLocationEvent else gi.event_stream.push(ev)
+            if self.groundtruth:
+                new_loc._discovered = True    # HACK for GT logic
+            else:  # not self.groundtruth:
+                assert ev, "Adding a newly created Location should return a NewLocationEvent"
                 self.event_stream.push(ev)
-            # if self.groundtruth: DISCARD NewlocationEvent else gi.event_stream.push(ev)
             print("created new Location:", new_loc)
             return new_loc
         print("LOCATION NOT FOUND:", roomname)
@@ -399,7 +403,7 @@ class KnowledgeGraph:
                             print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
                                   f" dest={loc_new}, origin={loc_prev})")
                         if loc_new == self._unknown_location:
-                            print(f"WARNING: not moving {entity} to UnknownLocation")
+                            print(f"ERROR: not moving {entity} to UnknownLocation")
                         else:
                             self.move_entity(entity, loc_prev, loc_new, groundtruth=self.groundtruth)
                     else:
@@ -434,11 +438,11 @@ class KnowledgeGraph:
         if entitytype == DOOR:
             new_entity = Door(name=name, description=description, location=initial_loc)
         else:
-            new_entity = Thing(name=name, location=initial_loc, type=entitytype)
+            new_entity = Thing(name=name, description=description, location=initial_loc, type=entitytype)
         added_new = initial_loc.add_entity(new_entity)
         if len(locations) > 1:
-            for l in locations:
-                l.add_entity(new_entity)  # does nothing if already has_entity_with_name
+            for loc in locations:
+                loc.add_entity(new_entity)  # does nothing if already has_entity_with_name
             if entitytype != DOOR:
                 print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
                 assert False, "Shouldn't be adding non-door entity to multiple locations"
