@@ -168,8 +168,9 @@ class OpenAction(SingleAction):
         super().__init__("open", entity)
 
     def apply(self, gi: GameInstance):
+        # if success:
         self.entity.add_attribute(Openable)
-        self.entity.state.open()
+        self.entity.open()
         # gi.add_entity_attribute(self.entity, Openable)
 
 
@@ -178,8 +179,9 @@ class CloseAction(SingleAction):
         super().__init__("close", entity)
 
     def apply(self, gi: GameInstance):
+        # if success
         self.entity.add_attribute(Openable)
-        self.entity.state.close()
+        self.close()
         # gi.add_entity_attribute(self.entity, Openable)
 
 

@@ -11,18 +11,6 @@ from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 
-LOCATION_RELATIONS = ['at', 'in', 'on']
-
-
-def find_door(fact_list, from_room, to_room):  # return name of door
-    for fact in fact_list:
-        if fact.name == 'link'\
-        and fact.arguments[0].name == from_room.name \
-        and fact.arguments[2].name == to_room.name:
-            return fact.arguments[1].name
-    return None
-
-
 
 class NailAgent():
     """

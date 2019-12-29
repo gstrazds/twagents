@@ -350,20 +350,45 @@ class Thing(Entity):
     def has_action_record(self, action):
         return action in self._action_records
 
+    @property
+    def is_container(self) -> bool:
+        return self._container is not None
+
+    @is_container.setter
+    def is_container(self, boolval: bool):
+        if boolval:
+            if not self.is_container:
+                self._container = Location(name=f"in_{self.name}")
+        elif not boolval and self.is_container:
+            assert False, "Cannot convert a container into a non-container"
+        return
+
+    @property
+    def is_support(self) -> bool:
+        return self._supports is not None
+
+    @is_support.setter
+    def is_support(self, boolval: bool):
+        if boolval:
+            if not self.is_support:
+                self._supports = Location(name=f"on_{self.name}")
+        elif not boolval and self.is_support:
+            assert False, "Cannot convert a supporting object to non-supporting"
+        return
+
     def add_entity(self, entity, rel=None) -> bool:
         if rel == 'on':
-            if self._supports is None:
-                self._supports = Location(name=f"on_{self.name}")
+            self.is_support = True
             return self._supports.add_entity(entity)
         elif rel == 'in':
-            if self._container is None:
-                self._container = Location(name=f"in_{self.name}")
+            self.is_container = True
             return self._container.add_entity(entity)
         # elif rel == 'at':
         else:
             assert False, f"Unknown relation for Entity.add_entity({entity},rel={rel})"
         # self._entities.append(entity)
         return False
+
 
     def holds_entity(self, entity) -> bool:
         return self._container and self._container.has_entity(entity)
@@ -435,7 +460,24 @@ class Thing(Entity):
                 e.reset(kg)
         self.location = self._init_loc
         self.state.reset()
-       #   TODO: reset self._state
+
+    def open(self) -> bool:
+        if self.type == DOOR or self._is_container:
+            self.state.open()
+        if self.is_container:
+            self._container.visit()
+        else:
+            print(f"WARNING: attempting to open non-container: {self}")
+            return False
+        return self.state.is_open
+
+    def close(self) -> bool:
+        if self.type == DOOR or self._is_container:
+            self.state.close()
+        if not self.is_container:
+            print(f"WARNING: attempting to close non-container: {self}")
+            return False
+        return self.state.is_open is False
 
     def to_string(self, prefix=''):
         s = prefix + "Entity: {}".format(self.name)

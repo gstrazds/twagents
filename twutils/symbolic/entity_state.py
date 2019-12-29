@@ -103,10 +103,10 @@ class EntityState:
         # state_prop = EntityState.state_properties[attr_name]
         return self._state_values.get(state_prop, None)
 
-    def open(self):
+    def open(self):  # returns previous value of 'is_open'
         return self._set_state_val('is_open', True)
 
-    def close(self):
+    def close(self):  # returns previous value of 'is_open'
         return self._set_state_val('is_open', False)
 
     # @property

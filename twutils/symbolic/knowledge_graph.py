@@ -11,6 +11,9 @@ DIRECTION_ACTIONS = {
         'east_of': GoEast,
         'west_of': GoWest}
 
+LOCATION_RELATIONS = ['at', 'in', 'on']
+
+
 def get_attributes_for_type(twvartype:str):
     attrib_list = []
     if twvartype == 't' \
@@ -166,6 +169,15 @@ def entity_type_for_twvar(vartype):
     if vartype in Entity.entity_types:
         return vartype  # 1:1 mapping, for now
     return None
+
+
+# def find_door(fact_list, from_room, to_room):  # return name of door
+#     for fact in fact_list:
+#         if fact.name == 'link'\
+#         and fact.arguments[0].name == from_room.name \
+#         and fact.arguments[2].name == to_room.name:
+#             return fact.arguments[1].name
+#     return None
 
 
 class KnowledgeGraph:
