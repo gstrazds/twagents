@@ -259,7 +259,7 @@ class MoveItemAction(DoubleAction):
 
     def apply(self, gi: GameInstance):
         # TODO: Should entity contain a reference to its own container?
-        # move_entity(self.entity1, source_container, self.entity2, gi)
+        # move_entity(self.entity1, source_container, self.entity2)
         pass
 
 

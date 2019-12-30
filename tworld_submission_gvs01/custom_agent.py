@@ -736,13 +736,14 @@ class CustomAgent:
                         # exit(0)
                     # if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
                     #     self._debug_quit = self.current_step + 2  # early abort after executing one more action
-                    if observable_facts:
+                    if self.current_step > 0 and observable_facts:
+                        # TODO: CLEANUP - this should really be done as part of/after agent.observe(), above
                         # world = World.from_facts(facts)
                         # add obs_facts to our KnowledgeGraph (self.gi.kg)
                         agent.gi.kg.update_facts(observable_facts, prev_action=self.prev_actions[agent_id])
 
-                actiontxt = agent.take_action(desctext)
-                print("NAIL[{}] take_action -> {}".format(agent_id, actiontxt))
+                actiontxt = agent.choose_next_action(desctext)
+                print("NAIL[{}] choose_next_action -> {}".format(agent_id, actiontxt))
 
                 chosen_strings.append(actiontxt)
                 agent_id += 1

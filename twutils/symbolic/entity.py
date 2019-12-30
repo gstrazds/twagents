@@ -116,18 +116,6 @@ class Location(Entity):
         self._parent      = parent   # link to a containing Entity (Location/Place or Thing )
         self._visit_count = 0
 
-    # @property
-    # def name(self):
-    #     return self._name
-    #
-    # @property
-    # def description(self):
-    #     return self._description
-    #
-    # @description.setter
-    # def description(self, value):
-    #     self._description = value
-
     @staticmethod
     def extract_name(description):
         """ Extracts the name of a location from a description. """

@@ -49,6 +49,7 @@ class NailAgent():
         self.action_generator = None
         self.first_step       = True
         self._valid_detector  = None  #LearnedValidDetector()
+        self._last_action = None
         if env_name and rom_name:
             self.rom_name = rom_name
             self.env_name = env_name
@@ -108,7 +109,7 @@ class NailAgent():
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def take_action(self, observation):
+    def choose_next_action(self, observation):
 
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
@@ -140,6 +141,7 @@ class NailAgent():
             self.elect_new_active_module()
 
         next_action = self.generate_next_action(observation)
+        self._last_action = next_action   # remember what we were doing
         return next_action
 
     def observe(self, prev_obs, action, score, new_obs, terminal):
@@ -151,6 +153,8 @@ class NailAgent():
 
         # NewTransitionEvent unused by current code
         # self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
+        if action:
+            assert action == self._last_action
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
         if terminal:
             self.gi.kg.reset()

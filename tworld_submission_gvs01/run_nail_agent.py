@@ -30,7 +30,7 @@ def main():
     # Run the agent on the environment for the specified number of steps.
     for step_num in range(args.steps):
         # Get one action from the agent.
-        action = agent.take_action(obs)
+        action = agent.choose_next_action(obs)
 
         # Pass the action to the environment.
         new_obs, score, done, info = env.step(action)

@@ -374,7 +374,8 @@ class KnowledgeGraph:
         print("LOCATION NOT FOUND:", roomname)
         return None
 
-    def move_entity(self, entity, origin, dest, groundtruth=False):
+    def move_entity(self, entity, origin, dest):
+    # TODO: refactor this. Currently used in exactly one place = maybe_move_entity
         """ Moves entity from origin to destination. """
         assert origin.has_entity(entity), \
             "Can't move entity {} that isn't present at origin {}" \
@@ -384,8 +385,8 @@ class KnowledgeGraph:
             msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
             print("!!!WARNING: "+msg)
             assert False, msg
-        if not groundtruth:
-            self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=groundtruth))
+        if not self.groundtruth:
+            self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=False))
 
     def maybe_move_entity(self, entity, locations=None):
         assert locations
@@ -423,7 +424,7 @@ class KnowledgeGraph:
                         if loc_new == self._unknown_location:
                             print(f"ERROR: not moving {entity} to UnknownLocation")
                         else:
-                            self.move_entity(entity, loc_prev, loc_new, groundtruth=self.groundtruth)
+                            self.move_entity(entity, loc_prev, loc_new)
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
 
@@ -458,6 +459,7 @@ class KnowledgeGraph:
         else:
             new_entity = Thing(name=name, description=description, type=entitytype)  # location=initial_loc,
         added_new = initial_loc.add_entity(new_entity)
+        assert added_new   # since this is a new entity, there shouldn't already be an entity with the same name
         if len(locations) > 1:
             for loc in known_locs:
                 loc.add_entity(new_entity)  # does nothing if already has_entity_with_name
@@ -465,14 +467,12 @@ class KnowledgeGraph:
                 print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
                 assert False, "Shouldn't be adding non-door entity to multiple locations"
         # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
-        ev = None
-        if added_new:  # this is a new entity with a known location
-            ev = NewEntityEvent(new_entity)
-            add_attributes_for_type(new_entity, entitytype)
-            if not self.groundtruth and initial_loc != self._unknown_location:
-                print("DISCOVERED NEW entity:", new_entity)
-                self.event_stream.push(ev)
-        return new_entity, ev
+        ev = NewEntityEvent(new_entity)
+        add_attributes_for_type(new_entity, entitytype)
+        if not self.groundtruth and initial_loc != self._unknown_location:
+            print("DISCOVERED NEW entity:", new_entity)
+            self.event_stream.push(ev)
+        return new_entity
 
     def add_obj_to_obj(self, fact, rel=None):
         assert rel == fact.name
@@ -506,12 +506,11 @@ class KnowledgeGraph:
         entitytype = entity_type_for_twvar(o.type)
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
-            obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
-            if ev:
-                print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-                # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_create_new_object()
-        else:
-            self.maybe_move_entity(obj, locations=loc_list)
+            obj = self.create_new_object(o.name, entitytype, locations=loc_list)
+            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_create_new_object()
+        # else:
+        #     self.maybe_move_entity(obj, locations=loc_list)
 
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
@@ -531,14 +530,14 @@ class KnowledgeGraph:
         entitytype = entity_type_for_twvar(o.type)
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
-            obj, ev = self.create_new_object(o.name, entitytype, locations=loc_list)
-            if ev:
-                print("ADDED NEW Object {} :in: Inventory".format(obj))
-                # if not self.groundtruth:
-                #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
-        else:
-            #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
-            self.maybe_move_entity(obj, locations=loc_list)
+            obj = self.create_new_object(o.name, entitytype, locations=loc_list)
+            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            # print("ADDED NEW Object {} :in: Inventory".format(obj))
+            # if not self.groundtruth:
+            #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
+        # else:
+        #     #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
+        self.maybe_move_entity(obj, locations=loc_list)
         # DEBUGGING: redundant SANITY CHECK
         if not self.inventory.get_entity_by_name(obj.name):
             print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
@@ -609,7 +608,7 @@ class KnowledgeGraph:
                 assert r1.type == 'r'
                 assert d.type == 'd'
                 if not self.groundtruth:
-                    print("WARNING (assertion failure) link fact in door_facts but not groundtruth:", fact)
+                    assert False, f"UNEXPECTED: link fact in non-groundtruth door_facts: {fact}"
                     continue   # link
             elif len(fact.arguments) == 2:
                 r0 = fact.arguments[1]
@@ -628,13 +627,9 @@ class KnowledgeGraph:
             else:
                 door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
 
-            # door, _ = self.get_entity(d.name,
-            #                           entitytype=DOOR,
-            #                           locations=door_locations,
-            #                           create_if_notfound=True)
             door = self.get_entity(d.name, entitytype=DOOR)
             if not door:
-                door, _ = self.create_new_object(d.name, DOOR, locations=door_locations)
+                door = self.create_new_object(d.name, DOOR, locations=door_locations)
             else:
                 self.maybe_move_entity(door, locations=door_locations)
             if r1:  #len(door_locations) == 2:
@@ -686,7 +681,7 @@ class KnowledgeGraph:
                 entitytype = entity_type_for_twvar(o.type)
                 obj = self.get_entity(o.name, entitytype=entitytype)
                 if not obj:
-                    obj, _ = self.create_new_object(o.name, entitytype, locations=locs)
+                    obj = self.create_new_object(o.name, entitytype, locations=locs)
                 else:
                     self.maybe_move_entity(obj, locations=locs)
             else:
