@@ -445,7 +445,9 @@ class KnowledgeGraph:
         return None
 
     def create_new_object(self, name, entitytype, locations=None, description=''):
-        assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
+        # assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
+        if not locations:
+            locations = []
         known_locs = set(locations)
         known_locs.discard(self._unknown_location)
         if known_locs:
@@ -506,11 +508,9 @@ class KnowledgeGraph:
         entitytype = entity_type_for_twvar(o.type)
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
-            obj = self.create_new_object(o.name, entitytype, locations=loc_list)
+            obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-            # if not self.groundtruth: gi.event_stream.push(ev)  # ALREADY DONE BY self.get_create_new_object()
-        # else:
-        #     self.maybe_move_entity(obj, locations=loc_list)
+        self.maybe_move_entity(obj, locations=loc_list)
 
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:
@@ -530,13 +530,8 @@ class KnowledgeGraph:
         entitytype = entity_type_for_twvar(o.type)
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
-            obj = self.create_new_object(o.name, entitytype, locations=loc_list)
+            obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-            # print("ADDED NEW Object {} :in: Inventory".format(obj))
-            # if not self.groundtruth:
-            #     gi.event_stream.push(ev)  # ALREADY DONE BY self.get_entity()
-        # else:
-        #     #print("FOUND GT Object {} :{}: {}".format(obj, fact.name, holder_for_logging))
         self.maybe_move_entity(obj, locations=loc_list)
         # DEBUGGING: redundant SANITY CHECK
         if not self.inventory.get_entity_by_name(obj.name):
