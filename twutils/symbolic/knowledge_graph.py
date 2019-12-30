@@ -676,9 +676,8 @@ class KnowledgeGraph:
                 entitytype = entity_type_for_twvar(o.type)
                 obj = self.get_entity(o.name, entitytype=entitytype)
                 if not obj:
-                    obj = self.create_new_object(o.name, entitytype, locations=locs)
-                else:
-                    self.maybe_move_entity(obj, locations=locs)
+                    obj = self.create_new_object(o.name, entitytype)  #, locations=locs)
+                self.maybe_move_entity(obj, locations=locs)
             else:
                 gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
