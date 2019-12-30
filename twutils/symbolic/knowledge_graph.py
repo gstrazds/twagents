@@ -418,16 +418,20 @@ class KnowledgeGraph:
                         loc_prev = prev_loc_set.pop()
                         loc_new = loc_set.pop()
                         # TODO: here we are assuming exactly one found entity and one location
-                        if loc_prev != self._unknown_location:
-                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
-                                  f" dest={loc_new}, origin={loc_prev})")
                         if loc_new == self._unknown_location:
                             print(f"ERROR: not moving {entity} to UnknownLocation")
                         else:
-                            self.move_entity(entity, loc_prev, loc_new)
+                            if loc_prev != self._unknown_location:
+                                print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
+                                      f" dest={loc_new}, origin={loc_prev})")
+                            else:   # loc_prev == self._unknown_location:
+                                if not self.groundtruth:
+                                    print("DISCOVERED NEW entity:", entity)
+                                    ev = NewEntityEvent(entity)
+                                    self.event_stream.push(ev)
+                        self.move_entity(entity, loc_prev, loc_new)
                     else:
                         print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
-
 
     def get_entity(self, name, entitytype=None):
         entities = set()
@@ -444,36 +448,15 @@ class KnowledgeGraph:
                 return found
         return None
 
-    def create_new_object(self, name, entitytype, locations=None, description=''):
-        # assert locations is not None, f"Need to specify initial location for new entity <{name}:{entitytype}>"
-        if not locations:
-            locations = []
-        known_locs = set(locations)
-        known_locs.discard(self._unknown_location)
-        if known_locs:
-            initial_loc = known_locs.pop()
-            assert initial_loc is not None, f"Must include a known location: {locations}"
-        else:
-            initial_loc = self._unknown_location
-            print(f"WARNING create_new_object({name},locations={locations}) with initial_loc=UNKNOWN!")
+    def create_new_object(self, name, entitytype, description=''):
+        initial_loc = self._unknown_location
         if entitytype == DOOR:
-            new_entity = Door(name=name, description=description)  # location=initial_loc)
+            new_entity = Door(name=name, description=description)
         else:
             new_entity = Thing(name=name, description=description, type=entitytype)  # location=initial_loc,
         added_new = initial_loc.add_entity(new_entity)
         assert added_new   # since this is a new entity, there shouldn't already be an entity with the same name
-        if len(locations) > 1:
-            for loc in known_locs:
-                loc.add_entity(new_entity)  # does nothing if already has_entity_with_name
-            if entitytype != DOOR:
-                print(f"WARNING: adding new {new_entity} to multiple locations: {locations}")
-                assert False, "Shouldn't be adding non-door entity to multiple locations"
-        # DISCARD NewEntityEvent -- self.gi.event_stream.push(ev)
-        ev = NewEntityEvent(new_entity)
         add_attributes_for_type(new_entity, entitytype)
-        if not self.groundtruth and initial_loc != self._unknown_location:
-            print("DISCOVERED NEW entity:", new_entity)
-            self.event_stream.push(ev)
         return new_entity
 
     def add_obj_to_obj(self, fact, rel=None):
@@ -624,9 +607,8 @@ class KnowledgeGraph:
 
             door = self.get_entity(d.name, entitytype=DOOR)
             if not door:
-                door = self.create_new_object(d.name, DOOR, locations=door_locations)
-            else:
-                self.maybe_move_entity(door, locations=door_locations)
+                door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
+            self.maybe_move_entity(door, locations=door_locations)
             if r1:  #len(door_locations) == 2:
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
