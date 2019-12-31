@@ -73,8 +73,8 @@ class GTAcquire(DecisionModule):
         for entityName in still_needed:
             if gi.gt.inventory.has_entity_with_name(entityName):
                 assert False, f"Still needed object {entityName} *should not be* in Inventory"
-            elif here.has_entity_with_name(entityName):
-                entity = here.get_entity_by_name(entityName)
+            elif gi.gt.location_of_entity_with_name(entityName) is gi.gt.player_location:
+                entity = gi.gt.get_entity(entityName)
                 if Portable in entity.attributes:
                     container = gi.gt.get_holding_entity(entity)
                     if container and container.state.openable and not container.state.is_open:
@@ -116,7 +116,7 @@ class GTAcquire(DecisionModule):
         still_needed = list(self.missing_objs(gi.gt))
         if still_needed:
             obj_to_find = still_needed[0]   # TODO: make it smarter - choose closest instead of first
-            loc = gi.gt.location_of_entity(obj_to_find)
+            loc = gi.gt.location_of_entity_with_name(obj_to_find)
             if loc:
                 print("GT_Acquire NeedToGoTo:", loc)
                 gi.event_stream.push(NeedToGoTo(loc.name, groundtruth=True))

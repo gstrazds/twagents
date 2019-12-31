@@ -59,7 +59,7 @@ class GTRecipeReader(DecisionModule):
         self._eagerness = 0.0
 
     def cookbook_is_here(self, gi: GameInstance):
-        cookbook_location = gi.gt.location_of_entity('cookbook')
+        cookbook_location = gi.gt.location_of_entity_with_name('cookbook')
         return cookbook_location == gi.gt.player_location
 
     def process_event(self, event, gi: GameInstance):

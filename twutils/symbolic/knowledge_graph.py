@@ -307,7 +307,7 @@ class KnowledgeGraph:
             ret.discard(self._unknown_location)
         return ret
 
-    def location_of_entity(self, entityname, entitytype=None, allow_unknown=False):
+    def location_of_entity_with_name(self, entityname, entitytype=None, allow_unknown=False):
         """ Returns a single (top-level: =ROOM) location where an entity with a specific name can be found """
         location_set = self.where_is_entity(entityname, entitytype=entitytype, allow_unknown=allow_unknown)
         room_set = {self.primogenitor(loc) for loc in location_set}

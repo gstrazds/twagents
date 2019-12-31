@@ -83,7 +83,7 @@ class Examiner(DecisionModule):
         curr_loc = gi.kg.player_location
         for entity_name in candidate_entities:
             action = Examine(entity_name)
-            if curr_loc.has_entity_with_name(entity_name) or \
+            if curr_loc is gi.kg.location_of_entity_with_name(entity_name) or \
                action in curr_loc.action_records or \
                not action.recognized(gi) or \
                entity_name in self._to_examine[curr_loc]:
