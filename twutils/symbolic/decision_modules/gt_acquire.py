@@ -57,30 +57,6 @@ class GTAcquire(DecisionModule):
 
     def parse_response(self, response, gi: GameInstance):
         success = False
-        # here = gi.kg.player_location
-        # for line in response.splitlines():
-        #     line = line.strip()
-        #     if ':' in line:
-        #         success = True
-        #         # Example - small mailbox: It's securly anchored.
-        #         entity_name, resp = [w.strip() for w in line.split(':', 1)]
-        #         short_name = entity_name.split(' ')[-1]
-        #         if here.has_entity_with_name(entity_name):
-        #             entity = here.get_entity_by_name(entity_name)
-        #         elif gi.kg.inventory.has_entity_with_name(entity_name):
-        #             entity = gi.kg.inventory.get_entity_by_name(entity_name)
-        #         else:
-        #             # Create the entity at the current location
-        #             entity = Thing(name=entity_name, location=here)
-        #             entity.add_name(short_name)
-        #             gi.entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
-        #
-        #         take_action = gv.Take(entity)
-        #         p_valid = take_action.validate(resp)
-        #         gv.dbg("[Take] p={:.2f} {} --> {}".format(p_valid, entity_name, resp))
-        #         gi.kg.act_on_entity(take_action, entity, ActionRec(p_valid, resp)))
-        #         if p_valid > 0.5:
-        #             take_action.apply(gi)
         self.record(success)
 
     def take_control(self, gi: GameInstance):
@@ -100,7 +76,7 @@ class GTAcquire(DecisionModule):
             elif here.has_entity_with_name(entityName):
                 entity = here.get_entity_by_name(entityName)
                 if Portable in entity.attributes:
-                    container = gi.gt.get_containing_entity(entity)
+                    container = gi.gt.get_holding_entity(entity)
                     if container and container.state.openable and not container.state.is_open:
                         response = yield Open(container)
                     take_action = Take(entity)

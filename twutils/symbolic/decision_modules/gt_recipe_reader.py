@@ -58,20 +58,18 @@ class GTRecipeReader(DecisionModule):
     def clear_all(self):
         self._eagerness = 0.0
 
+    def cookbook_is_here(self, gi: GameInstance):
+        cookbook_location = gi.gt.location_of_entity('cookbook')
+        return cookbook_location == gi.gt.player_location
+
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         if isinstance(event, GroundTruthComplete) and event.is_groundtruth:
             print("GTRecipeReader GroundTruthComplete")
             if not self.recipe_steps and not self.ingredients:  # don't activate a 2nd time
-                player_loc = gi.gt.player_location
-                cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
-                if cookbook:
+                if self.cookbook_is_here(gi):
                     print("GT Recipe Reader: ACTIVATING!")
                     self._eagerness = 1.0
-        # elif isinstance(event, NeedToAcquire) and event.is_groundtruth:
-        #     print("GTRecipeReader Need To Acquire", event.objnames)
-        #     for itemname in event.objnames:
-        #         self.add_required_obj(itemname)
 
     def convert_cookbook_step_to_task(self, instr: str, gi: GameInstance):
         instr_words = instr.split()
@@ -141,12 +139,13 @@ class GTRecipeReader(DecisionModule):
             print(f"WARNING: GTRecipeReader.take_control() with eagerness={self._eagerness}")
             return None #ends iteration
 
-        cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
-        if not cookbook:
+        # cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
+        if not self.cookbook_is_here(gi):
             print("[GT RecipeReader] ABORTING because cookbook is not here", gi.gt.player_location)
             self.deactivate()
             return None
 
+        cookbook = gi.gt.get_entity('cookbook')
         response = yield SingleAction('examine', cookbook)
         # parse the response
         recipe_lines = response.split('\n')

@@ -1,9 +1,9 @@
 # import os, sys
-# sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from itertools import chain
 from symbolic.event import *
 from symbolic.action import *
-from symbolic.entity import Entity, Thing, DOOR, ROOM
-from symbolic.entity import Location, Person, UnknownLocation, Door
+from symbolic.entity import Entity, Thing, Location, Person, UnknownLocation, Door
+from symbolic.entity import DOOR, ROOM, CONTAINED_LOCATION, SUPPORTED_LOCATION
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,
@@ -190,7 +190,7 @@ class KnowledgeGraph:
         self._player             = Person(name="You",
                                           description="The Protagonist",
                                           location=self._unknown_location)
-        self._locations          = []   # a set of top-level locations (rooms)
+        self._locations          = set()   # a set of top-level locations (rooms)
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
         self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
@@ -209,14 +209,16 @@ class KnowledgeGraph:
 
     @property
     def locations(self):
-        if not self._locations:
-            return []
         return self._locations
 
     def add_location(self, new_location: Location) -> NewLocationEvent:
         """ Adds a new location object and broadcasts a NewLocation event. """
-        self._locations.append(new_location)
-        return NewLocationEvent(new_location, groundtruth=self.groundtruth)
+        is_new = new_location not in self._locations
+        self._update_entity_index(new_location)
+        if is_new and new_location.parent is None and new_location is not self._unknown_location:
+            self._locations.add(new_location)
+            return NewLocationEvent(new_location, groundtruth=self.groundtruth)
+        return None
 
     def locations_with_name(self, location_name):
         """ Returns all locations with a particular name. """
@@ -280,14 +282,16 @@ class KnowledgeGraph:
     def entities_with_name(self, entityname, entitytype=None):
         """ Returns all entities with a particular name. """
         ret = set()
-        for loc in (self._locations + [self.inventory]):
-            e = loc.get_entity_by_name(entityname)
-            if e:
-                ret.add(e)
-        if len(ret) == 0:  # check to see if entity has been previously mentioned, but not yet found
-            e = self._unknown_location.get_entity_by_name(entityname)
-            if e:
-                ret.add(e)
+        if entityname in self._entities_by_name:
+            ret.add(self._entities_by_name[entityname])
+        # for loc in chain(self._locations, [self.inventory]):
+        #     e = loc.get_entity_by_name(entityname)
+        #     if e:
+        #         ret.add(e)
+        # if len(ret) == 0:  # check to see if entity has been previously mentioned, but not yet found
+        #     e = self._unknown_location.get_entity_by_name(entityname)
+        #     if e:
+        #         ret.add(e)
         if entitytype:
             wrong_type = {e for e in ret if e._type != entitytype}
             if wrong_type:
@@ -296,36 +300,43 @@ class KnowledgeGraph:
         return ret
 
     def where_is_entity(self, entityname, entitytype=None, allow_unknown=True):
-        """ Returns a set of locations where an entity with a specific name can be found """
-        ret = set()
-        search_locations = self._locations + [self.inventory]
-        if allow_unknown:
-            search_locations.append(self._unknown_location)
-        for loc in search_locations:
-            e = loc.get_entity_by_name(entityname)
-            if e and (entitytype is None or e._type == entitytype):
-                ret.add(loc)
+        """ Returns a set of (shallow) locations where an entity with a specific name can be found """
+        entityset = self.entities_with_name(entityname, entitytype=entitytype)
+        ret = {entity.location for entity in entityset}
+        if not allow_unknown:
+            ret.discard(self._unknown_location)
         return ret
 
     def location_of_entity(self, entityname, entitytype=None, allow_unknown=False):
-        """ Returns a single location where an entity with a specific name can be found """
+        """ Returns a single (top-level: =ROOM) location where an entity with a specific name can be found """
         location_set = self.where_is_entity(entityname, entitytype=entitytype, allow_unknown=allow_unknown)
+        room_set = {self.primogenitor(loc) for loc in location_set}
         # print(f"DEBUG location_of_entity({entityname}:{entitytype}) => {location_set}")
         if not allow_unknown:
-            location_set.discard(self._unknown_location)
-        if location_set:
-            if len(location_set) > 1:
-                print(f"WARNING: multiple locations for <{entityname}>: {location_set}")
-            return location_set.pop()  # choose one element from the set
+            room_set.discard(self._unknown_location)
+        if room_set:
+            if len(room_set) > 1:
+                print(f"WARNING: multiple locations for <{entityname}>: {location_set} => {room_set}")
+            return room_set.pop()  # choose one (TODO: choose with shortest path to player_location)
         return None
 
-    def get_containing_entity(self, entity):
+    def get_holding_entity(self, entity):
         """ Returns container (or support) where an entity with a specific name can be found """
-        for loc in self._locations:
-            for ce in loc.entities:
-                if ce.has_entity(entity):
-                    return ce
+        if entity.location != self._unknown_location:
+            parent = entity.location
+            if parent:
+                if parent._type == CONTAINED_LOCATION or parent._type == SUPPORTED_LOCATION:
+                    parent = parent.parent
+                    assert parent._type == 's' or parent._type == 'c'  #FIXME: very specific to TextWorld
+                    return parent
         return None
+
+    def primogenitor(self, entity):
+        """ Follows a chain of parent links to an ancestor with no parent """
+        ancestor = entity
+        while ancestor and ancestor.parent:
+            ancestor = ancestor.parent
+        return ancestor
 
     def entity_at_location(self, entity, location):
         if location.add_entity(entity):
@@ -355,21 +366,21 @@ class KnowledgeGraph:
             ev = NewActionRecordEvent(loc, action, result_text)
             self.event_stream.push(ev)
 
-    def get_location(self, roomname, create_if_notfound=False, type=ROOM):
+    def get_location(self, roomname, create_if_notfound=False, entitytype=ROOM):
         locations = self.locations_with_name(roomname)
         if locations:
             assert len(locations) == 1
             return locations[0]
         elif create_if_notfound:
-            new_loc = Location(name=roomname, type=type)
+            new_loc = Location(name=roomname, entitytype=entitytype)
             ev = self.add_location(new_loc)
             # if self.groundtruth: DISCARD NewLocationEvent else gi.event_stream.push(ev)
             if self.groundtruth:
-                new_loc._discovered = True    # HACK for GT logic
+                new_loc._discovered = True   # HACK for GT: all locations (except the UnknownLocation) are known
             else:  # not self.groundtruth:
                 assert ev, "Adding a newly created Location should return a NewLocationEvent"
                 self.event_stream.push(ev)
-            print("created new Location:", new_loc)
+            print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
             return new_loc
         print("LOCATION NOT FOUND:", roomname)
         return None
@@ -390,48 +401,48 @@ class KnowledgeGraph:
 
     def maybe_move_entity(self, entity, locations=None):
         assert locations
-        if locations:   # ? and create_if_notfound:
-            # might need to move it from wherever it was to its new location
+        # might need to move it from wherever it was to its new location
 
-            prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
-            loc_set = set(locations)
-            if prev_loc_set != loc_set:
-                print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
-                if len(prev_loc_set) != len(loc_set):
-                    print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
-                elif prev_loc_set:  # available information about location object seems to have changed
-                    if len(prev_loc_set) == 2 and len(loc_set) == 2:
-                        if entity._type != DOOR:
-                            print("WARNING: expected type==DOOR:", entity)
-                        new_locs = loc_set - prev_loc_set   # set.difference()
-                        prev_locs = prev_loc_set - loc_set
-                        if len(new_locs) == 1 and len(prev_locs) == 1:
-                            prev_loc_set = set([self._unknown_location])
-                            loc_set = new_locs
-                            # drop through to if len(prev_loc_set) == 1 case, below...
-                        else:
-                            print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
-                                  f"-> new:{new_locs}; {locations}")
-
-                    if len(prev_loc_set) == 1:  # and len(prev_loc_set) == 1:
-                        assert len(loc_set) == 1
-                        loc_prev = prev_loc_set.pop()
-                        loc_new = loc_set.pop()
-                        # TODO: here we are assuming exactly one found entity and one location
-                        if loc_new == self._unknown_location:
-                            print(f"ERROR: not moving {entity} to UnknownLocation")
-                        else:
-                            if loc_prev != self._unknown_location:
-                                print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
-                                      f" dest={loc_new}, origin={loc_prev})")
-                            else:   # loc_prev == self._unknown_location:
-                                if not self.groundtruth:
-                                    print("DISCOVERED NEW entity:", entity)
-                                    ev = NewEntityEvent(entity)
-                                    self.event_stream.push(ev)
-                        self.move_entity(entity, loc_prev, loc_new)
+        prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
+        loc_set = set(locations)
+        if prev_loc_set != loc_set:
+            print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
+            if len(prev_loc_set) != len(loc_set):
+                print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
+            elif prev_loc_set:  # available information about location object seems to have changed
+                if len(prev_loc_set) == 2 and len(loc_set) == 2:
+                    if entity._type != DOOR:
+                        print("WARNING: expected type==DOOR:", entity)
+                    new_locs = loc_set - prev_loc_set   # set.difference()
+                    prev_locs = prev_loc_set - loc_set
+                    if len(new_locs) == 1 and len(prev_locs) == 1:
+                        prev_loc_set = set([self._unknown_location])
+                        loc_set = new_locs
+                        # drop through to if len(prev_loc_set) == 1 case, below...
                     else:
-                        print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
+                        print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
+                              f"-> new:{new_locs}; {locations}")
+
+                if len(prev_loc_set) == 1:
+                    assert len(loc_set) == 1
+                    loc_prev = prev_loc_set.pop()
+                    loc_new = loc_set.pop()
+                    # TODO: here we are assuming exactly one found entity and one location
+                    if loc_new == self._unknown_location:
+                        print(f"ERROR: not moving {entity} to UnknownLocation")
+                    else:
+                        if loc_prev != self._unknown_location:
+                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
+                                  f" dest={loc_new}, origin={loc_prev})")
+                        else:   # loc_prev == self._unknown_location:
+                            if not self.groundtruth:
+                                print("DISCOVERED NEW entity:", entity)
+                                ev = NewEntityEvent(entity)
+                                self.event_stream.push(ev)
+                        self.move_entity(entity, loc_prev, loc_new)
+                else:
+                    print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
+                    assert False
 
     def get_entity(self, name, entitytype=None):
         entities = set()
@@ -453,10 +464,11 @@ class KnowledgeGraph:
         if entitytype == DOOR:
             new_entity = Door(name=name, description=description)
         else:
-            new_entity = Thing(name=name, description=description, type=entitytype)  # location=initial_loc,
+            new_entity = Thing(name=name, description=description, entitytype=entitytype)  # location=initial_loc,
         added_new = initial_loc.add_entity(new_entity)
         assert added_new   # since this is a new entity, there shouldn't already be an entity with the same name
         add_attributes_for_type(new_entity, entitytype)
+        self._update_entity_index(new_entity)
         return new_entity
 
     def add_obj_to_obj(self, fact, rel=None):
@@ -474,18 +486,19 @@ class KnowledgeGraph:
             if len(entity_set):
                 print("WARNING: found more than one matching entity for name <{}: {} + {}".format(
                     h.name, holder, entity_set))
-            loc = self.location_of_entity(holder.name)
-        else:
-            print("WARNING: found no entities_with_name:", h.name)
-            holder = None
-            loc = None
-        if not loc:
-            print("WARNING! NO LOCATION FOR HOLDER while adding Object {} {}".format(fact, holder))
-            print("unknown =", self._unknown_location)
-            print("self._locations:", self._locations)
-            loc_list = None
-        else:
-            loc_list = [loc]  # a list containing exactly one element
+        #     loc = self.location_of_entity(holder.name)
+        # else:
+        #     print("WARNING: found no entities_with_name:", h.name)
+        #     holder = None
+        #     loc = None
+        #     assert False
+        # if not loc:
+        #     print("WARNING! NO LOCATION FOR HOLDER while adding Object {} {}".format(fact, holder))
+        #     print("unknown =", self._unknown_location)
+        #     print("self._locations:", self._locations)
+        #     loc_list = None
+        # else:
+        #     loc_list = [loc]  # a list containing exactly one element
 
         #NOTE TODO: handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
@@ -493,7 +506,12 @@ class KnowledgeGraph:
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-        self.maybe_move_entity(obj, locations=loc_list)
+            if not self.groundtruth:
+                print("DISCOVERED NEW entity:", obj)
+                ev = NewEntityEvent(obj)
+                self.event_stream.push(ev)
+
+        # self.maybe_move_entity(obj, locations=loc_list)
 
         #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
         if holder:

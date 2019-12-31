@@ -5,7 +5,6 @@ import copy
 from typing import List, Dict, Any
 from collections import namedtuple
 
-import spacy
 import numpy as np
 
 import torch
@@ -16,7 +15,7 @@ from textworld import EnvInfos
 from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
-from symbolic.nail import NailAgent
+from symbolic.game_agent import TextGameAgent
 from symbolic.event import NeedToAcquire, NeedToGoTo
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
@@ -606,7 +605,7 @@ class CustomAgent:
             else:
                 game_id = str(idx)
             self.agents.append(
-                NailAgent(
+                TextGameAgent(
                     self.config['general']['random_seed'],  #seed
                     "TW",     # rom_name
                     game_id)  # env_name

@@ -3,7 +3,7 @@
 import argparse
 import os
 
-from symbolic.nail import NailAgent
+from symbolic.game_agent import TextGameAgent
 
 parser = argparse.ArgumentParser(description='Run the NAIL agent on a game.')
 parser.add_argument("game", type=str,
@@ -22,7 +22,7 @@ def main():
     env = FrotzEnv(args.game, seed=args.seed)
 
     # Create the NAIL agent.
-    agent = NailAgent(seed=args.seed, env=env, rom_name=os.path.basename(args.game))
+    agent = TextGameAgent(seed=args.seed, env=env, rom_name=os.path.basename(args.game))
 
     # Get the first observation from the environment.
     obs = env.reset()

@@ -3,7 +3,7 @@ import logging
 # from symbolic.game import GameInstance
 # from symbolic import gv
 # from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator, GTEnder, GTRecipeReader, GTAcquire, TaskExecutor
+from symbolic.decision_modules import GTNavigator, GTRecipeReader, GTAcquire, TaskExecutor   # GTEnder
 from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 # from symbolic.entity import Entity
 from symbolic.entity import Location
@@ -12,7 +12,7 @@ from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 
 
-class NailAgent():
+class TextGameAgent:
     """
     NAIL Agent: Navigate, Acquire, Interact, Learn
 

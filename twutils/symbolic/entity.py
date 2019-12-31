@@ -29,6 +29,7 @@ SLOT = 'slot'
 UNKNOWN_OBJ_TYPE = 'UNKNOWN'
 UNKNOWN_LOCATION = 'UNK_LOC'
 CONTAINED_LOCATION = 'C_LOC'
+SUPPORTED_LOCATION = 'S_LOC'
 
 
 class Entity:
@@ -45,14 +46,15 @@ class Entity:
         # and some non-TextWorld type codes
         UNKNOWN_OBJ_TYPE,
         UNKNOWN_LOCATION,
-        CONTAINED_LOCATION
+        CONTAINED_LOCATION,
+        SUPPORTED_LOCATION
     ]
 
-    def __init__(self, name=None, description='', type=None):
+    def __init__(self, name=None, description='', entitytype=None):
         assert name, "An Entity *must* have a name"
         self._names       = [name]  # List of names for the entity
         self._description = description
-        self._type        = type
+        self._type        = entitytype
         self._discovered = False
 
     @property
@@ -93,6 +95,9 @@ class Entity:
     def reset(self, kg):   #kg: KnowledgeGraph
         pass
 
+    @property
+    def parent(self):   # for building compositional hierarchy
+        return None     # implemented by subclasses
 
 class Location(Entity):
     """
@@ -100,12 +105,12 @@ class Location(Entity):
     interactions, and connections to other locations.
 
     """
-    def __init__(self, name='', description='', parent=None, type=None):
+    def __init__(self, name='', description='', parent=None, entitytype=None):
         if not name:
             name = self.extract_name(description)
-        if type and type != 'r' and type != UNKNOWN_LOCATION:    # only ROOMs have no parent in the knowledge graph
+        if entitytype and entitytype != 'r' and entitytype != UNKNOWN_LOCATION:    # only ROOMs have no parent in the knowledge graph
             assert parent is not None
-        super().__init__(name=name, description=description, type=type)
+        super().__init__(name=name, description=description, entitytype=entitytype)
         # if name:
         #     self._name = name
         # else:
@@ -233,6 +238,10 @@ class Location(Entity):
         for entity in to_remove:
             self.entities.remove(entity)
 
+    @property
+    def parent(self):
+        return self._parent
+
     def to_string(self, prefix=''):
         s = prefix + "Loc<{}>:".format(self.name)
         for entity in self._entities:
@@ -253,10 +262,10 @@ class Inventory(Location):
     """
     def __init__(self, owner: Entity = None):
         if owner:
-            super().__init__(name=f"{owner.name}'s Inventory", type=INVENTORY, parent=owner,
+            super().__init__(name=f"{owner.name}'s Inventory", entitytype=INVENTORY, parent=owner,
                              description=f"Inventory of items carried by {owner.name}")
         else:
-            super().__init__(name='Inventory', type=INVENTORY, description="Inventory of items carried by the Player")
+            super().__init__(name='Inventory', entitytype=INVENTORY, description="Inventory of items carried by the Player")
         # self._name = 'Inventory'
 
     def __iter__(self):
@@ -293,8 +302,7 @@ class UnknownLocation(Location):
 
     """
     def __init__(self):
-        super().__init__(name='Unknown Location', type=UNKNOWN_LOCATION)
-        # self._name = 'Unknown Location'
+        super().__init__(name='Unknown Location', entitytype=UNKNOWN_LOCATION)  # NOTE: parent=None)
 
     def visit(self):
         assert False, "Should never be able to visit() the (conceptual, abstract) UnknownLocation"
@@ -322,8 +330,8 @@ class Thing(Entity):
 
     """
 
-    def __init__(self, name=None, description='', type=None, location=None):
-        super().__init__(name=name, description=description, type=type)
+    def __init__(self, name=None, description='', entitytype=None, location=None):
+        super().__init__(name=name, description=description, entitytype=entitytype)
         # self._names       = [name]  # List of names for the entity
         # self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
@@ -334,7 +342,7 @@ class Thing(Entity):
         # self._entities    = []
         self._container   = None   # if not None, a location holding objects contained by this entity
         self._supports    = None   # if not None, a location with objects supported by/on this entity
-        self._type        = type
+        self._type        = entitytype
 
     @property
     def action_records(self):
@@ -361,7 +369,7 @@ class Thing(Entity):
     def is_container(self, boolval: bool):
         if boolval:
             if not self.is_container:
-                self._container = Location(name=f"in_{self.name}", parent=self)
+                self._container = Location(name=f"in_{self.name}", parent=self, entitytype=CONTAINED_LOCATION)
         elif not boolval and self.is_container:
             assert False, "Cannot convert a container into a non-container"
         return
@@ -374,7 +382,7 @@ class Thing(Entity):
     def is_support(self, boolval: bool):
         if boolval:
             if not self.is_support:
-                self._supports = Location(name=f"on_{self.name}", parent=self)
+                self._supports = Location(name=f"on_{self.name}", parent=self, entitytype=SUPPORTED_LOCATION)
         elif not boolval and self.is_support:
             assert False, "Cannot convert a supporting object to non-supporting"
         return
@@ -443,6 +451,12 @@ class Thing(Entity):
                     self._init_loc = new_location
 
     @property
+    def parent(self):
+        # if hasattr(self, "_parent"):   # in we have composite objects
+        #     return self._parent
+        return self.location
+
+    @property
     def state(self):
         return self._state
 
@@ -463,7 +477,7 @@ class Thing(Entity):
         self.state.reset()
 
     def open(self) -> bool:
-        if self.type == DOOR or self._is_container:
+        if self._type == DOOR or self._is_container:
             self.state.open()
         if self.is_container:
             self._container.visit()
@@ -473,7 +487,7 @@ class Thing(Entity):
         return self.state.is_open
 
     def close(self) -> bool:
-        if self.type == DOOR or self._is_container:
+        if self._type == DOOR or self._is_container:
             self.state.close()
         if not self.is_container:
             print(f"WARNING: attempting to close non-container: {self}")
@@ -506,7 +520,7 @@ class Thing(Entity):
 
 class Door(Thing):
     def __init__(self, name=None, description=None, location=None):
-        super().__init__(name=name, description=description, type=DOOR, location=location)
+        super().__init__(name=name, description=description, entitytype=DOOR, location=location)
         self._2nd_loc = None   # location (room) to which the door leads
         self._init_loc2 = None
 
@@ -531,7 +545,7 @@ class Door(Thing):
 
 class Person(Thing):
     def __init__(self, name='Somebody', description='An entity with volition', location=None):
-        super().__init__(name=name, description=description, type=PERSON, location=location)
+        super().__init__(name=name, description=description, entitytype=PERSON, location=location)
         self._container = Inventory(owner=self)
 
     @property
