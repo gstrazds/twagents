@@ -30,7 +30,7 @@ class TextGameAgent:
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
-        self.gt_nav = GTNavigator(False)
+        self.gt_nav = GTNavigator(False, use_groundtruth=True)
         self.modules = [
                         TaskExecutor(True),
                         # GTEnder(True),

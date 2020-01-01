@@ -114,7 +114,7 @@ class ExamineAction(Action):
 
     def apply(self, gi: GameInstance):
         entity = Thing(name=self.entity_name, location=gi.kg.player_location, ) #description=response)
-        gi.kg.entity_at_location(entity, gi.kg.player_location)
+        gi.kg.add_entity_at_location(entity, gi.kg.player_location)
 
 
 class TakeAction(SingleAction):
@@ -123,12 +123,12 @@ class TakeAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         player_loc = gi.kg.player_location
-        if player_loc.has_entity(self.entity):
-            player_loc.del_entity(self.entity)
-        else:
-            gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
+        # if player_loc.has_entity(self.entity):
+        #     player_loc.del_entity(self.entity)
+        # else:
+        #     gv.logger.warning("WARNING Took non-present entity {}".format(self.entity.name))
         # gi.kg.inventory.add_entity(self.entity)
-        gi.kg.entity_at_location(self.entity, gi.kg.inventory)
+        gi.kg.maybe_move_entity(self.entity, locations=[gi.kg.inventory])
         self.entity.add_attribute(Portable)
         # gi.add_entity_attribute(self.entity, Portable)
 
@@ -152,7 +152,7 @@ class DropAction(SingleAction):
     def apply(self, gi: GameInstance):
         assert self.entity in gi.kg.inventory
         gi.kg.inventory.remove(self.entity)
-        gi.kg.entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
+        gi.kg.add_entity_at_location(self.entity, gi.kg.player_location)  # gi.kg.player_location.add_entity(self.entity)
         self.entity.add_attribute(Portable)
         # gi.add_entity_attribute(self.entity, Portable)
 

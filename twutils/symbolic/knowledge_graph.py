@@ -204,7 +204,8 @@ class KnowledgeGraph:
     def _update_entity_index(self, entity):
         for name in entity.names:
             if name in self._entities_by_name:
-                assert self._entities_by_name[name] is entity
+                assert self._entities_by_name[name] is entity, \
+                    f"name '{name}' should always refer to the same entity"
             self._entities_by_name[name] = entity
 
     @property
@@ -338,16 +339,11 @@ class KnowledgeGraph:
             ancestor = ancestor.parent
         return ancestor
 
-    def entity_at_location(self, entity, location):
+    def add_entity_at_location(self, entity, location):
         if location.add_entity(entity):
             if self.event_stream and not self.groundtruth:
                 ev = NewEntityEvent(entity)
                 self.event_stream.push(ev)
-
-    # def entity_at_entity(self, entity1, entity2):
-    #     if entity1.add_entity(entity2):
-    #         ev = event.NewEntityEvent(entity2)
-    #         self.event_stream.push(ev)
 
     def act_on_entity(self, action, entity, rec: ActionRec):
         if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.groundtruth:
@@ -388,10 +384,11 @@ class KnowledgeGraph:
     def move_entity(self, entity, origin, dest):
     # TODO: refactor this. Currently used in exactly one place = maybe_move_entity
         """ Moves entity from origin to destination. """
+        assert origin is not dest
         assert origin.has_entity(entity), \
             "Can't move entity {} that isn't present at origin {}" \
             .format(entity, origin)
-        origin.del_entity(entity)
+        # origin.del_entity(entity)   # this is now done automatically within dest.add_entity()
         if not dest.add_entity(entity):
             msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
             print("!!!WARNING: "+msg)
@@ -445,18 +442,13 @@ class KnowledgeGraph:
                     assert False
 
     def get_entity(self, name, entitytype=None):
-        entities = set()
-        if not entities:  # none found
-            entities = self.entities_with_name(name, entitytype=entitytype)
+        entities = self.entities_with_name(name, entitytype=entitytype)
         if entities:
-            if len(entities) == 1:
-                return entities.pop()
-            else:
-                found = None
-                for e in entities:
-                    if entitytype is None or e._type == entitytype:
-                        found = e
-                return found
+            if len(entities) > 1:
+                print(f"WARNING: get_entity({name}, entitytype={entitytype}) found multiple potential matches: {entities}")
+            for e in entities:
+                if entitytype is None or e._type == entitytype:
+                    return e   # if more than one: choose the first matching entity
         return None
 
     def create_new_object(self, name, entitytype, description=''):
@@ -480,27 +472,8 @@ class KnowledgeGraph:
             print("_add_obj_to_obj: SKIPPING FACT", fact)
             return None, None
         assert h.type != 'I'   # Inventory
-        entity_set = self.entities_with_name(h.name, entitytype=entity_type_for_twvar(h.type))
-        if entity_set:
-            holder = entity_set.pop()  # choose one of them
-            if len(entity_set):
-                print("WARNING: found more than one matching entity for name <{}: {} + {}".format(
-                    h.name, holder, entity_set))
-        #     loc = self.location_of_entity(holder.name)
-        # else:
-        #     print("WARNING: found no entities_with_name:", h.name)
-        #     holder = None
-        #     loc = None
-        #     assert False
-        # if not loc:
-        #     print("WARNING! NO LOCATION FOR HOLDER while adding Object {} {}".format(fact, holder))
-        #     print("unknown =", self._unknown_location)
-        #     print("self._locations:", self._locations)
-        #     loc_list = None
-        # else:
-        #     loc_list = [loc]  # a list containing exactly one element
 
-        #NOTE TODO: handle objects that have moved from to or from Inventory
+        #NOTE TODO: ?handle objects that have moved from to or from Inventory
         entitytype = entity_type_for_twvar(o.type)
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
@@ -511,11 +484,15 @@ class KnowledgeGraph:
                 ev = NewEntityEvent(obj)
                 self.event_stream.push(ev)
 
-        # self.maybe_move_entity(obj, locations=loc_list)
-
-        #add entity to entity (inventory is of type 'location', adding is done by create_if_notfound)
+        holder = self.get_entity(h.name, entitytype=entity_type_for_twvar(h.type))
         if holder:
-            holder.add_entity(obj, rel=rel)
+            if rel == 'in':
+                self._update_entity_index(
+                    holder.convert_to_container())
+            elif rel == 'on':
+                self._update_entity_index(
+                    holder.convert_to_support())
+            holder.add_entity(obj, self, rel=rel)
         return obj, holder
 
     def add_obj_to_inventory(self, fact):

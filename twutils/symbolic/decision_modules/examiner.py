@@ -129,7 +129,7 @@ class Examiner(DecisionModule):
                 if entity is None:
                     entity = Thing(name=entity_name, location=curr_loc, description=response)
                     # TODO: incorrect for entities discovered inside other entities
-                    gi.kg.entity_at_location(entity, curr_loc)
+                    gi.kg.add_entity_at_location(entity, curr_loc)
                 else:
                     gv.dbg("[EXM](val) Discovered alternate name "\
                         "\'{}\' for \'{}\'".format(entity_name, entity.name))
@@ -140,7 +140,7 @@ class Examiner(DecisionModule):
                 if entity is None and inv_entity is None:
                     entity = Thing(name=entity_name, location=curr_loc, description=response)
                     # TODO: incorrect for entities discovered inside other entities
-                    gi.kg.entity_at_location(entity, curr_loc)
+                    gi.kg.add_entity_at_location(entity, curr_loc)
                     # curr_loc.add_entity(entity)
                 else:
                     if entity:

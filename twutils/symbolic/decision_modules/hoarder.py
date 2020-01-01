@@ -35,7 +35,7 @@ class Hoarder(DecisionModule):
                     # Create the entity at the current location
                     entity = Thing(name=entity_name, location=here)
                     entity.add_name(short_name)
-                    gi.kg.entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
+                    gi.kg.add_entity_at_location(entity, here)  # FORMERLY: here.add_entity(entity)
 
                 take_action = Take(entity)
                 p_valid = take_action.validate(resp)

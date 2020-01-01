@@ -131,7 +131,7 @@ class Location(Entity):
 
     @staticmethod
     def is_unknown(location):  #NOTE: Location.is_unknown(None) => True
-        return not isinstance(location, Location) or not location.is_known
+        return not isinstance(location, Location) or isinstance(location, UnknownLocation)
 
     # @property    # use inherited version from Entity
     # def is_known(self):
@@ -150,7 +150,6 @@ class Location(Entity):
 
     def add_entity(self, entity) -> bool:
         if not self.has_entity_with_name(entity.name):
-            # gv.event_stream.push(NewEntityEvent(entity))
             self._entities.append(entity)
             if isinstance(entity, Door):
                 if Location.is_unknown(entity.location):
@@ -228,15 +227,16 @@ class Location(Entity):
         """ Reset to a state resembling start of game. """
         # Move all the entities back to their original locations
         to_remove = []
-        for entity in self.entities:
+        for entity in list(self.entities):
             entity.reset(kg)
-            init_loc = entity._init_loc
-            if init_loc is None or init_loc == self:
-                continue
-            init_loc.add_entity(entity)
-            to_remove.append(entity)
-        for entity in to_remove:
-            self.entities.remove(entity)
+        #     init_loc = entity._init_loc
+        #     if init_loc is None or init_loc == self:
+        #         continue
+        #     to_remove.append(entity)
+        #     entity.location.del_entity(entity)
+        #     init_loc.add_entity(entity)
+        # for entity in to_remove:
+        #     self.entities.remove(entity)
 
     @property
     def parent(self):
@@ -341,7 +341,7 @@ class Thing(Entity):
         self._current_loc = location   # location where this entity can currently be found
         # self._entities    = []
         self._container   = None   # if not None, a location holding objects contained by this entity
-        self._supports    = None   # if not None, a location with objects supported by/on this entity
+        self._supporting_surface = None   # if not None, a location with objects supported by/on this entity
         self._type        = entitytype
 
     @property
@@ -365,34 +365,26 @@ class Thing(Entity):
     def is_container(self) -> bool:
         return self._container is not None
 
-    @is_container.setter
-    def is_container(self, boolval: bool):
-        if boolval:
-            if not self.is_container:
-                self._container = Location(name=f"in_{self.name}", parent=self, entitytype=CONTAINED_LOCATION)
-        elif not boolval and self.is_container:
-            assert False, "Cannot convert a container into a non-container"
-        return
+    def convert_to_container(self):
+        if not self.is_container:
+            self._container = Location(name=f"in_{self.name}", parent=self, entitytype=CONTAINED_LOCATION)
+        return self._container
 
     @property
     def is_support(self) -> bool:
-        return self._supports is not None
+        return self._supporting_surface is not None
 
-    @is_support.setter
-    def is_support(self, boolval: bool):
-        if boolval:
-            if not self.is_support:
-                self._supports = Location(name=f"on_{self.name}", parent=self, entitytype=SUPPORTED_LOCATION)
-        elif not boolval and self.is_support:
-            assert False, "Cannot convert a supporting object to non-supporting"
-        return
+    def convert_to_support(self):
+        if not self.is_support:
+            self._supporting_surface = Location(name=f"on_{self.name}", parent=self, entitytype=SUPPORTED_LOCATION)
+        return self._supporting_surface
 
-    def add_entity(self, entity, rel=None) -> bool:
+    def add_entity(self, entity, kg, rel=None) -> bool:
         if rel == 'on':
-            self.is_support = True
-            return self._supports.add_entity(entity)
+            assert self.is_support is True
+            return self._supporting_surface.add_entity(entity)
         elif rel == 'in':
-            self.is_container = True
+            assert self.is_container is True
             return self._container.add_entity(entity)
         # elif rel == 'at':
         else:
@@ -405,7 +397,7 @@ class Thing(Entity):
         return self._container and self._container.has_entity(entity)
 
     def supports_entity(self, entity) -> bool:
-        return self._supports and self._supports.has_entity(entity)
+        return self._supporting_surface and self._supporting_surface.has_entity(entity)
 
     def has_entity(self, entity):
         return self.holds_entity(entity) or self.supports_entity(entity)
@@ -414,7 +406,7 @@ class Thing(Entity):
         if self.holds_entity(entity):
             return self._container.del_entity(entity)
         elif self.supports_entity(entity):
-            return self._supports.del_entity(entity)
+            return self._supporting_surface.del_entity(entity)
         else:
             print(f"ENTITY_NOT_FOUND: {self.name}.del_entity({entity.name})")
         return False
@@ -440,13 +432,11 @@ class Thing(Entity):
     @location.setter
     def location(self, new_location: Location):
         if new_location != self._current_loc:
+            if self._current_loc:
+                self._current_loc.del_entity(self)  # can be in only one location at a time
             self._current_loc = new_location
             if not Location.is_unknown(new_location):
-                #new_location and new_location.is_known:
-                # not isinstance(new_location, UnknownLocation):
                 if Location.is_unknown(self._init_loc):
-                    #not self._init_loc or not self._init_loc.is_known:
-                    #isinstance(self._init_loc, UnknownLocation):
                     print(f"SETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
 
@@ -471,8 +461,8 @@ class Thing(Entity):
             del self.action_records[action_record]
         if self._container:
             self._container.reset(kg)
-        if self._supports:
-            self._supports.reset(kg)
+        if self._supporting_surface:
+            self._supporting_surface.reset(kg)
         self.location = self._init_loc
         self.state.reset()
 
@@ -503,8 +493,8 @@ class Thing(Entity):
                         prefix, action, self.name, util.clean(resp)[:80], p_valid)
         if self._container:
             s += ('\n' + prefix + self._container.to_string(prefix + "  "))
-        if self._supports:
-            s += ('\n' + prefix + self._supports.to_string(prefix + "  "))
+        if self._supporting_surface:
+            s += ('\n' + prefix + self._supporting_surface.to_string(prefix + "  "))
         if self._attributes:
             s += "\n  " + prefix + "Attributes: "
             for attribute in self._attributes:
@@ -525,20 +515,37 @@ class Door(Thing):
         self._init_loc2 = None
 
     @property
+    def location(self):
+        return super().location
+
+    @property
     def location2(self):
         return self._2nd_loc
+
+    @location.setter
+    def location(self, new_location: Location):
+        if new_location != self._current_loc:
+            if self._current_loc:
+                self._current_loc.del_entity(self)  # can be in only one location at a time
+            prev_location = self._current_loc
+            if prev_location and prev_location is not self.location2:  # special check for door in 2x UnknownLocation
+                prev_location.del_entity(self)
+            self._current_loc = new_location
+            if not Location.is_unknown(new_location):
+                if Location.is_unknown(self._init_loc):
+                    print(f"SETTING initial_location for {self} to: {new_location}")
+                    self._init_loc = new_location
 
     @location2.setter
     def location2(self, new_location: Location):
         if new_location != self._2nd_loc:
+            prev_location = self._2nd_loc
+            if prev_location and prev_location is not self.location:  # special check for door in 2x UnknownLocation
+                prev_location.del_entity(self)
             self._2nd_loc = new_location
             if not Location.is_unknown(new_location):
                 assert self.location != new_location, "Both sides of a door shouldn't be the same location"
-                # new_location.is_known:
-                # not isinstance(new_location, UnknownLocation):
                 if Location.is_unknown(self._init_loc2):
-                    #not self._init_loc2 or not self._init_loc2.is_known:
-                    #isinstance(self._init_loc2, UnknownLocation):
                     print(f"SETTING initial_location2 for {self} to: {new_location}")
                     self._init_loc2 = new_location
 
