@@ -612,6 +612,12 @@ class KnowledgeGraph:
             if not door:
                 door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
             self.maybe_move_entity(door, locations=door_locations)
+            if fact.name in DIRECTION_ACTIONS:
+                direction = fact.name
+                #TODO: door.add_direction_rel(IncomingRelation(from_location=loc0, direction=direction))
+                if not self.groundtruth:
+                    door_connection = Connection(loc0, DIRECTION_ACTIONS[fact.name], self._unknown_location, doorway=door)
+                    self.add_connection(door_connection)  # does nothing if connection already present
             if r1:  #len(door_locations) == 2:
                 assert self.groundtruth
                 # NOTE: here we rely on the fact that we added a connection while processing GT DIRECTION_ACTIONS above
@@ -733,24 +739,27 @@ class ConnectionGraph:
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
         # kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
-        if from_location in self._out_graph:
-            if direction in self._out_graph[from_location]:
-                if not Location.is_unknown(self._out_graph[from_location][direction].to_location):
-                    assert connection == self._out_graph[from_location][direction], \
-                        "Connection destinations aren't expected to change over time"
-                    # print("IGNORING add(connection:", connection)
-            self._out_graph[from_location][direction] = connection
-        else:
+        if from_location not in self._out_graph:
             self._out_graph[from_location] = {direction: connection}
+        else:
+            if direction in self._out_graph[from_location]:
+                if self._out_graph[from_location][direction] != connection:
+                    print(f"WARNING: updating {self._out_graph[from_location][direction]} <= {connection}")
+                self._out_graph[from_location][direction].update(connection)
+            else:
+                self._out_graph[from_location][direction] = connection
         if not Location.is_unknown(to_location):    # we don't index connections incoming to UnknownLocation
             incoming_rel = IncomingRelation(direction, from_location)
-            if to_location in self._in_graph:
+            if to_location not in self._in_graph:
+                self._in_graph[to_location] = {incoming_rel: connection}
+            else:
                 if incoming_rel in self._in_graph[to_location]:
                     if self._in_graph[to_location][incoming_rel] != connection:
-                        print(f"WARNING: replacing {self._in_graph[to_location][incoming_rel]} <= {connection}")
-                self._in_graph[to_location][incoming_rel] = connection
-            else:
-                self._in_graph[to_location] = {incoming_rel: connection}
+                        print(f"WARNING: updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
+                    self._in_graph[to_location][incoming_rel].update(connection)
+                else:
+                    self._in_graph[to_location][incoming_rel] = connection
+
         if not kg.groundtruth:
             print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
 
@@ -825,8 +834,30 @@ class Connection:
         if isinstance(self, other.__class__):
             return self.action == other.action and\
                 self.from_location == other.from_location and\
-                self.to_location == other.to_location
+                self.to_location == other.to_location and\
+                self.action == other.action and \
+                self.doorway == other.doorway
         return False
+
+    def update(self, other):
+        if not Location.is_unknown(other.from_location):
+            if self.from_location != other.from_location:
+                assert Location.is_unknown(self.from_location), \
+                    f"Connection endpoints aren't expected to change over time {self} <= {other}"
+                self.from_location = other.from_location
+        if not Location.is_unknown(other.to_location):
+            if self.to_location != other.to_location:
+                assert Location.is_unknown(self.to_location), \
+                    f"Connection destinations aren't expected to change over time {self} <= {other}"
+                self.to_location = other.to_location
+        if other.action:
+            if self.action != other.action:
+                print(f"WARNING: replacing connection action {self} with {other.action}")
+            self.action = other.action
+        if other.doorway:
+            if self.doorway:
+                assert self.doorway == other.doorway
+            self.doorway = other.doorway
 
     def to_string(self, prefix=''):
         return prefix + "{} --({}{})--> {}".format(self.from_location.name,
