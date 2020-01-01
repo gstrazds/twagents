@@ -1,5 +1,6 @@
 # import os, sys
-from itertools import chain
+# from itertools import chain
+from collections import namedtuple
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import Entity, Thing, Location, Person, UnknownLocation, Door
@@ -12,6 +13,13 @@ DIRECTION_ACTIONS = {
         'west_of': GoWest}
 
 LOCATION_RELATIONS = ['at', 'in', 'on']
+
+
+def map_action_to_direction(action):
+    for key, val in DIRECTION_ACTIONS.items():
+        if val == action:
+            return key
+    return None
 
 
 def get_attributes_for_type(twvartype:str):
@@ -605,10 +613,12 @@ class KnowledgeGraph:
                 door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
             self.maybe_move_entity(door, locations=door_locations)
             if r1:  #len(door_locations) == 2:
+                assert self.groundtruth
+                # NOTE: here we rely on the fact that we added a connection while processing GT DIRECTION_ACTIONS above
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
                 connection = linkpath[0]
-                connection.doorway = door  # add DOOR to the Connection
+                connection.doorway = door  # add this DOOR to the Connection
             if self.groundtruth:
                 door.state.open()   # assume that it's open, until we find a closed() fact...
         for fact in other_facts:
@@ -705,46 +715,56 @@ class KnowledgeGraph:
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
 
 
+IncomingRelation = namedtuple('IncomingRelation', 'from_location, direction')
+
 class ConnectionGraph:
     """
     Graph of connections between locations.
 
     """
     def __init__(self):
-        self._out_graph = {} # Location : [Outgoing Connections]
-        self._in_graph  = {} # Location : [Incoming Connections]
+        self._out_graph = {}  # {from_Location : {direction: Connection(outgoing)} }
+        self._in_graph  = {}  # {to_Location : { tuple(from_Location, direction): Connection(incoming)} }
 
     def add(self, connection, kg: KnowledgeGraph):
-        """ Adds a new connection to the graph if it doesn't already exist. """
+        """ Adds a new connection to the graph if it doesn't already exist,
+            or updates an existing connection (if to_location was previously UnknownLocation)"""
         from_location = connection.from_location
         to_location = connection.to_location
-        kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
+        direction = map_action_to_direction(connection.action)
+        # kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
         if from_location in self._out_graph:
-            if connection in self._out_graph[from_location]:
-                # print("IGNORING add(connection:", connection)
-                return
-            self._out_graph[from_location].append(connection)
+            if direction in self._out_graph[from_location]:
+                if not Location.is_unknown(self._out_graph[from_location][direction].to_location):
+                    assert connection == self._out_graph[from_location][direction], \
+                        "Connection destinations aren't expected to change over time"
+                    # print("IGNORING add(connection:", connection)
+            self._out_graph[from_location][direction] = connection
         else:
-            self._out_graph[from_location] = [connection]
-        if to_location is not None:
+            self._out_graph[from_location] = {direction: connection}
+        if not Location.is_unknown(to_location):    # we don't index connections incoming to UnknownLocation
+            incoming_rel = IncomingRelation(direction, from_location)
             if to_location in self._in_graph:
-                self._in_graph[to_location].append(connection)
+                if incoming_rel in self._in_graph[to_location]:
+                    if self._in_graph[to_location][incoming_rel] != connection:
+                        print(f"WARNING: replacing {self._in_graph[to_location][incoming_rel]} <= {connection}")
+                self._in_graph[to_location][incoming_rel] = connection
             else:
-                self._in_graph[to_location] = [connection]
+                self._in_graph[to_location] = {incoming_rel: connection}
         if not kg.groundtruth:
-            print("ADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
+            print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """
         if location in self._in_graph:
-            return self._in_graph[location]
+            return list(self._in_graph[location].values())
         else:
             return []
 
     def outgoing(self, location):
         """ Returns a list of outgoing connections from the given location. """
         if location in self._out_graph:
-            return self._out_graph[location]
+            return list(self._out_graph[location].values())
         else:
             return []
 
@@ -766,7 +786,7 @@ class ConnectionGraph:
         if start_location not in self._out_graph:
             return None
         shortest = None
-        for connection in self._out_graph[start_location]:
+        for connection in self.outgoing(start_location):
             if connection not in path:
                 newpath = self.shortest_path(connection.to_location,
                                              end_location,
@@ -821,4 +841,4 @@ class Connection:
         return str(self)
 
     def __hash__(self):
-        return hash(self.text())
+        return hash(self.to_string())

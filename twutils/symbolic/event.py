@@ -64,12 +64,12 @@ class NewActionRecordEvent(Event):
         self.action_record = action_record
         self.result_text = result_text
 
-class NewConnectionEvent(Event):
-    """ Generated whenever a new connection is discovered. """
-    def __init__(self, connection, groundtruth=False):
-        message = "{} ==({})==> {}".format(connection.from_location, connection.action, connection.to_location)
-        super().__init__(message, groundtruth=groundtruth)
-        self.connection = connection
+# class NewConnectionEvent(Event):
+#     """ Generated whenever a new connection is discovered. """
+#     def __init__(self, connection, groundtruth=False):
+#         message = "{} ==({})==> {}".format(connection.from_location, connection.action, connection.to_location)
+#         super().__init__(message, groundtruth=groundtruth)
+#         self.connection = connection
 
 class LocationChangedEvent(Event):
     """ Generated whenever the player's location changes. """
