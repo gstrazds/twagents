@@ -143,7 +143,7 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
         if world.state.is_fact(Proposition('free', (world.player_room.exits[e], where_fact.arguments[1]))):
             observable_facts.append(Proposition("{}_of".format(e), (
                                                                     Variable("exit_{}".format(e), 'e'),
-                                                                    the_player
+                                                                    world.player_room   # the_player
                                                                     )))
     # REFACTORING: the following is now handled within add_extra_door_facts()
     #     else:  # probably a closed door

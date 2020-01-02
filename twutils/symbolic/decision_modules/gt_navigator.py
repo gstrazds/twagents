@@ -51,6 +51,9 @@ class GTNavigator(DecisionModule):
             self._active = True
             self._path_idx = 0
         else:
+            print("   +++++++++++++++++   Connection Graph   ++++++++++++++++")
+            print(self._knowledge_graph(gi).connections.to_string())
+            print("   +++++++++++++++++   +++++++++++++++   +++++++++++++++++")
             if self.goal_location == current_loc:
                 gv.dbg("[{}NAV] NOOP: already at goal {}={}".format(
                     self.maybe_GT, self.goal_location, current_loc))
@@ -68,14 +71,24 @@ class GTNavigator(DecisionModule):
             locs = gi.kg.locations_with_name(goal_name)
         if locs:
             self.set_goal(locs[0], gi)
-        else:
-            self._goal_name = goal_name
-            self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
+            if self._active:
+                return   # set_goal successful
+        # loc not known or path to loc not found
+        self._goal_name = goal_name
+        current_loc = self._knowledge_graph(gi).player_location
+        print(f"{self.maybe_GT} Navigator.set_goal_by_name({self._goal_name} (player_location={current_loc})")
+        self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
+        # if current_loc != self._knowledge_graph(gi)._unknown_location:
+        #     self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         if isinstance(event, NeedToGoTo):
+            self._goal_name = None
             self.set_goal_by_name(event.target_location, gi)
+        elif isinstance(event, GroundTruthComplete):
+            if self._goal_name and not self._active:
+                self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
 
     def _knowledge_graph(self, gi):
         if self.use_groundtruth:
@@ -97,11 +110,15 @@ class GTNavigator(DecisionModule):
             Take next step along the shortest path to goal location
         """
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
-            if self._knowledge_graph(gi).player_location == self.goal_location:
-                self._goal_name = None
+            current_loc = self._knowledge_graph(gi).player_location
+            if current_loc == self.goal_location or current_loc.name == self._goal_name:
                 gv.dbg("[{}NAV] Goal reached: {}".format(
                     self.maybe_GT, self.goal_location))
-                self._active = False
+                if current_loc.name == self._goal_name or not self._goal_name:
+                    self._goal_name = None
+                    self._active = False
+                elif self._goal_name:
+                    self.set_goal_by_name(self._goal_name)
             else:
                 gv.dbg("[{}NAV] FAILED! {} {} {}".format(
                     self.maybe_GT, self.goal_location, self._path_idx, self.path))

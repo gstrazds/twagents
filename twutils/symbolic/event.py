@@ -77,13 +77,13 @@ class LocationChangedEvent(Event):
         super().__init__(new_location.name, groundtruth=groundtruth)
         self.new_location = new_location
 
-class EntityMovedEvent(Event):
-    """ Generated whenever an entity moves. """
-    def __init__(self, entity, origin, destination, groundtruth=False):
-        super().__init__("EntityMoved", groundtruth=groundtruth)
-        self.entity = entity
-        self.origin = origin
-        self.destination = destination
+# class EntityMovedEvent(Event):
+#     """ Generated whenever an entity moves. """
+#     def __init__(self, entity, origin, destination, groundtruth=False):
+#         super().__init__("EntityMoved", groundtruth=groundtruth)
+#         self.entity = entity
+#         self.origin = origin
+#         self.destination = destination
 
 # class NewAttributeEvent(Event):
 #     """ Generated whenever an object is given an attribute. """

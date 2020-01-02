@@ -156,8 +156,12 @@ class Location(Entity):
                     entity.location = self
                 elif Location.is_unknown(entity.location2):
                     entity.location2 = self
+                elif Location.is_unknown(self):
+                    print(f"SKIPPING MOVE OF DOOR '{entity}' to UnknownLocation")
+                    pass
                 else:
-                    assert False, f"Can't move door:{entity} with 2 known locations {entity.location, entity.location2}"
+                    assert entity.location == self or entity.location2 == self,\
+                        f"Can't move (to {self}) door:'{entity}' with 2 previous known locations {entity.location, entity.location2}"
             elif isinstance(entity, Thing):
                 entity.location = self
             return True

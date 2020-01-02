@@ -308,10 +308,14 @@ class KnowledgeGraph:
                 return ret - wrong_type
         return ret
 
-    def where_is_entity(self, entityname, entitytype=None, allow_unknown=True):
+    def where_is_entity(self, entityname, entitytype=None, allow_unknown=True, top_level=False):
         """ Returns a set of (shallow) locations where an entity with a specific name can be found """
         entityset = self.entities_with_name(entityname, entitytype=entitytype)
-        ret = {entity.location for entity in entityset}
+        if top_level:
+            ret = {self.primogenitor(entity.location) for entity in entityset}
+        else:
+            ret = {entity.location for entity in entityset}
+
         if not allow_unknown:
             ret.discard(self._unknown_location)
         return ret
@@ -384,70 +388,85 @@ class KnowledgeGraph:
             else:  # not self.groundtruth:
                 assert ev, "Adding a newly created Location should return a NewLocationEvent"
                 self.event_stream.push(ev)
-            print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
+            if not self.groundtruth:
+                print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
             return new_loc
         print("LOCATION NOT FOUND:", roomname)
         return None
 
-    def move_entity(self, entity, origin, dest):
-    # TODO: refactor this. Currently used in exactly one place = maybe_move_entity
-        """ Moves entity from origin to destination. """
-        assert origin is not dest
-        assert origin.has_entity(entity), \
-            "Can't move entity {} that isn't present at origin {}" \
-            .format(entity, origin)
-        # origin.del_entity(entity)   # this is now done automatically within dest.add_entity()
-        if not dest.add_entity(entity):
-            msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
-            print("!!!WARNING: "+msg)
-            assert False, msg
-        if not self.groundtruth:
-            self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=False))
+    # def move_entity(self, entity, origin, dest):
+    # # TODO: refactor this. Currently used in exactly one place = maybe_move_entity
+    #     """ Moves entity from origin to destination. """
+    #     assert origin is not dest
+    #     assert origin.has_entity(entity), \
+    #         "Can't move entity {} that isn't present at origin {}" \
+    #         .format(entity, origin)
+    #     # origin.del_entity(entity)   # this is now done automatically within dest.add_entity()
+    #     if not dest.add_entity(entity):
+    #         msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
+    #         print("!!!WARNING: "+msg)
+    #         assert False, msg
+    #     if not self.groundtruth:
+    #         self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=False))
 
     def maybe_move_entity(self, entity, locations=None):
         assert locations
         # might need to move it from wherever it was to its new location
+        if not isinstance(entity, Door):
+            assert len(locations) == 1, f"{locations}"
+        else:
+            assert len(locations) <= 2, f"{locations}"
 
-        prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
         loc_set = set(locations)
-        if prev_loc_set != loc_set:
-            print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
-            if len(prev_loc_set) != len(loc_set):
-                print("WARNING: CAN'T HANDLE len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
-            elif prev_loc_set:  # available information about location object seems to have changed
-                if len(prev_loc_set) == 2 and len(loc_set) == 2:
-                    if entity._type != DOOR:
-                        print("WARNING: expected type==DOOR:", entity)
-                    new_locs = loc_set - prev_loc_set   # set.difference()
-                    prev_locs = prev_loc_set - loc_set
-                    if len(new_locs) == 1 and len(prev_locs) == 1:
-                        prev_loc_set = set([self._unknown_location])
-                        loc_set = new_locs
-                        # drop through to if len(prev_loc_set) == 1 case, below...
+        for loc in loc_set:
+            if loc.add_entity(entity):
+                if not self.groundtruth and not Location.is_unknown(loc):
+                    if entity.location == entity._init_loc:
+                        print(f"DISCOVERED NEW entity: {entity} at {loc}")
+                        ev = NewEntityEvent(entity)
+                        self.event_stream.push(ev)
                     else:
-                        print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
-                              f"-> new:{new_locs}; {locations}")
-
-                if len(prev_loc_set) == 1:
-                    assert len(loc_set) == 1
-                    loc_prev = prev_loc_set.pop()
-                    loc_new = loc_set.pop()
-                    # TODO: here we are assuming exactly one found entity and one location
-                    if loc_new == self._unknown_location:
-                        print(f"ERROR: not moving {entity} to UnknownLocation")
-                    else:
-                        if loc_prev != self._unknown_location:
-                            print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
-                                  f" dest={loc_new}, origin={loc_prev})")
-                        else:   # loc_prev == self._unknown_location:
-                            if not self.groundtruth:
-                                print("DISCOVERED NEW entity:", entity)
-                                ev = NewEntityEvent(entity)
-                                self.event_stream.push(ev)
-                        self.move_entity(entity, loc_prev, loc_new)
-                else:
-                    print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
-                    assert False
+                        print(f"MOVED entity: {entity} to {loc}")
+        # prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
+        # loc_set = set(locations)
+        # if prev_loc_set != loc_set:
+        #     # print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
+        #     if len(prev_loc_set) != len(loc_set):
+        #         print("WARNING: len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
+        #     if prev_loc_set:  # available information about location object seems to have changed
+        #         if len(prev_loc_set) == 2 and len(loc_set) == 2:
+        #             if entity._type != DOOR:
+        #                 print("WARNING: expected type==DOOR:", entity)
+        #             new_locs = loc_set - prev_loc_set   # set.difference()
+        #             prev_locs = prev_loc_set - loc_set
+        #             if len(new_locs) == 1 and len(prev_locs) == 1:
+        #                 prev_loc_set = set([self._unknown_location])
+        #                 loc_set = new_locs
+        #                 # drop through to if len(prev_loc_set) == 1 case, below...
+        #             else:
+        #                 print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
+        #                       f"-> new:{new_locs}; {locations}")
+        #
+        #         if len(prev_loc_set) == 1:
+        #             assert len(loc_set) == 1, f"prev={prev_loc_set} loc_set={loc_set}"
+        #             loc_prev = prev_loc_set.pop()
+        #             loc_new = loc_set.pop()
+        #             # TODO: here we are assuming exactly one found entity and one location
+        #             if loc_new == self._unknown_location:
+        #                 print(f"ERROR: not moving {entity} to UnknownLocation")
+        #             else:
+        #                 if loc_prev != self._unknown_location:
+        #                     print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
+        #                           f" dest={loc_new}, origin={loc_prev})")
+        #                 else:   # loc_prev == self._unknown_location:
+        #                     if not self.groundtruth:
+        #                         print("DISCOVERED NEW entity:", entity)
+        #                         ev = NewEntityEvent(entity)
+        #                         self.event_stream.push(ev)
+        #                 self.move_entity(entity, loc_prev, loc_new)
+        #         else:
+        #             print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
+        #             assert False
 
     def get_entity(self, name, entitytype=None):
         entities = self.entities_with_name(name, entitytype=entitytype)
@@ -486,7 +505,8 @@ class KnowledgeGraph:
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
-            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            if not self.groundtruth:
+                print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
             if not self.groundtruth:
                 print("DISCOVERED NEW entity:", obj)
                 ev = NewEntityEvent(obj)
@@ -526,7 +546,7 @@ class KnowledgeGraph:
         return obj
 
     def update_facts(self, obs_facts, prev_action=None):
-        print(f"*********** ADDING FACTS (groundtruth={self.groundtruth})")
+        print(f"*********** {'GROUND TRUTH' if self.groundtruth else 'observed'} FACTS *********** ")
         player_loc = None
         door_facts = []
         at_facts = []
@@ -565,7 +585,7 @@ class KnowledgeGraph:
                     door = None  # will add info about doors later
                     new_connection = Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
                     self.add_connection(new_connection)  # does nothing if connection already present
-                elif a0.type == 'd' and a1.type == 'r':
+                elif (a0.type == 'd' or a0.type == 'e') and a1.type == 'r':
                     print("\t\tdoor fact -- ", fact)
                     door_facts.append(fact)
                     # pass
@@ -596,7 +616,7 @@ class KnowledgeGraph:
                 d = fact.arguments[0]
                 assert fact.name in DIRECTION_ACTIONS
                 assert r0.type == 'r'
-                assert d.type == 'd'
+                assert d.type == 'd' or d.type == 'e'
                 if self.groundtruth:
                     continue   # rely on 'link' facts to create doors
             if r0:
@@ -608,10 +628,13 @@ class KnowledgeGraph:
             else:
                 door_locations.append(self._unknown_location)  # we don't yet know what's on the other side of the door
 
-            door = self.get_entity(d.name, entitytype=DOOR)
-            if not door:
-                door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
-            self.maybe_move_entity(door, locations=door_locations)
+            if d.type == 'e':  # an exit without a door
+                door = None
+            else:
+                door = self.get_entity(d.name, entitytype=DOOR)
+                if not door:
+                    door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
+                self.maybe_move_entity(door, locations=door_locations)
             if fact.name in DIRECTION_ACTIONS:
                 direction = fact.name
                 #TODO: door.add_direction_rel(IncomingRelation(from_location=loc0, direction=direction))
@@ -625,7 +648,7 @@ class KnowledgeGraph:
                 assert len(linkpath) == 1
                 connection = linkpath[0]
                 connection.doorway = door  # add this DOOR to the Connection
-            if self.groundtruth:
+            if self.groundtruth and door:
                 door.state.open()   # assume that it's open, until we find a closed() fact...
         for fact in other_facts:
             if fact.name == 'closed' and fact.arguments[0].type == 'd':
@@ -719,7 +742,7 @@ class KnowledgeGraph:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
-
+        print(f"---------------- update FACTS end -------------------")
 
 IncomingRelation = namedtuple('IncomingRelation', 'from_location, direction')
 
@@ -738,30 +761,35 @@ class ConnectionGraph:
         from_location = connection.from_location
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
+        added_new = False
         # kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
         if from_location not in self._out_graph:
+            added_new = True
             self._out_graph[from_location] = {direction: connection}
         else:
             if direction in self._out_graph[from_location]:
                 if self._out_graph[from_location][direction] != connection:
                     print(f"WARNING: updating {self._out_graph[from_location][direction]} <= {connection}")
-                self._out_graph[from_location][direction].update(connection)
+                connection = self._out_graph[from_location][direction].update(connection)
             else:
+                added_new = True
                 self._out_graph[from_location][direction] = connection
         if not Location.is_unknown(to_location):    # we don't index connections incoming to UnknownLocation
             incoming_rel = IncomingRelation(direction, from_location)
             if to_location not in self._in_graph:
+                added_new = True
                 self._in_graph[to_location] = {incoming_rel: connection}
             else:
                 if incoming_rel in self._in_graph[to_location]:
                     if self._in_graph[to_location][incoming_rel] != connection:
                         print(f"WARNING: updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
-                    self._in_graph[to_location][incoming_rel].update(connection)
+                    connection = self._in_graph[to_location][incoming_rel].update(connection)
                 else:
+                    added_new = True
                     self._in_graph[to_location][incoming_rel] = connection
-
-        if not kg.groundtruth:
-            print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
+        if added_new:
+            if not kg.groundtruth:
+                print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """
@@ -805,6 +833,22 @@ class ConnectionGraph:
                         shortest = newpath
         return shortest
 
+    def to_string(self):
+        strout = "Connection Graph:\n\n"
+        strout += "    outgoing:\n"
+        for loc in self._out_graph:
+            for con in self.outgoing(loc):
+                strout += con.to_string()+'\n'
+        strout += "\n    incoming:\n"
+        for loc in self._in_graph:
+            for con in self.incoming(loc):
+                strout += con.to_string()+'\n'
+        return strout
+
+    def __str__(self):
+        return self.to_string()
+
+
 
 def _format_doorinfo(doorentity):
     if doorentity is None:
@@ -839,7 +883,7 @@ class Connection:
                 self.doorway == other.doorway
         return False
 
-    def update(self, other):
+    def update(self, other: 'Connection') -> 'Connection':
         if not Location.is_unknown(other.from_location):
             if self.from_location != other.from_location:
                 assert Location.is_unknown(self.from_location), \
@@ -858,6 +902,7 @@ class Connection:
             if self.doorway:
                 assert self.doorway == other.doorway
             self.doorway = other.doorway
+        return self
 
     def to_string(self, prefix=''):
         return prefix + "{} --({}{})--> {}".format(self.from_location.name,
