@@ -1,10 +1,10 @@
 # import os, sys
 # from itertools import chain
-from collections import namedtuple
 from symbolic.event import *
 from symbolic.action import *
-from symbolic.entity import Entity, Thing, Location, Person, UnknownLocation, Door
+from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
 from symbolic.entity import DOOR, ROOM, CONTAINED_LOCATION, SUPPORTED_LOCATION
+from twutils.twlogic import reverse_direction
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,
@@ -257,10 +257,11 @@ class KnowledgeGraph:
     def connections(self):
         return self._connections
 
-    def add_connection(self, new_connection):
+    def add_connection(self, new_connection, with_inverse=False):
         """ Adds a connection object.
          Does nothing if a similar connection already exists"""
-        self._connections.add(new_connection, self)
+        self._connections.add(new_connection, self, assume_inverse=with_inverse)
+        #TODO DEBUG: self._connections.add(new_connection, self, assume_inverse=False)
 
     def reset(self):
         """Returns the knowledge_graph to a state resembling the start of the
@@ -584,7 +585,7 @@ class KnowledgeGraph:
                     #     door = None
                     door = None  # will add info about doors later
                     new_connection = Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
-                    self.add_connection(new_connection)  # does nothing if connection already present
+                    self.add_connection(new_connection, with_inverse=True)  # does nothing if connection already present
                 elif (a0.type == 'd' or a0.type == 'e') and a1.type == 'r':
                     print("\t\tdoor fact -- ", fact)
                     door_facts.append(fact)
@@ -637,10 +638,11 @@ class KnowledgeGraph:
                 self.maybe_move_entity(door, locations=door_locations)
             if fact.name in DIRECTION_ACTIONS:
                 direction = fact.name
-                #TODO: door.add_direction_rel(IncomingRelation(from_location=loc0, direction=direction))
+                if door:
+                    door.add_direction_rel(ConnectionRelation(from_location=loc0, direction=direction))
                 if not self.groundtruth:
                     door_connection = Connection(loc0, DIRECTION_ACTIONS[fact.name], self._unknown_location, doorway=door)
-                    self.add_connection(door_connection)  # does nothing if connection already present
+                    self.add_connection(door_connection, with_inverse=True)  # does nothing if connection already present
             if r1:  #len(door_locations) == 2:
                 assert self.groundtruth
                 # NOTE: here we rely on the fact that we added a connection while processing GT DIRECTION_ACTIONS above
@@ -674,7 +676,7 @@ class KnowledgeGraph:
                                                         DIRECTION_ACTIONS[direction_rel],
                                                         player_loc,
                                                         doorway=door)
-                            self.add_connection(new_connection)
+                            self.add_connection(new_connection, with_inverse=True)
                 # if player_loc != self._unknown_location:
         for fact in at_facts:
             # print("DEBUG at_fact", fact)
@@ -744,7 +746,6 @@ class KnowledgeGraph:
                 print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
         print(f"---------------- update FACTS end -------------------")
 
-IncomingRelation = namedtuple('IncomingRelation', 'from_location, direction')
 
 class ConnectionGraph:
     """
@@ -755,10 +756,11 @@ class ConnectionGraph:
         self._out_graph = {}  # {from_Location : {direction: Connection(outgoing)} }
         self._in_graph  = {}  # {to_Location : { tuple(from_Location, direction): Connection(incoming)} }
 
-    def add(self, connection, kg: KnowledgeGraph):
+    def add(self, connection, kg: KnowledgeGraph, assume_inverse=False):
         """ Adds a new connection to the graph if it doesn't already exist,
             or updates an existing connection (if to_location was previously UnknownLocation)"""
         from_location = connection.from_location
+        assert not Location.is_unknown(from_location)
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
         added_new = False
@@ -774,8 +776,9 @@ class ConnectionGraph:
             else:
                 added_new = True
                 self._out_graph[from_location][direction] = connection
-        if not Location.is_unknown(to_location):    # we don't index connections incoming to UnknownLocation
-            incoming_rel = IncomingRelation(direction, from_location)
+
+        if not Location.is_unknown(to_location):   # don't index connections incoming to UnknownLocation
+            incoming_rel = ConnectionRelation(direction, from_location)
             if to_location not in self._in_graph:
                 added_new = True
                 self._in_graph[to_location] = {incoming_rel: connection}
@@ -783,13 +786,53 @@ class ConnectionGraph:
                 if incoming_rel in self._in_graph[to_location]:
                     if self._in_graph[to_location][incoming_rel] != connection:
                         print(f"WARNING: updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
-                    connection = self._in_graph[to_location][incoming_rel].update(connection)
+                    self._in_graph[to_location][incoming_rel].update(connection)
                 else:
                     added_new = True
                     self._in_graph[to_location][incoming_rel] = connection
+
+        # if there's a doorway associated with this connection,
+        # we might be able to use its 2nd endpoint to update or create a reverse connection
+        # (going back the other way through the same door)
+        if connection.doorway and \
+                connection.doorway.direction_from_loc1 and \
+                connection.doorway.direction_from_loc2 and \
+                not Location.is_unknown(connection.doorway.direction_from_loc2.from_location):
+            assert not Location.is_unknown(connection.doorway.direction_from_loc1.from_location)
+            rev_direction = None
+            if connection.doorway.direction_from_loc1.from_location == connection.from_location:
+                if connection.doorway.direction_from_loc1.direction:
+                    assert connection.doorway.direction_from_loc1.direction == direction
+                to_location = connection.from_location
+                from_location = connection.doorway.direction_from_loc2.from_location
+                rev_direction = connection.doorway.direction_from_loc2.direction
+            else:
+                assert connection.doorway.direction_from_loc2.from_location == connection.from_location
+                if connection.doorway.direction_from_loc2.direction:
+                    assert connection.doorway.direction_from_loc2.direction == direction
+                if Location.is_unknown(connection.to_location):  # maybe fill it in using doorway info
+                    to_location = connection.from_location
+                    from_location = connection.doorway.direction_from_loc1.from_location
+                    rev_direction = connection.doorway.direction_from_loc1.direction
+            if rev_direction:
+                reverse_connection = Connection(from_location,
+                                                DIRECTION_ACTIONS[rev_direction],
+                                                to_location=to_location,
+                                                doorway=connection.doorway)
+                self.add(reverse_connection, kg, assume_inverse=False)
+                assume_inverse = False   # since we've just built a reverse connection, skip default inverse logic
+
         if added_new:
             if not kg.groundtruth:
                 print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
+
+        if assume_inverse:  # assume that 180 inverse direction connects to_location => from_location
+            if not Location.is_unknown(connection.to_location):
+                reverse_connection = Connection(connection.to_location,
+                                                DIRECTION_ACTIONS[reverse_direction(direction)],
+                                                to_location=from_location,
+                                                doorway=connection.doorway)
+                self.add(reverse_connection, kg, assume_inverse=False)
 
     def incoming(self, location):
         """ Returns a list of incoming connections to the given location. """

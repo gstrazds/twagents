@@ -1,3 +1,4 @@
+from collections import namedtuple
 from symbolic import util
 # from symbolic.location import Location
 from .entity_state import EntityState
@@ -30,6 +31,16 @@ UNKNOWN_OBJ_TYPE = 'UNKNOWN'
 UNKNOWN_LOCATION = 'UNK_LOC'
 CONTAINED_LOCATION = 'C_LOC'
 SUPPORTED_LOCATION = 'S_LOC'
+
+
+ConnectionRelation = namedtuple('ConnectionRelation', 'from_location, direction')
+
+
+def _conrel2str(conrel: ConnectionRelation):
+    if not conrel:
+        return "*"
+    else:
+        return f"{conrel.direction if conrel.direction else 'dirUNK'}:{conrel.from_location.name}"
 
 
 class Entity:
@@ -517,6 +528,8 @@ class Door(Thing):
         super().__init__(name=name, description=description, entitytype=DOOR, location=location)
         self._2nd_loc = None   # location (room) to which the door leads
         self._init_loc2 = None
+        self.direction_from_loc1 = None
+        self.direction_from_loc2 = None
 
     @property
     def location(self):
@@ -529,22 +542,28 @@ class Door(Thing):
     @location.setter
     def location(self, new_location: Location):
         if new_location != self._current_loc:
-            if self._current_loc:
-                self._current_loc.del_entity(self)  # can be in only one location at a time
             prev_location = self._current_loc
             if prev_location and prev_location is not self.location2:  # special check for door in 2x UnknownLocation
-                prev_location.del_entity(self)
+                if not Location.is_unknown(prev_location):
+                    assert False, \
+                        f"Door ({self}) should not move from one location ({prev_location}) to another ({new_location})"
+                prev_location.del_entity(self)  # can only be in one location at a time
             self._current_loc = new_location
             if not Location.is_unknown(new_location):
                 if Location.is_unknown(self._init_loc):
                     print(f"SETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
+                if not self.direction_from_loc1:
+                    self.direction_from_loc1 = ConnectionRelation(from_location=new_location, direction=None)
 
     @location2.setter
     def location2(self, new_location: Location):
         if new_location != self._2nd_loc:
             prev_location = self._2nd_loc
             if prev_location and prev_location is not self.location:  # special check for door in 2x UnknownLocation
+                if not Location.is_unknown(prev_location):
+                    assert False, \
+                        f"Door ({self}) should not move from one location ({prev_location}) to another ({new_location})"
                 prev_location.del_entity(self)
             self._2nd_loc = new_location
             if not Location.is_unknown(new_location):
@@ -552,7 +571,20 @@ class Door(Thing):
                 if Location.is_unknown(self._init_loc2):
                     print(f"SETTING initial_location2 for {self} to: {new_location}")
                     self._init_loc2 = new_location
+                if not self.direction_from_loc2:
+                    self.direction_from_loc2 = ConnectionRelation(from_location=new_location, direction=None)
 
+    def add_direction_rel(self, rel: ConnectionRelation):
+        if rel.from_location == self.location:
+            self.direction_from_loc1 = rel
+        elif rel.from_location == self.location2:
+            self.direction_from_loc2 = rel
+
+    def __str__(self):
+        strout = self.name
+        if self.direction_from_loc1 or self.direction_from_loc2:
+            strout += f"[{_conrel2str(self.direction_from_loc1)} {_conrel2str(self.direction_from_loc2)}]"
+        return strout
 
 class Person(Thing):
     def __init__(self, name='Somebody', description='An entity with volition', location=None):
