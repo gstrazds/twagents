@@ -112,8 +112,8 @@ class GTNavigator(DecisionModule):
         """
             Take next step along the shortest path to goal location
         """
+        current_loc = self._knowledge_graph(gi).player_location
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
-            current_loc = self._knowledge_graph(gi).player_location
             if current_loc == self.goal_location or current_loc.name == self._goal_name:
                 gv.dbg("[{}NAV] Goal reached: {}".format(self.maybe_GT, self.goal_location))
                 if current_loc.name == self._goal_name or not self._goal_name:
@@ -139,10 +139,11 @@ class GTNavigator(DecisionModule):
                 # return close_door
             return None
         next_step = self.path[self._path_idx]
-        # TODO: check for closed door -> "open <the door>" and don't increment _path_idx
         if self._debug:
             assert next_step.from_location == self._knowledge_graph(gi).player_location
         direction = get_direction_from_navaction(next_step.action)
+
+        # check for closed door -> "open <the door>" and don't increment _path_idx
         door = self.get_door_if_closed(next_step)
     #TODO: fix get_door_if_closed() to check for closed(door)...
         if door is not None and not self._opened_door:
@@ -180,8 +181,18 @@ class GTNavigator(DecisionModule):
         """
         obs = yield
         while True:
+            current_loc = self._knowledge_graph(gi).player_location
+            ## if self.open_all_containers:
+            for entity in list(current_loc.entities):
+                print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
+                if entity.is_container:
+                    print(f"is_open:{entity.state.is_open}")
+                    if entity.state.openable and not entity.state.is_open:
+                        response = yield Open(entity)
+                        entity.open()
+
             act = self.get_next_action(gi)
             response = yield act
-            # TODO: could potentially check response to verify that actions are succeeding
+            # TODO: should check response to verify that actions are succeeding
             if not act:
                 break

@@ -482,7 +482,7 @@ class Thing(Entity):
         self.state.reset()
 
     def open(self) -> bool:
-        if self._type == DOOR or self._is_container:
+        if self._type == DOOR or self.is_container:
             self.state.open()
         if self.is_container:
             self._container.visit()
@@ -492,9 +492,9 @@ class Thing(Entity):
         return self.state.is_open
 
     def close(self) -> bool:
-        if self._type == DOOR or self._is_container:
+        if self._type == DOOR or self.is_container:
             self.state.close()
-        if not self.is_container:
+        else:  #if not self.is_container:
             print(f"WARNING: attempting to close non-container: {self}")
             return False
         return self.state.is_open is False

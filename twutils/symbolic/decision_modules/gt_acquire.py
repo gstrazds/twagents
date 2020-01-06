@@ -77,6 +77,17 @@ class GTAcquire(DecisionModule):
             self._temporary_drop = None
             yield None  # reevaluate which should be the active module
 
+        # TODO: FIX THIS HACK: open every container
+        current_loc = self._knowledge_graph(gi).player_location
+        ## if self.open_all_containers:
+        for entity in list(current_loc.entities):
+            print(f"GTAcquire -- {current_loc} {entity} is_container:{entity.is_container}")
+            if entity.is_container and entity.state.openable:
+                print(f"is_open:{entity.state.is_open}")
+            if entity.is_container and entity.state.openable and not entity.state.is_open:
+                response = yield Open(entity)
+                entity.open()
+
         still_needed = list(self.missing_objs(gi.gt))
         print("GT_Acquire required_objs:", self.required_objs)
         print("GT_Acquire still_needed:", still_needed)
