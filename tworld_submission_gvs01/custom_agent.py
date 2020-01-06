@@ -682,10 +682,10 @@ class CustomAgent:
                     prevaction = self.prev_actions[idx]
                     agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
                     # Output this step.
-                    print("<Step {}> [{}]{}  Action: [{}]   Score: {}\nobs::".format(
+                    print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
-                        prevaction, scores[idx],)) # obs[idx]))
+                        agent.gi.gt.player_location, prevaction, scores[idx],)) # obs[idx]))
                 self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)

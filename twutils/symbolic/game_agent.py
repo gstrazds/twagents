@@ -33,9 +33,9 @@ class TextGameAgent:
         self.gt_nav = GTNavigator(False, use_groundtruth=False)
         self.modules = [
                         TaskExecutor(True),
-                        # GTEnder(True),
-                        self.gt_nav,
+                        self.gt_nav,  # GTNavigator
                         GTRecipeReader(),
+                        # GTEnder(True),
                         GTAcquire(True),
                         #Explorer(True),
                         # Navigator(True),

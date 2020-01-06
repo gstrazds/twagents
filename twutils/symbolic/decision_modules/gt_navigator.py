@@ -41,6 +41,11 @@ class GTNavigator(DecisionModule):
     def maybe_GT(self):
         return "GT " if self.use_groundtruth else ""
 
+    def _knowledge_graph(self, gi):
+        if self.use_groundtruth:
+            return gi.gt
+        return gi.kg
+
     def set_goal(self, goal: Location, gi: GameInstance):
         self.goal_location = goal
         # compute shortest path from current location to goal
@@ -89,12 +94,6 @@ class GTNavigator(DecisionModule):
         elif isinstance(event, GroundTruthComplete):
             if self._goal_name and not self._active:
                 self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
-
-    def _knowledge_graph(self, gi):
-        if self.use_groundtruth:
-            return gi.gt
-        return gi.kg
-
 
     def get_eagerness(self, gi: GameInstance):
         if not self._active:

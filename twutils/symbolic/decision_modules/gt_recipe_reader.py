@@ -46,11 +46,21 @@ class GTRecipeReader(DecisionModule):
     """
     The Recipe Reader module activates when the player finds the cookbook.
     """
-    def __init__(self):
+    def __init__(self, use_groundtruth=True):
         super().__init__()
         self._eagerness = 0.0
         self.ingredients = []
         self.recipe_steps = []
+        self.use_groundtruth = use_groundtruth
+
+    @property
+    def maybe_GT(self):
+        return "GT " if self.use_groundtruth else ""
+
+    def _knowledge_graph(self, gi):
+        if self.use_groundtruth:
+            return gi.gt
+        return gi.kg
 
     def deactivate(self):
         self._eagerness = 0.0
@@ -59,8 +69,8 @@ class GTRecipeReader(DecisionModule):
         self._eagerness = 0.0
 
     def cookbook_is_here(self, gi: GameInstance):
-        cookbook_location = gi.gt.location_of_entity_with_name('cookbook')
-        return cookbook_location == gi.gt.player_location
+        cookbook_location = self._knowledge_graph(gi).location_of_entity_with_name('cookbook')
+        return cookbook_location == self._knowledge_graph(gi).player_location
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
@@ -84,7 +94,8 @@ class GTRecipeReader(DecisionModule):
             with_objs.append(obj_name)
             if verb in CUT_WITH and is_already_cut(obj_name, verb, gi) or \
                verb in COOK_WITH and is_already_cooked(obj_name, verb, gi):
-                return SingleActionTask(NoOp, description="REDUNDANT: "+instr, use_groundtruth=True), with_objs  # already cooked or cut
+                return SingleActionTask(NoOp, description="REDUNDANT: "+instr,
+                                        use_groundtruth=self.use_groundtruth), with_objs  # already cooked or cut
         print("GT RecipeReaderr: mapping <{}> -> {}".format(instr, enhanced_instr_words))
 
         if instr == 'prepare meal':  # explicit singleton for PrepareMeal
@@ -92,7 +103,7 @@ class GTRecipeReader(DecisionModule):
         else:
             act = StandaloneAction(" ".join(enhanced_instr_words))
 
-        return SingleActionTask(act, description=instr, use_groundtruth=True), with_objs
+        return SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth), with_objs
 
     def convert_instructions_to_tasks(self, gi: GameInstance):
         tasks = []
@@ -106,12 +117,12 @@ class GTRecipeReader(DecisionModule):
             if act == NoOp:
                 continue    # ignore this one, try to convert next step
             elif act == PrepareMeal:
-                prep = SingleActionTask(PrepareMeal, use_groundtruth=True)
-                eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=False)
+                prep = SingleActionTask(PrepareMeal, use_groundtruth=self.use_groundtruth)
+                eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=self.use_groundtruth)
                 eat.prereq.required_tasks.append(prep)
             else:
                 actions.append((act, instr))
-                task = SingleActionTask(act, description=instr, use_groundtruth=True)
+                task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
                 for objname in with_objs:
                     if is_portable(objname, gi):  #TODO: THIS ASSUMES use_groundtruth=True
                         task.prereq.add_required_item(objname)
@@ -129,7 +140,7 @@ class GTRecipeReader(DecisionModule):
         elif tasks:
             print("WARNING: didn't find Prepare Meal instruction")
             assert prep is not None, "RecipeReader didn't find Prepare Meal instruction"
-            return SequentialTasks(tasks, use_groundtruth=True)
+            return SequentialTasks(tasks, use_groundtruth=self.use_groundtruth)
         print("ERROR RecipeReader didn't create any Tasks")
         return None
 
@@ -141,7 +152,8 @@ class GTRecipeReader(DecisionModule):
 
         # cookbook = gi.gt.player_location.get_entity_by_name('cookbook')
         if not self.cookbook_is_here(gi):
-            print("[GT RecipeReader] ABORTING because cookbook is not here", gi.gt.player_location)
+            print(f"[GT RecipeReader] ABORTING because cookbook is not here",
+                  self._knowledge_graph(gi).player_location)
             self.deactivate()
             return None
 
@@ -193,10 +205,9 @@ class GTRecipeReader(DecisionModule):
                     directions.append(recipe_step)
             if directions:
                 self.recipe_steps = directions
-                # gi.event_stream.push(NeedSequentialSteps(directions, groundtruth=True))
                 main_task = self.convert_instructions_to_tasks(gi)
                 if main_task:
-                    gi.event_stream.push(NeedToDo(main_task, groundtruth=True))
+                    gi.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
 
         self.deactivate()
         return None
