@@ -722,10 +722,7 @@ class CustomAgent:
                     agent.set_ground_truth(world_facts)
                     if self.current_step == 0:
                         # agent.gt_navigate("kitchen")  # set nav destination (using Ground Truth knowledge)
-                        if agent.gt_nav.use_groundtruth:
-                            agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
-                        else:
-                            agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=True))
+                        agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=agent.gt_nav.use_groundtruth))
                         # if infos['game_id'][agent_id] == 'tw-cooking-recipe1+open+go6-qqqrhLbXf7bOTRoa.ulx':
                         #     agent.gi.event_stream.push(NeedToAcquire(objnames=['block of cheese'], groundtruth=True))
                             # agent.modules[0].add_required_obj('block of cheese')

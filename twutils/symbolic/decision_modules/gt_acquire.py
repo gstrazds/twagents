@@ -8,13 +8,24 @@ from .. import gv
 
 class GTAcquire(DecisionModule):
     """ The Ground Truth Acquire module locates and, for takeable objects, takes specific objects (into inventory) """
-    def __init__(self, active=False):
+    def __init__(self, active=False, use_groundtruth=True):
         super().__init__()
         self.required_objs = set()
         self.found_objs = set()
         self._active = active
         self._temporary_drop = None  # remember an object that we need to re-acquire
         self._no_longer_needed = set()
+        self.use_groundtruth = use_groundtruth
+
+    @property
+    def maybe_GT(self):
+        return "GT " if self.use_groundtruth else ""
+
+    def _knowledge_graph(self, gi):
+        if self.use_groundtruth:
+            return gi.gt
+        return gi.kg
+
 
     def add_required_obj(self, entityname:str):
         print("GTAcquire.add_required_obj({})".format(entityname))
@@ -42,7 +53,7 @@ class GTAcquire(DecisionModule):
         #     return
         # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
         #     self._eagerness = 1.
-        if event.is_groundtruth:
+        if event.is_groundtruth == self.use_groundtruth:
             if isinstance(event, NeedToAcquire) or isinstance(event, NeedToFind):
                 # print("GT Acquire:", event.objnames)
                 for itemname in event.objnames:
@@ -62,39 +73,39 @@ class GTAcquire(DecisionModule):
     def take_control(self, gi: GameInstance):
         ignored_obs = yield
         if self._temporary_drop:
-            gi.event_stream.push(NeedToAcquire([self._temporary_drop], groundtruth=True))
+            gi.event_stream.push(NeedToAcquire([self._temporary_drop], groundtruth=self.use_groundtruth))
             self._temporary_drop = None
             yield None  # reevaluate which should be the active module
 
         still_needed = list(self.missing_objs(gi.gt))
         print("GT_Acquire required_objs:", self.required_objs)
         print("GT_Acquire still_needed:", still_needed)
-        here = gi.gt.player_location
+        here = self._knowledge_graph(gi).player_location
         for entityName in still_needed:
-            if gi.gt.inventory.has_entity_with_name(entityName):
+            if self._knowledge_graph(gi).inventory.has_entity_with_name(entityName):
                 assert False, f"Still needed object {entityName} *should not be* in Inventory"
-            elif gi.gt.location_of_entity_with_name(entityName) is gi.gt.player_location:
-                entity = gi.gt.get_entity(entityName)
+            elif self._knowledge_graph(gi).location_of_entity_with_name(entityName) is here:
+                entity = self._knowledge_graph(gi).get_entity(entityName)
                 if Portable in entity.attributes:
-                    container = gi.gt.get_holding_entity(entity)
+                    container = self._knowledge_graph(gi).get_holding_entity(entity)
                     if container and container.state.openable and not container.state.is_open:
                         response = yield Open(container)
                     take_action = Take(entity)
                     response = yield take_action
                     if "carrying too many" in response or \
-                      not gi.gt.inventory.has_entity_with_name(entityName):
+                      not self._knowledge_graph(gi).inventory.has_entity_with_name(entityName):
                         print(f"GTAcquire: Take({entityName}) failed, try dropping something...")
-                        if len(gi.gt.inventory.entities) > 0:
+                        if len(self._knowledge_graph(gi).inventory.entities) > 0:
                             not_needed = None
                             for name in self._no_longer_needed:
-                                if gi.gt.inventory.has_entity_with_name(name):
+                                if self._knowledge_graph(gi).inventory.has_entity_with_name(name):
                                     not_needed = name
-                                    drop_entity = gi.gt.inventory.get_entity_by_name(not_needed)
+                                    drop_entity = self._knowledge_graph(gi).inventory.get_entity_by_name(not_needed)
                                     break
                             if not_needed is not None:
                                 self._no_longer_needed.remove(not_needed)
                             else:  # try temporarily dropping a random item from our inventory
-                                drop_entity = random.choice(gi.gt.inventory.entities)
+                                drop_entity = random.choice(self._knowledge_graph(gi).inventory.entities)
                                 print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
                                 #NOTE: to disabling auto-reacquire ---> # self._temporary_drop = drop_entity.name
                                 # self._temporary_drop = drop_entity.name
@@ -113,19 +124,27 @@ class GTAcquire(DecisionModule):
                 else: # can't take it, but we've found it, so consider it acquired...
                     self.remove_required_obj(entityName)
 
-        still_needed = list(self.missing_objs(gi.gt))
+        still_needed = list(self.missing_objs(self._knowledge_graph(gi)))
         if still_needed:
-            obj_to_find = still_needed[0]   # TODO: make it smarter - choose closest instead of first
-            loc = gi.gt.location_of_entity_with_name(obj_to_find)
-            if loc:
-                print("GT_Acquire NeedToGoTo:", loc)
-                gi.event_stream.push(NeedToGoTo(loc.name, groundtruth=True))
+            whereabouts_unknown = []
+            for obj_to_find in still_needed:
+            # obj_to_find = still_needed[0]   # TODO: make it smarter - choose closest instead of first
+                loc = self._knowledge_graph(gi).location_of_entity_with_name(obj_to_find)
+                if loc:
+                    print("GT_Acquire NeedToGoTo:", loc)
+                    gi.event_stream.push(NeedToGoTo(loc.name, groundtruth=self.use_groundtruth))
+                    break
+                else:
+                    print(f"Don't know {self.maybe_GT}location of {obj_to_find}")
+                    whereabouts_unknown.append(obj_to_find)
+                    # assert False, f"Don't know {self.maybe_GT}location of {obj_to_find}"
+            if self.use_groundtruth:
+                for obj_to_find in whereabouts_unknown:
+                    self.remove_required_obj(obj_to_find)
+                    gi.event_stream.push(NoLongerNeed([obj_to_find], groundtruth=self.use_groundtruth))
             else:
-                print(f"Don't know GT location of {obj_to_find}")
-                # assert False, f"Don't know GT location of {obj_to_find}"
-                self.remove_required_obj(obj_to_find)
-                gi.event_stream.push(NoLongerNeed([obj_to_find], groundtruth=True))
-                # self._eagerness = 0
+                gi.event_stream.push(NeedToGoTo("Unknown Location", groundtruth=self.use_groundtruth))
+            # self._eagerness = 0
         else:
             self._eagerness = 0
         return None  # terminate generator iteration

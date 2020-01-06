@@ -2,7 +2,7 @@ from ..valid_detectors.learned_valid_detector import LearnedValidDetector
 from ..decision_module import DecisionModule
 from ..action import SingleAction, StandaloneAction, PrepareMeal, Eat, NoOp, Drop
 from ..action import Portable
-from ..event import GroundTruthComplete, NeedToAcquire, NeedToDo
+from ..event import GroundTruthComplete, NeedToDo
 from ..game import GameInstance
 from ..task import SequentialTasks
 from ..task_modules import SingleActionTask
@@ -130,7 +130,7 @@ class GTRecipeReader(DecisionModule):
                         task.prereq.add_required_object(objname)
                     tasks.append(task)
         if eat:
-            eat.prereq.required_inventory.append('meal')
+            # eat.prereq.required_inventory.append('meal')  #NOTE: this causes problems because we attempt to search for the meal
             for task in tasks:
                 prep.prereq.add_required_task(task)
             prep.prereq.add_required_location('kitchen')  # meals can be prepared only in the kitchen\

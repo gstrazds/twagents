@@ -89,8 +89,12 @@ class GTNavigator(DecisionModule):
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         if isinstance(event, NeedToGoTo):
-            self._goal_name = None
-            self.set_goal_by_name(event.target_location, gi)
+            if self.use_groundtruth == event.is_groundtruth and \
+                    (not self.goal_location and not self._goal_name):
+                self._goal_name = None
+                self.set_goal_by_name(event.target_location, gi)
+            else:
+                print(f"{self.maybe_GT}Navigator({self._goal_name},{self.goal_location}) ignoring event NeedToGoTo:{event.target_location} GT={event.is_groundtruth}")
         elif isinstance(event, GroundTruthComplete):
             if self._goal_name and not self._active:
                 self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
@@ -111,20 +115,22 @@ class GTNavigator(DecisionModule):
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
             current_loc = self._knowledge_graph(gi).player_location
             if current_loc == self.goal_location or current_loc.name == self._goal_name:
-                gv.dbg("[{}NAV] Goal reached: {}".format(
-                    self.maybe_GT, self.goal_location))
+                gv.dbg("[{}NAV] Goal reached: {}".format(self.maybe_GT, self.goal_location))
                 if current_loc.name == self._goal_name or not self._goal_name:
                     self._goal_name = None
                     self._active = False
+                    self.goal_location = None
                 elif self._goal_name:
                     self.set_goal_by_name(self._goal_name)
             else:
                 gv.dbg("[{}NAV] FAILED! {} {} {}".format(
                     self.maybe_GT, self.goal_location, self._path_idx, self.path))
-                if self._goal_name:
+                if self._goal_name and not (self.goal_location and self.goal_location.name == self._goal_name):
                     self.set_goal_by_name(self._goal_name, gi)
                 else:
+                    self._goal_name = None
                     self._active = False
+                    self.goal_location = None
             if self._debug and not self._active:
                 print("{}Navigator resetting _active=False", self.maybe_GT, self._path_idx, self.path)
             if self._close_door:
