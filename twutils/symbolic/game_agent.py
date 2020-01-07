@@ -175,7 +175,8 @@ class TextGameAgent:
         # sort into separate lists to control the order in which facts get processed
         # Reinitialize, build complete GT KG from scratch each time
         self.gi._set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
-        self.gi.gt.update_facts(gt_facts)
+        #TODO (Disabled ground truth)
+        # self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
 

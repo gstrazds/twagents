@@ -9,8 +9,8 @@ from ..task_modules import SingleActionTask
 from twutils.twlogic import adapt_tw_instr, CUT_WITH, COOK_WITH
 
 
-def is_portable(objname: str, gi: GameInstance) -> bool:
-    entityset = gi.gt.entities_with_name(objname)
+def is_portable(objname: str, kg) -> bool:
+    entityset = kg.entities_with_name(objname)
     if entityset:
         entity = list(entityset)[0]
         if Portable in entity.attributes:
@@ -18,21 +18,21 @@ def is_portable(objname: str, gi: GameInstance) -> bool:
         else:
             return False
     else:
-        print(f"WARNING: Unable to find entity {objname} in GT knowledge graph")
+        print(f"WARNING: Unable to find entity {objname} in knowledge graph")
     return None
 
 
-def is_already_cut(objname: str, verb: str, gi: GameInstance) -> bool:
-    entityset = gi.gt.entities_with_name(objname)
+def is_already_cut(objname: str, verb: str, kg) -> bool:
+    entityset = kg.entities_with_name(objname)
     if entityset:
         entity = list(entityset)[0]
         return entity.state.cuttable and entity.state.is_cut.startswith(verb)
     return False
 
 
-def is_already_cooked(objname: str, verb: str, gi: GameInstance) -> bool:
+def is_already_cooked(objname: str, verb: str, kg) -> bool:
     already_cooked = False
-    entityset = gi.gt.entities_with_name(objname)
+    entityset = kg.entities_with_name(objname)
     if entityset:
         entity = list(entityset)[0]
         already_cooked = entity.state.cookable and \
@@ -87,13 +87,14 @@ class GTRecipeReader(DecisionModule):
         # TODO: don't chop if already chopped, etc...
         verb = instr.split()[0]
         if verb in CUT_WITH or verb in COOK_WITH:
+            kg = self._knowledge_graph(gi)
             obj_words = instr_words[1:]
             if obj_words[0] == 'the':
                 obj_words = obj_words[1:]
             obj_name = ' '.join(obj_words)
             with_objs.append(obj_name)
-            if verb in CUT_WITH and is_already_cut(obj_name, verb, gi) or \
-               verb in COOK_WITH and is_already_cooked(obj_name, verb, gi):
+            if verb in CUT_WITH and is_already_cut(obj_name, verb, kg) or \
+               verb in COOK_WITH and is_already_cooked(obj_name, verb, kg):
                 return SingleActionTask(NoOp, description="REDUNDANT: "+instr,
                                         use_groundtruth=self.use_groundtruth), with_objs  # already cooked or cut
         print("GT RecipeReaderr: mapping <{}> -> {}".format(instr, enhanced_instr_words))
@@ -106,6 +107,7 @@ class GTRecipeReader(DecisionModule):
         return SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth), with_objs
 
     def convert_instructions_to_tasks(self, gi: GameInstance):
+        kg = self._knowledge_graph(gi)
         tasks = []
         actions = []
         prep = None
@@ -124,7 +126,7 @@ class GTRecipeReader(DecisionModule):
                 actions.append((act, instr))
                 task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
                 for objname in with_objs:
-                    if is_portable(objname, gi):  #TODO: THIS ASSUMES use_groundtruth=True
+                    if is_portable(objname, kg):  #TODO: THIS ASSUMES we already know this object (use_groundtruth=True)
                         task.prereq.add_required_item(objname)
                     else:
                         task.prereq.add_required_object(objname)
@@ -157,7 +159,7 @@ class GTRecipeReader(DecisionModule):
             self.deactivate()
             return None
 
-        cookbook = gi.gt.get_entity('cookbook')
+        cookbook = self._knowledge_graph(gi).get_entity('cookbook')
         response = yield SingleAction('examine', cookbook)
         # parse the response
         recipe_lines = response.split('\n')

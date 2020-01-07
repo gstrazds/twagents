@@ -682,6 +682,7 @@ class CustomAgent:
                     prevaction = self.prev_actions[idx]
                     agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
                     # Output this step.
+                    player_location = agent.gt_nav._knowledge_graph(agent.gi).player_location
                     print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',

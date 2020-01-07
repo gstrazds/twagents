@@ -88,7 +88,7 @@ class GTAcquire(DecisionModule):
                 response = yield Open(entity)
                 entity.open()
 
-        still_needed = list(self.missing_objs(gi.gt))
+        still_needed = list(self.missing_objs(self._knowledge_graph(gi)))
         print("GT_Acquire required_objs:", self.required_objs)
         print("GT_Acquire still_needed:", still_needed)
         here = self._knowledge_graph(gi).player_location
