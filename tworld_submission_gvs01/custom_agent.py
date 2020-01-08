@@ -460,6 +460,7 @@ class CustomAgent:
         self.max_nb_steps_per_episode = self.config['training']['max_nb_steps_per_episode']
         self.nb_epochs = self.config['training']['nb_epochs']
         self._debug_quit = False
+        self.game_ids = []
 
         # Set the random seed manually for reproducibility.
         seedval = self.config['general']['random_seed']
@@ -533,7 +534,11 @@ class CustomAgent:
         """
         print(f"_end_episode: <Step {self.current_step}>", end='')
         for idx, actiontxt in enumerate(self.prev_actions):
-            print(f" [{idx}]: {actiontxt}", end='')
+            if len(self.game_ids) > idx:
+                game = self.game_ids[idx]
+            else:
+                game = idx
+            print(f" [{game}]: {actiontxt}", end='')
         print('\n')
         self.finish()
         self._episode_has_started = False
@@ -603,9 +608,11 @@ class CustomAgent:
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
         self.agents = []
+        self.game_ids = []
         for idx in range(len(obs)):
             if 'game_id' in infos:
                 game_id = parse_gameid(infos['game_id'][idx])
+                self.game_ids.append(infos['game_id'][idx])
             else:
                 game_id = str(idx)
             self.agents.append(
