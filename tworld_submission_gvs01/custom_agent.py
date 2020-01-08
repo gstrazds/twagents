@@ -698,6 +698,8 @@ class CustomAgent:
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
                         player_location, prevaction, scores[idx],)) # obs[idx]))
+                    if dones[idx]:   # has reached terminal state
+                        agent.gi.kg.reset() # try to remember what the world was like at the beginning of this episode
                 self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)

@@ -108,8 +108,14 @@ class Task:
         self.missing = Preconditions()
         self._action_generator = None  # generator: current state of self._generate_actions()
 
+    # @property
+    # def is_done(self) -> bool:
+    #     return self._done
+
     @property
     def is_done(self) -> bool:
+        if not self._done:  #one-way caching: once it's done, it stays done (until reset() is called)
+            self._done = self._check_done()
         return self._done
 
     @property
@@ -120,6 +126,9 @@ class Task:
     def has_failed(self) -> bool:
         return self._failed
 
+    def _check_done(self) -> bool:
+        return self._done
+
     def reset(self):
         self._done = False
         self._failed = False
@@ -128,6 +137,9 @@ class Task:
     def check_preconditions(self, kg) -> (bool, Preconditions):
         self.missing = self.prereq.check_current_state(kg)
         return self.missing.is_empty
+
+    def check_postconditions(self, kg) -> bool:  # True if postconditions satisfied
+        return False
 
     def _generate_actions(self, gi) -> Action:
         """ Generates a sequence of actions.
@@ -182,12 +194,6 @@ class CompositeTask(Task):
                 classname=type(self).__name__, tasklist=str([t for t in tasks]))
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.tasks = tasks
-
-    @property
-    def is_done(self) -> bool:
-        if not self._done:  #one-way caching: once it's done, it stays done (until reset() is called)
-            self._done = self._check_done()
-        return self._done
 
     def _check_done(self) -> bool:
         return all(map(lambda t: t.is_done, self.tasks))

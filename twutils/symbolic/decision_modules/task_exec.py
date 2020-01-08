@@ -58,10 +58,14 @@ class TaskExecutor(DecisionModule):
             if self.task_queue:
                 next_task = self.task_queue.pop(0)
                 self.push_task(next_task)
-        if self.task_stack:
+        while self.task_stack:
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
-            if not activating_task.is_active and not activating_task.is_done:
+            if activating_task.is_done:
+                self.pop_task(activating_task)
+                continue   # loop to get next potentially active task
+            if not activating_task.is_active:
+                assert not activating_task.is_done, f"Unexpected: {activating_task}.is_done !"
                 activating_task.activate(gi)
             if not _check_preconditions(activating_task, gi):
                 print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")

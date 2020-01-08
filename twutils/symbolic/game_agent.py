@@ -156,8 +156,8 @@ class TextGameAgent:
         if action:
             assert action == self._last_action
         self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
-        if terminal:
-            self.gi.kg.reset()
+        # if terminal:
+        #     self.gi.kg.reset()
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:
