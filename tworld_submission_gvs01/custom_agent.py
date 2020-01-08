@@ -532,13 +532,13 @@ class CustomAgent:
             score: The score obtained so far for each game.
             infos: Additional information for each game.
         """
-        print(f"_end_episode: <Step {self.current_step}>", end='')
+        print(f"_end_episode <Step {self.current_step}>", end='')
         for idx, actiontxt in enumerate(self.prev_actions):
             if len(self.game_ids) > idx:
                 game = self.game_ids[idx]
             else:
                 game = idx
-            print(f" [{game}]: {actiontxt}", end='')
+            print(f" :{game}: [{actiontxt}]", end='')
         print('\n')
         self.finish()
         self._episode_has_started = False
