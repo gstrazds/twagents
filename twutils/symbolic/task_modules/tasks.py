@@ -20,9 +20,6 @@ class SequentialActionsTask(Task):
         self._current_idx = 0
         super().reset()
 
-    def check_postconditions(self, gi: GameInstance) -> bool:
-        return True
-
     def check_result(self, result: str, gi: GameInstance) -> bool:
         return True
 

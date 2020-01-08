@@ -128,7 +128,7 @@ def add_attributes_for_type(entity, twvartype):
         if not entity.state.openable:
             entity.state.add_state_variable('openable', 'is_open', '')
             # Indeterminate value until we discover otherwise (via add_attributes_for_predicate)
-    elif twvartype in ('c', 'oven', 'stove'):  # a container
+    elif twvartype in ('c', 'oven'):  # a container
         entity.convert_to_container()
         # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
         entity.state.close()

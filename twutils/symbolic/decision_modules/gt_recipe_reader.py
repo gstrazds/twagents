@@ -49,29 +49,63 @@ class GTRecipeReader(DecisionModule):
                     self._eagerness = 1.0
 
     def convert_cookbook_step_to_task(self, instr: str, gi: GameInstance):
+        def check_cooked_state(kgraph):
+            print(f"POSTCONDITION check_cooked_state({obj_name}, {verb}")
+            return kgraph.is_object_cooked(obj_name, verb)
+
+        def check_cut_state(kgraph):
+            print(f"POSTCONDITION check_cut_state({obj_name}, {verb}")
+            return kgraph.is_object_cut(obj_name, verb)
+
         instr_words = instr.split()
         enhanced_instr_words, with_objs = adapt_tw_instr(instr_words, gi)
-        # TODO: don't chop if already chopped, etc...
-        verb = instr.split()[0]
-        if verb in CUT_WITH or verb in COOK_WITH:
-            kg = self._knowledge_graph(gi)
-            obj_words = instr_words[1:]
-            if obj_words[0] == 'the':
-                obj_words = obj_words[1:]
-            obj_name = ' '.join(obj_words)
-            with_objs.append(obj_name)
-            if verb in CUT_WITH and kg.is_object_cut(obj_name, verb) or \
-               verb in COOK_WITH and kg.is_object_cooked(obj_name, verb):
-                return SingleActionTask(NoOp, description="REDUNDANT: "+instr,
-                                        use_groundtruth=self.use_groundtruth), with_objs  # already cooked or cut
-        print("GT RecipeReaderr: mapping <{}> -> {}".format(instr, enhanced_instr_words))
+        post_checks = []
 
         if instr == 'prepare meal':  # explicit singleton for PrepareMeal
             act = PrepareMeal
         else:
+            verb = instr.split()[0]
+            # TODO: don't chop if already chopped, etc...
+            if verb in CUT_WITH or verb in COOK_WITH:
+                obj_words = instr_words[1:]
+                if obj_words[0] == 'the':
+                    obj_words = obj_words[1:]
+                obj_name = ' '.join(obj_words)
+                with_objs.append(obj_name)
+            print("GT RecipeReader: mapping <{}> -> {}".format(instr, enhanced_instr_words))
             act = StandaloneAction(" ".join(enhanced_instr_words))
+            if verb in CUT_WITH:
+                if self.use_groundtruth:
+                    if gi.gt.is_object_cut(obj_name, verb):
+                        act = NoOp
+                        instr = "REDUNDANT: " + instr
+                elif gi.kg.get_entity(obj_name):  # if we've already encountered this object
+                    if check_cut_state(gi.kg):
+                        act = NoOp
+                        instr = "REDUNDANT: " + instr
+                else:
+                    # add postconditions to check for already done
+                    post_checks.append(check_cut_state)
+            elif verb in COOK_WITH:
+                if self.use_groundtruth:
+                    if gi.gt.is_object_cooked(obj_name, verb):
+                        act = NoOp
+                        instr = "REDUNDANT: " + instr
+                elif gi.kg.get_entity(obj_name):  # if we've already encountered this object
+                    if check_cooked_state(gi.kg):
+                        act = NoOp
+                        instr = "REDUNDANT: " + instr
+                else:
+                    # add postconditions to check for already done
+                    post_checks.append(check_cooked_state)
 
-        return SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth), with_objs
+        task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
+        if post_checks:
+            print("Adding postconditions to task", task, post_checks)
+            for func in post_checks:
+                task.add_postcondition(func)
+        print(task, task._postcondition_checks)
+        return task, with_objs
 
     def convert_instructions_to_tasks(self, gi: GameInstance):
         kg = self._knowledge_graph(gi)
@@ -86,12 +120,12 @@ class GTRecipeReader(DecisionModule):
             if act == NoOp:
                 continue    # ignore this one, try to convert next step
             elif act == PrepareMeal:
-                prep = SingleActionTask(PrepareMeal, use_groundtruth=self.use_groundtruth)
+                prep = task  #SingleActionTask(PrepareMeal, use_groundtruth=self.use_groundtruth)
                 eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=self.use_groundtruth)
                 eat.prereq.required_tasks.append(prep)
             else:
                 actions.append((act, instr))
-                task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
+                # task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
                 for objname in with_objs:
                     if kg.is_object_portable(objname):  #TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
                         task.prereq.add_required_item(objname)

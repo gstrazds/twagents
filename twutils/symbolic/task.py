@@ -107,6 +107,7 @@ class Task:
         self.prereq = Preconditions()
         self.missing = Preconditions()
         self._action_generator = None  # generator: current state of self._generate_actions()
+        self._postcondition_checks = []  # closures, invoked with one arg = KnowledgeGraph
 
     # @property
     # def is_done(self) -> bool:
@@ -139,7 +140,22 @@ class Task:
         return self.missing.is_empty
 
     def check_postconditions(self, kg) -> bool:  # True if postconditions satisfied
+        if self._postcondition_checks:
+            # print(f"CHECKING POSTCONDITIONS: {self} /{self._postcondition_checks}/")
+            for func in self._postcondition_checks:
+                if not func(kg):
+                    print("POSTCONDITION CHECK failed", self)
+                    return False
+            print(f"{self}: All postcondition checks passed!")
+            return True
         return False
+
+    def add_postcondition(self, check_func):
+        if check_func not in self._postcondition_checks:
+            self._postcondition_checks.append(check_func)
+            print(f"ADDED POSTCONDITION CHECK: {self} /{self._postcondition_checks}/")
+        else:
+            assert False, f"WTF? {self._postcondition_checks} {check_func}"
 
     def _generate_actions(self, gi) -> Action:
         """ Generates a sequence of actions.
@@ -153,6 +169,12 @@ class Task:
             print(f"{self} ACTIVATING")
             self._action_generator = self._generate_actions(gi)  #proxy waiting for.send(obs) at initial "ignored = yield"
             self._action_generator.send(None)
+        if gi:
+            kg = gi.gt if self.use_groundtruth else gi.kg
+            if self.check_postconditions(kg):
+                print(f"{self} auto-deactivating because postconditions are satisfied!")
+                self.deactivate(gi)
+                self._done = True
         return self._action_generator
 
     def deactivate(self, gi):
@@ -223,7 +245,13 @@ class SequentialTasks(CompositeTask):
 
     def get_current_task(self, gi):
         if self.tasks and 0 <= self._current_idx < len(self.tasks):
-            return self.tasks[self._current_idx]
+            task = self.tasks[self._current_idx]
+            if task.check_postconditions(gi):
+                task._done = True
+                if task.is_active:
+                    task.deactivate(gi)
+            return task
+
         # print("SequentialTasks.get_current_task(idx={}) => None (tasks:{})".format(self._current_idx, self.tasks))
         return None
 
@@ -253,7 +281,9 @@ class SequentialTasks(CompositeTask):
         if self._done: #shortcut, maybe not needed?
             return None
         t = self.get_current_task(gi)
-        act = self.tasks[self._current_idx].get_next_action(observation, gi)
+        act = None
+        if t: # and not t.is_done:
+            act = t.get_next_action(observation, gi)
         if act:
             return act
         else:
