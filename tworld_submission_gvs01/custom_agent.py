@@ -686,7 +686,7 @@ class CustomAgent:
                     print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
-                        agent.gi.gt.player_location, prevaction, scores[idx],)) # obs[idx]))
+                        player_location, prevaction, scores[idx],)) # obs[idx]))
                 self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)
