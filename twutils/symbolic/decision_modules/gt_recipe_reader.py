@@ -9,39 +9,6 @@ from ..task_modules import SingleActionTask
 from twutils.twlogic import adapt_tw_instr, CUT_WITH, COOK_WITH
 
 
-def is_portable(objname: str, kg) -> bool:
-    entityset = kg.entities_with_name(objname)
-    if entityset:
-        entity = list(entityset)[0]
-        if Portable in entity.attributes:
-            return True
-        else:
-            return False
-    else:
-        print(f"WARNING: Unable to find entity {objname} in knowledge graph")
-    return None
-
-
-def is_already_cut(objname: str, verb: str, kg) -> bool:
-    entityset = kg.entities_with_name(objname)
-    if entityset:
-        entity = list(entityset)[0]
-        return entity.state.cuttable and entity.state.is_cut.startswith(verb)
-    return False
-
-
-def is_already_cooked(objname: str, verb: str, kg) -> bool:
-    already_cooked = False
-    entityset = kg.entities_with_name(objname)
-    if entityset:
-        entity = list(entityset)[0]
-        already_cooked = entity.state.cookable and \
-            (entity.state.is_cooked.startswith(verb) or
-             verb == 'fry' and entity.state.is_cooked == 'fried')
-    return already_cooked
-
-
-
 class GTRecipeReader(DecisionModule):
     """
     The Recipe Reader module activates when the player finds the cookbook.
@@ -93,8 +60,8 @@ class GTRecipeReader(DecisionModule):
                 obj_words = obj_words[1:]
             obj_name = ' '.join(obj_words)
             with_objs.append(obj_name)
-            if verb in CUT_WITH and is_already_cut(obj_name, verb, kg) or \
-               verb in COOK_WITH and is_already_cooked(obj_name, verb, kg):
+            if verb in CUT_WITH and kg.is_object_cut(obj_name, verb) or \
+               verb in COOK_WITH and kg.is_object_cooked(obj_name, verb):
                 return SingleActionTask(NoOp, description="REDUNDANT: "+instr,
                                         use_groundtruth=self.use_groundtruth), with_objs  # already cooked or cut
         print("GT RecipeReaderr: mapping <{}> -> {}".format(instr, enhanced_instr_words))
@@ -126,7 +93,7 @@ class GTRecipeReader(DecisionModule):
                 actions.append((act, instr))
                 task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
                 for objname in with_objs:
-                    if is_portable(objname, kg):  #TODO: THIS ASSUMES we already know this object (use_groundtruth=True)
+                    if kg.is_object_portable(objname):  #TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
                         task.prereq.add_required_item(objname)
                     else:
                         task.prereq.add_required_object(objname)

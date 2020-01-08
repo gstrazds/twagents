@@ -60,20 +60,33 @@ class Preconditions:
         return all_empty
 
     def check_current_state(self, kg):
-        if kg is None:
+        if kg:
+            here = kg.player_location
+        else:
             print("WARNING: Preconditions.check_current_state(kg==None)")
+            here = None
         missing = Preconditions()
+        if self.required_objects:
+            for name in list(self.required_objects): # NOTE: we copy the list to allow safe removal while iterating
+                if kg and kg.location_of_entity_with_name(name) == here:
+                    if kg.is_object_portable(name):
+                        if name not in self.required_inventory:
+                            print(f"Transfering '{name}' => required_inventory")
+                            self.required_inventory.append(name)
+                        print(f"Reclassifying '{name}' as portable")
+                        self.required_objects.remove(name)
+                    missing.required_objects.clear()
+                    break  # we only need one: declare that none are missing
+                elif kg.inventory.has_entity_with_name(name):  # portable object was misclassified as non-portable
+                    print(f"portable object {name} was misclassified as non-portable")
+                    missing.required_objects.clear()
+                    break   # this counts as having found the correct object
+                else:
+                    missing.required_objects.append(name)
         if self.required_inventory:
             for name in self.required_inventory:
                 if not kg or not kg.inventory.has_entity_with_name(name):
                     missing.required_inventory.append(name)
-        if self.required_objects:
-            for name in self.required_objects:
-                if kg and kg.player_location.has_entity_with_name(name):
-                    missing.required_objects.clear()
-                    break  # we only need one: declare that none are missing
-                else:
-                    missing.required_objects.append(name)
         if self.required_locations and \
                 (not kg or kg.player_location.name not in self.required_locations):
             missing.required_locations += self.required_locations

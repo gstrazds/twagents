@@ -159,8 +159,6 @@ class TaskExecutor(DecisionModule):
             objname = random.choice(missing.required_objects)
             # need_to_get.append(objname)
             gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
-        # if need_to_get:  #NOTE: GTAcquire processes NeedToAcquire and NeedToGet identically
-        #     gi.event_stream.push(NeedToAcquire(need_to_get, groundtruth=use_groundtruth))
 
     def rescind_broadcasted_preconditions(self, task, gi: GameInstance):
         use_groundtruth = task.use_groundtruth

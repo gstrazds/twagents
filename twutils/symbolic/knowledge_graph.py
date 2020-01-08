@@ -275,6 +275,35 @@ class KnowledgeGraph:
         for location in self.locations:
             location.reset(kg)
 
+    def is_object_portable(self, objname: str) -> bool:
+        entityset = self.entities_with_name(objname)
+        if entityset:
+            entity = list(entityset)[0]
+            if Portable in entity.attributes:
+                return True
+            else:
+                return False
+        else:
+            print(f"WARNING: Unable to find entity {objname} in knowledge graph")
+        return None
+
+    def is_object_cut(self, objname: str, verb: str) -> bool:
+        entityset = self.entities_with_name(objname)
+        if entityset:
+            entity = list(entityset)[0]
+            return entity.state.cuttable and entity.state.is_cut.startswith(verb)
+        return False
+
+    def is_object_cooked(self, objname: str, verb: str) -> bool:
+        already_cooked = False
+        entityset = self.entities_with_name(objname)
+        if entityset:
+            entity = list(entityset)[0]
+            already_cooked = entity.state.cookable and \
+                             (entity.state.is_cooked.startswith(verb) or
+                              verb == 'fry' and entity.state.is_cooked == 'fried')
+        return already_cooked
+
     def __str__(self):
         s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
         if self.player_location == None:
