@@ -780,32 +780,32 @@ class ConnectionGraph:
         assert not Location.is_unknown(from_location)
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
-        added_new = False
+        added_new = []
         # kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
         if from_location not in self._out_graph:
-            added_new = True
+            added_new.append(f"out_graph[{from_location.name}]")
             self._out_graph[from_location] = {direction: connection}
         else:
             if direction in self._out_graph[from_location]:
                 if self._out_graph[from_location][direction] != connection:
-                    print(f"WARNING: updating {self._out_graph[from_location][direction]} <= {connection}")
+                    print(f"... updating {self._out_graph[from_location][direction]} <= {connection}")
                 connection = self._out_graph[from_location][direction].update(connection)
             else:
-                added_new = True
+                added_new.append(f"out_graph[{from_location.name}][{direction}]")
                 self._out_graph[from_location][direction] = connection
 
         if not Location.is_unknown(to_location):   # don't index connections incoming to UnknownLocation
             incoming_rel = ConnectionRelation(direction, from_location)
             if to_location not in self._in_graph:
-                added_new = True
+                added_new.append(f"in_graph[{to_location.name}] {incoming_rel}")
                 self._in_graph[to_location] = {incoming_rel: connection}
             else:
                 if incoming_rel in self._in_graph[to_location]:
                     if self._in_graph[to_location][incoming_rel] != connection:
-                        print(f"WARNING: updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
+                        print(f"... updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
                     self._in_graph[to_location][incoming_rel].update(connection)
                 else:
-                    added_new = True
+                    added_new.append(f"in_graph[{to_location.name}][{incoming_rel}]")
                     self._in_graph[to_location][incoming_rel] = connection
 
         # if there's a doorway associated with this connection,
@@ -841,7 +841,7 @@ class ConnectionGraph:
 
         if added_new:
             if not kg.groundtruth:
-                print("ADDED {}CONNECTION".format('GT ' if kg.groundtruth else ''), connection)
+                print("ADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), added_new, connection)
 
         if assume_inverse:  # assume that 180 inverse direction connects to_location => from_location
             if not Location.is_unknown(connection.to_location):
@@ -944,24 +944,32 @@ class Connection:
         return False
 
     def update(self, other: 'Connection') -> 'Connection':
+        updated = []
         if not Location.is_unknown(other.from_location):
             if self.from_location != other.from_location:
                 assert Location.is_unknown(self.from_location), \
                     f"Connection endpoints aren't expected to change over time {self} <= {other}"
+                updated.append("from_location")
                 self.from_location = other.from_location
         if not Location.is_unknown(other.to_location):
             if self.to_location != other.to_location:
                 assert Location.is_unknown(self.to_location), \
                     f"Connection destinations aren't expected to change over time {self} <= {other}"
+                updated.append("to_location")
                 self.to_location = other.to_location
         if other.action:
             if self.action != other.action:
                 print(f"WARNING: replacing connection action {self} with {other.action}")
+                updated.append("action")
             self.action = other.action
         if other.doorway:
             if self.doorway:
                 assert self.doorway == other.doorway
+            else:
+                updated.append("doorway")
             self.doorway = other.doorway
+        if updated:
+            print(f"ConnectionGraph updated {self} {updated} from {other}")
         return self
 
     def to_string(self, prefix=''):

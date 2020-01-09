@@ -67,6 +67,7 @@ class GTNavigator(DecisionModule):
                     self.maybe_GT, current_loc, self.goal_location, self.path))
             self._active = False
             self._path_idx = -1
+            self.goal_location = None
         # adjust eagerness
 
     def set_goal_by_name(self, goal_name, gi):
@@ -90,14 +91,18 @@ class GTNavigator(DecisionModule):
         """ Process an event from the event stream. """
         if isinstance(event, NeedToGoTo):
             if self.use_groundtruth == event.is_groundtruth and \
-                    (not self.goal_location and not self._goal_name):
-                self._goal_name = None
+                    (not self.goal_location and not self._goal_name) and \
+                    (not event.target_location == self._knowledge_graph(gi)._unknown_location.name):
                 self.set_goal_by_name(event.target_location, gi)
             else:
                 print(f"{self.maybe_GT}Navigator({self._goal_name},{self.goal_location}) ignoring event NeedToGoTo:{event.target_location} GT={event.is_groundtruth}")
         elif isinstance(event, GroundTruthComplete):
             if self._goal_name and not self._active:
-                self.set_goal(self._knowledge_graph(gi)._unknown_location, gi)
+                name_of_goal = self._goal_name
+                self.set_goal_by_name(self._goal_name, gi)
+                if not self._active:
+                    print(f"FAILED to set_goal_by_name({name_of_goal}) (no UnknownLocations?) -> CANCELLED!")
+                    self._goal_name = None
 
     def get_eagerness(self, gi: GameInstance):
         if not self._active:
@@ -185,8 +190,8 @@ class GTNavigator(DecisionModule):
             ## if self.open_all_containers:
             for entity in list(current_loc.entities):
                 print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
-                if entity.is_container:
-                    print(f"is_open:{entity.state.is_open}")
+                if entity.is_container and entity.state.openable:
+                    print(f"GTNavigator {entity}.is_open:{entity.state.is_open}")
                     if entity.state.openable and not entity.state.is_open:
                         response = yield Open(entity)
                         entity.open()

@@ -144,7 +144,7 @@ class Task:
             # print(f"CHECKING POSTCONDITIONS: {self} /{self._postcondition_checks}/")
             for func in self._postcondition_checks:
                 if not func(kg):
-                    print("POSTCONDITION CHECK failed", self)
+                    # print("POSTCONDITION CHECK failed", self)
                     return False
             print(f"{self}: All postcondition checks passed!")
             return True

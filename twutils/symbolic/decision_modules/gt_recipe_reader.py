@@ -50,12 +50,14 @@ class GTRecipeReader(DecisionModule):
 
     def convert_cookbook_step_to_task(self, instr: str, gi: GameInstance):
         def check_cooked_state(kgraph):
-            print(f"POSTCONDITION check_cooked_state({obj_name}, {verb}")
-            return kgraph.is_object_cooked(obj_name, verb)
+            retval = kgraph.is_object_cooked(obj_name, verb)
+            print(f"POSTCONDITION check_cooked_state({obj_name}, {verb}) => {retval}")
+            return retval
 
         def check_cut_state(kgraph):
-            print(f"POSTCONDITION check_cut_state({obj_name}, {verb}")
-            return kgraph.is_object_cut(obj_name, verb)
+            retval = kgraph.is_object_cut(obj_name, verb)
+            print(f"POSTCONDITION check_cut_state({obj_name}, {verb}) => {retval}")
+            return retval
 
         instr_words = instr.split()
         enhanced_instr_words, with_objs = adapt_tw_instr(instr_words, gi)
