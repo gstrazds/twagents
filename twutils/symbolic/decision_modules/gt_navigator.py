@@ -68,6 +68,7 @@ class GTNavigator(DecisionModule):
             self._active = False
             self._path_idx = -1
             self.goal_location = None
+
         # adjust eagerness
 
     def set_goal_by_name(self, goal_name, gi):
@@ -78,6 +79,7 @@ class GTNavigator(DecisionModule):
         if locs:
             self.set_goal(locs[0], gi)
             if self._active:
+                self._goal_name = None
                 return   # set_goal successful
         # loc not known or path to loc not found
         self._goal_name = goal_name
@@ -93,7 +95,15 @@ class GTNavigator(DecisionModule):
             if self.use_groundtruth == event.is_groundtruth and \
                     (not self.goal_location and not self._goal_name) and \
                     (not event.target_location == self._knowledge_graph(gi)._unknown_location.name):
+                print((f"{self.maybe_GT}Navigator NeedToGoTo({event.target_location}:"))
                 self.set_goal_by_name(event.target_location, gi)
+                if not self._active:
+                    name_of_goal = event.target_location
+                    print(f"NeedToGoTo FAILED to set_goal_by_name({name_of_goal}) (no UnknownLocations?) -> CANCELLED!")
+                    if name_of_goal.startswith("TryToFind("):
+                        objname = name_of_goal[len("TryToFind("):-1]
+                        gi.event_stream.push(NoLongerNeed([objname], groundtruth=self.use_groundtruth))
+                        self._goal_name = None
             else:
                 print(f"{self.maybe_GT}Navigator({self._goal_name},{self.goal_location}) ignoring event NeedToGoTo:{event.target_location} GT={event.is_groundtruth}")
         elif isinstance(event, GroundTruthComplete):

@@ -108,6 +108,8 @@ class TaskExecutor(DecisionModule):
                 # if nothing currently active, move a task from pending to active
                 # if self._activate_next_task(gi):
                 self.activate(gi)
+            else:
+                print(f"(already active: task={self.task_stack[-1]})", end='')
         else:
             self.deactivate(gi)
         print(self._eagerness)
