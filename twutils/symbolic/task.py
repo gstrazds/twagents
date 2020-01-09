@@ -73,14 +73,16 @@ class Preconditions:
                         if name not in self.required_inventory:
                             print(f"Transfering '{name}' => required_inventory")
                             self.required_inventory.append(name)
+                            self.required_objects.remove(name)
                         print(f"Reclassifying '{name}' as portable")
-                        self.required_objects.remove(name)
-                    missing.required_objects.clear()
-                    break  # we only need one: declare that none are missing
-                elif kg.inventory.has_entity_with_name(name):  # portable object was misclassified as non-portable
-                    print(f"portable object {name} was misclassified as non-portable")
-                    missing.required_objects.clear()
-                    break   # this counts as having found the correct object
+                        # self.required_objects.remove(name)
+                    else:
+                        missing.required_objects.clear()
+                        break  # we only need one: declare that none are missing
+                elif kg and kg.inventory.has_entity_with_name(name):  # portable object was misclassified as non-portable
+                    print(f"portable object {name} misclassified as non-portable?")
+                    # missing.required_objects.clear()
+                    # break   # this counts as having found the correct object
                 else:
                     missing.required_objects.append(name)
         if self.required_inventory:
@@ -135,7 +137,7 @@ class Task:
         self._failed = False
         self._action_generator = None
 
-    def check_preconditions(self, kg) -> (bool, Preconditions):
+    def check_preconditions(self, kg) -> bool:
         self.missing = self.prereq.check_current_state(kg)
         return self.missing.is_empty
 

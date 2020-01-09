@@ -50,19 +50,19 @@ class GTRecipeReader(DecisionModule):
 
     def convert_cookbook_step_to_task(self, instr: str, gi: GameInstance):
         def check_cooked_state(kgraph):
-            retval = kgraph.is_object_cooked(obj_name, verb)
-            print(f"POSTCONDITION check_cooked_state({obj_name}, {verb}) => {retval}")
+            retval = kgraph.is_object_cooked(item_name, verb)
+            print(f"POSTCONDITION check_cooked_state({item_name}, {verb}) => {retval}")
             return retval
 
         def check_cut_state(kgraph):
-            retval = kgraph.is_object_cut(obj_name, verb)
-            print(f"POSTCONDITION check_cut_state({obj_name}, {verb}) => {retval}")
+            retval = kgraph.is_object_cut(item_name, verb)
+            print(f"POSTCONDITION check_cut_state({item_name}, {verb}) => {retval}")
             return retval
 
         instr_words = instr.split()
         enhanced_instr_words, with_objs = adapt_tw_instr(instr_words, gi)
         post_checks = []
-
+        item_name = None
         if instr == 'prepare meal':  # explicit singleton for PrepareMeal
             act = PrepareMeal
         else:
@@ -72,16 +72,16 @@ class GTRecipeReader(DecisionModule):
                 obj_words = instr_words[1:]
                 if obj_words[0] == 'the':
                     obj_words = obj_words[1:]
-                obj_name = ' '.join(obj_words)
-                with_objs.append(obj_name)
+                item_name = ' '.join(obj_words)
+                # with_objs.append(item_name)
             print("GT RecipeReader: mapping <{}> -> {}".format(instr, enhanced_instr_words))
             act = StandaloneAction(" ".join(enhanced_instr_words))
             if verb in CUT_WITH:
                 if self.use_groundtruth:
-                    if gi.gt.is_object_cut(obj_name, verb):
+                    if gi.gt.is_object_cut(item_name, verb):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
-                elif gi.kg.get_entity(obj_name):  # if we've already encountered this object
+                elif gi.kg.get_entity(item_name):  # if we've already encountered this object
                     if check_cut_state(gi.kg):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
@@ -90,10 +90,10 @@ class GTRecipeReader(DecisionModule):
                     post_checks.append(check_cut_state)
             elif verb in COOK_WITH:
                 if self.use_groundtruth:
-                    if gi.gt.is_object_cooked(obj_name, verb):
+                    if gi.gt.is_object_cooked(item_name, verb):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
-                elif gi.kg.get_entity(obj_name):  # if we've already encountered this object
+                elif gi.kg.get_entity(item_name):  # if we've already encountered this object
                     if check_cooked_state(gi.kg):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
@@ -102,11 +102,19 @@ class GTRecipeReader(DecisionModule):
                     post_checks.append(check_cooked_state)
 
         task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
+        if item_name:
+            task.prereq.add_required_item(item_name)
+        for objname in with_objs:
+            if self._knowledge_graph(gi).is_object_portable(
+                    objname):  # TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
+                task.prereq.add_required_item(objname)
+            else:
+                task.prereq.add_required_object(objname)
         if post_checks:
             print("Adding postconditions to task", task, post_checks)
             for func in post_checks:
                 task.add_postcondition(func)
-        print(task, task._postcondition_checks)
+        print("convert_cookbook_step_to_task:", task, with_objs, task._postcondition_checks)
         return task, with_objs
 
     def convert_instructions_to_tasks(self, gi: GameInstance):
@@ -128,19 +136,14 @@ class GTRecipeReader(DecisionModule):
             else:
                 actions.append((act, instr))
                 # task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
-                for objname in with_objs:
-                    if kg.is_object_portable(objname):  #TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
-                        task.prereq.add_required_item(objname)
-                    else:
-                        task.prereq.add_required_object(objname)
-                    tasks.append(task)
+                tasks.append(task)
         if eat:
             # eat.prereq.required_inventory.append('meal')  #NOTE: this causes problems because we attempt to search for the meal
             for task in tasks:
                 prep.prereq.add_required_task(task)
             prep.prereq.add_required_location('kitchen')  # meals can be prepared only in the kitchen\
-            for item_name in self.ingredients:
-                prep.prereq.add_required_item(item_name)
+            for ingredient_name in self.ingredients:
+                prep.prereq.add_required_item(ingredient_name)
             return eat
         elif tasks:
             print("WARNING: didn't find Prepare Meal instruction")

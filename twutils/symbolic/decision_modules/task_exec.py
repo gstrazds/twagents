@@ -14,7 +14,10 @@ def _check_preconditions(task: Task, gi: GameInstance) -> bool:
         # print("_check_preconditions: using kg=", kg)
         print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
     else:
-        print("task ... preconditions SATISFIED")
+        if task.prereq.is_empty:
+            print(f"task {task} has no prereqs")
+        else:
+            print(f"task {task}: all preconditions {task.prereq} SATISFIED")
     return all_satisfied
 
 class TaskExecutor(DecisionModule):
