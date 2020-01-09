@@ -154,7 +154,7 @@ class GTAcquire(DecisionModule):
                     self.remove_required_obj(obj_to_find)
                     gi.event_stream.push(NoLongerNeed([obj_to_find], groundtruth=self.use_groundtruth))
             elif len(still_needed) == len(whereabouts_unknown):  # we don't know where any of the sought objects are
-                gi.event_stream.push(NeedToGoTo(whereabouts_unknown[0], groundtruth=self.use_groundtruth))
+                gi.event_stream.push(NeedToGoTo(f'TryToFind({whereabouts_unknown[0]})', groundtruth=self.use_groundtruth))
                 # will invoke GTNavigator.set_goal_by_name() to navigate to closest UnknownLocation
             # self._eagerness = 0
         else:

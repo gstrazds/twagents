@@ -189,9 +189,9 @@ class GTNavigator(DecisionModule):
             current_loc = self._knowledge_graph(gi).player_location
             ## if self.open_all_containers:
             for entity in list(current_loc.entities):
-                print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
+                # print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
                 if entity.is_container and entity.state.openable:
-                    print(f"GTNavigator {entity}.is_open:{entity.state.is_open}")
+                    print(f"GTNavigator -- {entity}.is_open:{entity.state.is_open}")
                     if entity.state.openable and not entity.state.is_open:
                         response = yield Open(entity)
                         entity.open()

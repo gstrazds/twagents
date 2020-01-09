@@ -795,7 +795,7 @@ class ConnectionGraph:
                 self._out_graph[from_location][direction] = connection
 
         if not Location.is_unknown(to_location):   # don't index connections incoming to UnknownLocation
-            incoming_rel = ConnectionRelation(direction, from_location)
+            incoming_rel = ConnectionRelation(from_location=from_location, direction=direction)
             if to_location not in self._in_graph:
                 added_new.append(f"in_graph[{to_location.name}] {incoming_rel}")
                 self._in_graph[to_location] = {incoming_rel: connection}

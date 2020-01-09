@@ -65,7 +65,9 @@ class TaskExecutor(DecisionModule):
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
             if activating_task.is_done:
+
                 self.pop_task(activating_task)
+                self.rescind_broadcasted_preconditions(activating_task, gi)
                 continue   # loop to get next potentially active task
             if not activating_task.is_active:
                 assert not activating_task.is_done, f"Unexpected: {activating_task}.is_done !"
@@ -171,8 +173,10 @@ class TaskExecutor(DecisionModule):
         use_groundtruth = task.use_groundtruth
         prereqs = task.prereq
         if prereqs.required_inventory:
+            print("rescind_broadcasted_preconditions INVENTORY:", task, prereqs.required_inventory)
             gi.event_stream.push(NoLongerNeed(prereqs.required_inventory, groundtruth=use_groundtruth))
         if prereqs.required_objects:
+            print("rescind_broadcasted_preconditions OBJECTS:", task, prereqs.required_objects)
             gi.event_stream.push(NoLongerNeed(objnames=prereqs.required_objects, groundtruth=use_groundtruth))
 
 
@@ -218,9 +222,14 @@ class TaskExecutor(DecisionModule):
         while self.task_stack and self.task_stack[-1].is_active:
             # try:
             active_task = self.task_stack[-1]
-            all_satisfied = _check_preconditions(active_task, gi)
-            if all_satisfied or active_task.is_done:
-                next_action = active_task.get_next_action(observation,gi)
+            prereqs_satisfied = False
+            if not active_task.is_done:
+                prereqs_satisfied = _check_preconditions(active_task, gi)
+            else:
+                self.rescind_broadcasted_preconditions(active_task, gi)
+
+            if prereqs_satisfied or active_task.is_done:
+                next_action = active_task.get_next_action(observation,gi)  # ?get next action from DONE task?
             else:
                 self.handle_missing_preconditions(active_task.missing, gi,
                                                   use_groundtruth=active_task.use_groundtruth)
