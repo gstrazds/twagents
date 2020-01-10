@@ -806,7 +806,7 @@ class CustomAgent:
         if not self._episode_has_started:
             self._start_episode(obs, infos)
 
-        if self.mode == "eval":
+        if True or self.mode == "eval":
             return self.act_eval(obs, scores, dones, infos)
 
         if self.current_step > 0:

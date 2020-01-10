@@ -22,7 +22,7 @@ import urllib
 
 
 NB_EPISODES = 2 #10
-MAX_EPISODE_STEPS = 100
+MAX_EPISODE_STEPS = 110  #100
 TIMEOUT = 6 * 3600  # 6 hours
 PORT = 29592
 DEFAULT_IMAGE = "tavianator/textworld-codalab"
@@ -192,7 +192,8 @@ def _play_game(agent_class, gamefile):
         # HACK: tell the remote agent the game ID so it can talk to the right remote agent
         agent._game_id = game_name
 
-    agent.eval()
+    # agent.eval()
+    agent.train()
     requested_infos = agent.select_additional_infos()
     _validate_requested_infos(requested_infos)
 
@@ -211,6 +212,7 @@ def _play_game(agent_class, gamefile):
                                             max_episode_steps=MAX_EPISODE_STEPS,
                                             name=name)
     env_id = textworld.gym.make_batch(env_id, batch_size=1)
+    # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
     env = gym.make(env_id)
 
     for no_episode in range(NB_EPISODES):
