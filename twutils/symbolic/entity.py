@@ -478,8 +478,9 @@ class Thing(Entity):
             self._container.reset(kg)
         if self._supporting_surface:
             self._supporting_surface.reset(kg)
-        self.location = self._init_loc
-        self.state.reset()
+        if not Location.is_unknown(self._init_loc):
+            self.location = self._init_loc
+        self.state.reset(self)
 
     def open(self) -> bool:
         if self._type == DOOR or self.is_container:
@@ -573,6 +574,12 @@ class Door(Thing):
                     self._init_loc2 = new_location
                 if not self.direction_from_loc2:
                     self.direction_from_loc2 = ConnectionRelation(from_location=new_location, direction=None)
+
+    def reset(self, kg):
+        super().reset(kg)
+        #NOTE: since doors can't be moved, we dont have to reset their locations
+        # if not Location.is_unknown(self._init_loc2):
+        #     self._2nd_loc = self._init_loc2
 
     def add_direction_rel(self, rel: ConnectionRelation):
         if rel.from_location == self.location:

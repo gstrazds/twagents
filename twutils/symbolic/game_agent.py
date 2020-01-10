@@ -30,12 +30,32 @@ class TextGameAgent:
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
+        self.gt_nav = None
+        self.modules = []
+        self.active_module    = None
+        self.action_generator = None
+        self.first_step       = True
+        self._valid_detector  = None  #LearnedValidDetector()
+        self._last_action = None
+        if env_name and rom_name:
+            self.rom_name = rom_name
+            self.env_name = env_name
+            self.step_num = 0
+        self._init_modules()
+
+    def reset(self):
+        groundtruth_graph = KnowledgeGraph(None, groundtruth=True)    # start fresh with empty graph
+        observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
+        observed_knowledge_graph.reset()
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
+        self._init_modules()
+
+    def _init_modules(self):
         self.gt_nav = GTNavigator(False, use_groundtruth=False)
         self.modules = [
                         TaskExecutor(True),
                         self.gt_nav,  # GTNavigator
                         GTRecipeReader(use_groundtruth=False),
-                        # GTEnder(True),
                         GTAcquire(True, use_groundtruth=False),
                         #Explorer(True),
                         # Navigator(True),
@@ -47,13 +67,9 @@ class TextGameAgent:
                         ]
         self.active_module    = None
         self.action_generator = None
-        self.first_step       = True
         self._valid_detector  = None  #LearnedValidDetector()
+        self.first_step       = True
         self._last_action = None
-        if env_name and rom_name:
-            self.rom_name = rom_name
-            self.env_name = env_name
-            self.step_num = 0
 
     def setup_logging(self, rom_name, output_subdir):
         """ Configure the logging facilities. """
@@ -174,7 +190,7 @@ class TextGameAgent:
         # print("GROUND TRUTH")
         # sort into separate lists to control the order in which facts get processed
         # Reinitialize, build complete GT KG from scratch each time
-        self.gi._set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
+        self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
         #TODO (Disabled ground truth)
         # self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))

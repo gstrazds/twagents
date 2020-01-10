@@ -461,6 +461,7 @@ class CustomAgent:
         self.nb_epochs = self.config['training']['nb_epochs']
         self._debug_quit = False
         self.game_ids = []
+        self.agents = []
 
         # Set the random seed manually for reproducibility.
         seedval = self.config['general']['random_seed']
@@ -532,7 +533,7 @@ class CustomAgent:
             score: The score obtained so far for each game.
             infos: Additional information for each game.
         """
-        print(f"_end_episode <Step {self.current_step}>", end='')
+        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}>", end='')
         for idx, actiontxt in enumerate(self.prev_actions):
             if len(self.game_ids) > idx:
                 game = self.game_ids[idx]
@@ -607,20 +608,29 @@ class CustomAgent:
         self.scores = []
         self.dones = []
         self.prev_actions = ["" for _ in range(len(obs))]
-        self.agents = []
-        self.game_ids = []
         for idx in range(len(obs)):
             if 'game_id' in infos:
                 game_id = parse_gameid(infos['game_id'][idx])
-                self.game_ids.append(infos['game_id'][idx])
+                if idx < len(self.game_ids):
+                    assert game_id == self.game_ids[idx]
+                else:
+                    self.game_ids.append(game_id)
             else:
                 game_id = str(idx)
-            self.agents.append(
-                TextGameAgent(
-                    self.config['general']['random_seed'],  #seed
-                    "TW",     # rom_name
-                    game_id)  # env_name
-            )
+                if idx == len(self.game_ids):
+                    self.game_ids.append(game_id)
+
+            if idx == len(self.agents):
+                self.agents.append(
+                    TextGameAgent(
+                        self.config['general']['random_seed'],  #seed
+                        "TW",     # rom_name
+                        game_id)  # env_name
+                )
+            else:
+                assert idx < len(self.agents)
+                if self.current_episode > 0:
+                    self.agents[idx].reset()
 
         self.vocab.init_with_infos(infos)
         self.prev_obs = obs
@@ -698,8 +708,8 @@ class CustomAgent:
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
                         player_location, prevaction, scores[idx],)) # obs[idx]))
-                    if dones[idx]:   # has reached terminal state
-                        agent.gi.kg.reset() # try to remember what the world was like at the beginning of this episode
+                    # if dones[idx]:   # has reached terminal state
+                    #     agent.gi.kg.reset()   # remember what the world was like at the beginning of this episode
                 self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)

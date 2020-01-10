@@ -24,11 +24,16 @@ class EntityState:
     def remove(self):
         self.exists = False   # this Entity no longer exists within the world
 
-    def reset(self):
+    def reset(self, entity):
         """ reset state to what it was when we first encountered this Entity"""
-        self.exists = True
+        if entity.name == 'meal':
+            self.exists = False
+        else:
+            self.exists = True
         for prop_name in self._init_states:
-            self._state_values[prop_name] = self._init_states[prop_name]
+            print(f"Reseting entity_state {entity}.[{prop_name}] = {self._init_states[prop_name]}")
+            #self._state_values[prop_name] = self._init_states[prop_name]
+            self._state_values[prop_name] = None  #self._init_states[prop_name]
 
     def __getattr__(self, prop_name):
         if self._has_prop(prop_name):

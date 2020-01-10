@@ -270,8 +270,11 @@ class KnowledgeGraph:
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
         kg = self
+        print(f"RESETTING Knowledge Graph {kg}")
         # self.inventory.reset(kg)  -- done in _player.reset()
+        print("***** reset _player")
         self._player.reset(kg)
+        print("***** reset locations")
         for location in self.locations:
             location.reset(kg)
 
@@ -281,13 +284,18 @@ class KnowledgeGraph:
 
     def is_object_cut(self, objname: str, verb: str) -> bool:
         entity = self.get_entity(objname)
-        return entity is not None and entity.state.cuttable and entity.state.is_cut.startswith(verb)
+        return entity is not None and entity.state.cuttable \
+               and entity.state.is_cut and entity.state.is_cut.startswith(verb)
 
     def is_object_cooked(self, objname: str, verb: str) -> bool:
+        is_cooked = False
         entity = self.get_entity(objname)
-        return entity is not None and entity.state.cookable and \
-                         (entity.state.is_cooked.startswith(verb) or
-                          verb == 'fry' and entity.state.is_cooked == 'fried')
+        if entity is not None and entity.state.cookable:
+            cooked_state = entity.state.is_cooked
+            if cooked_state:
+                 is_cooked = (cooked_state.startswith(verb) or
+                    cooked_state == 'fried' and verb == 'fry')
+        return is_cooked
 
     def __str__(self):
         s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')

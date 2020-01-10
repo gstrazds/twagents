@@ -81,11 +81,12 @@ class GTRecipeReader(DecisionModule):
                     if gi.gt.is_object_cut(item_name, verb):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
-                elif gi.kg.get_entity(item_name):  # if we've already encountered this object
-                    if check_cut_state(gi.kg):
-                        act = NoOp
-                        instr = "REDUNDANT: " + instr
                 else:
+                    if gi.kg.get_entity(item_name):  # if we've already encountered this object
+                        if check_cut_state(gi.kg):
+                            print("REDUNDANT:", instr)
+                            # act = NoOp
+                            # instr = "REDUNDANT: " + instr
                     # add postconditions to check for already done
                     post_checks.append(check_cut_state)
             elif verb in COOK_WITH:
@@ -93,11 +94,10 @@ class GTRecipeReader(DecisionModule):
                     if gi.gt.is_object_cooked(item_name, verb):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
-                elif gi.kg.get_entity(item_name):  # if we've already encountered this object
-                    if check_cooked_state(gi.kg):
-                        act = NoOp
-                        instr = "REDUNDANT: " + instr
                 else:
+                    if gi.kg.get_entity(item_name):  # if we've already encountered this object
+                        if check_cooked_state(gi.kg):
+                            print("REDUNDANT:", instr)
                     # add postconditions to check for already done
                     post_checks.append(check_cooked_state)
 

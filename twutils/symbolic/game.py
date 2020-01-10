@@ -36,10 +36,10 @@ class GameInstance:
         self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]  #makes a copy of list
         self.kg = None
         self.gt = None
-        self._set_knowledge_graph(kg, groundtruth=False)
-        self._set_knowledge_graph(gt, groundtruth=True)
+        self.set_knowledge_graph(kg, groundtruth=False)
+        self.set_knowledge_graph(gt, groundtruth=True)
 
-    def _set_knowledge_graph(self, graph, groundtruth=False):  # graph: knowledge_graph.KnowledgeGraph):
+    def set_knowledge_graph(self, graph, groundtruth=False):  # graph: knowledge_graph.KnowledgeGraph):
         old_graph = self.gt if groundtruth else self.kg
         if old_graph is not None:
             old_graph.event_stream = None

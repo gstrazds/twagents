@@ -21,7 +21,7 @@ import tqdm
 import urllib
 
 
-NB_EPISODES = 1 #10
+NB_EPISODES = 2 #10
 MAX_EPISODE_STEPS = 100
 TIMEOUT = 6 * 3600  # 6 hours
 PORT = 29592
