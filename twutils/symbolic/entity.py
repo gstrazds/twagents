@@ -29,6 +29,7 @@ SLOT = 'slot'
 # define some additional special type codes
 UNKNOWN_OBJ_TYPE = 'UNKNOWN'
 UNKNOWN_LOCATION = 'UNK_LOC'
+NONEXISTENCE_LOC = 'NOWHERE'
 CONTAINED_LOCATION = 'C_LOC'
 SUPPORTED_LOCATION = 'S_LOC'
 
@@ -119,8 +120,10 @@ class Location(Entity):
     def __init__(self, name='', description='', parent=None, entitytype=None):
         if not name:
             name = self.extract_name(description)
-        if entitytype and entitytype != 'r' and entitytype != UNKNOWN_LOCATION:    # only ROOMs have no parent in the knowledge graph
-            assert parent is not None
+        if entitytype and entitytype != 'r' \
+                and entitytype != UNKNOWN_LOCATION \
+                and entitytype != NONEXISTENCE_LOC:
+            assert parent is not None, f"only ROOMs should have no parent in the knowledge graph: {name}:{entitytype}"
         super().__init__(name=name, description=description, entitytype=entitytype)
         # if name:
         #     self._name = name

@@ -248,7 +248,8 @@ class ConsumeAction(SingleAction):
 
     def apply(self, gi: GameInstance):
         self.entity.add_attribute(Edible)
-        self.entity.state.remove()
+        assert False, f"TODO: {self.verb} = move self.entity to kg.Nowhere"
+        # self.entity.state.remove()
         # gi.add_entity_attribute(self.entity, Edible)
 
 

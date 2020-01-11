@@ -17,19 +17,14 @@ class EntityState:
     _meta_properties = dict(map(reversed, _state_properties.items()))
 
     def __init__(self):
-        self.exists = True
         self._state_values = {}
         self._init_states = {}
 
-    def remove(self):
-        self.exists = False   # this Entity no longer exists within the world
+    # def remove(self):
+    #     self.exists = False   # this Entity no longer exists within the world
 
     def reset(self, entity):
         """ reset state to what it was when we first encountered this Entity"""
-        if entity.name == 'meal':
-            self.exists = False
-        else:
-            self.exists = True
         for prop_name in self._init_states:
             print(f"Reseting entity_state {entity}.[{prop_name}] = {self._init_states[prop_name]}")
             #self._state_values[prop_name] = self._init_states[prop_name]
@@ -60,7 +55,7 @@ class EntityState:
                 self._get_meta_prop(prop)]
 
     def _get_meta_prop(self, prop_name: str):
-        """e.g. _is_meta('is_open') => 'openable')  or _is_meta('is_locked') => 'lockable'"""
+        """e.g. _get_meta_prop('is_open') => 'openable')  or _get_meta_prop('is_locked') => 'lockable'"""
         meta_prop = EntityState._state_properties.get(prop_name, None)
         if meta_prop and self._has_prop(prop_name):
             return meta_prop
@@ -68,14 +63,14 @@ class EntityState:
 
     def _has_prop(self, state_prop):
         """ state_prop should be a value from state_properties
-            e.g. _is_x('is_open') or _is_x('is_locked')"""
+            e.g. _has_prop('is_open') or _has_prop('is_locked')"""
         return state_prop in self._state_values
 
     def add_state_variable(self, metaprop, stateprop, initial_value=None):
         if metaprop in EntityState._meta_properties:
             assert stateprop == EntityState._meta_properties[metaprop]
             if self._has_prop(stateprop):
-                print(f"WARNING: {self} is already {metaprop}: {stateprop}={self._get_state_val(stateprop)}")
+                print(f"WARNING: {self} already {metaprop}: {stateprop}={self._get_state_val(stateprop)}")
                 if initial_value != self._get_state_val(stateprop):
                     if initial_value:   # Don't set it if it is indeterminate
                         print(
@@ -95,7 +90,7 @@ class EntityState:
         if not state_prop in EntityState._state_properties:
             print(f"WARNING: setting unknown state variable {state_prop}={val}")
             raise AttributeError(f'{self.__class__.__name__}.{state_prop} is invalid.')
-        if not self._init_states.get(state_prop, None):
+        if self._init_states.get(state_prop, None) is None:
             self._init_states[state_prop] = val
         prev_val = self._state_values.get(state_prop, None)
         self._state_values[state_prop] = val
