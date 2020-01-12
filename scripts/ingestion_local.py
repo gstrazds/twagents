@@ -211,8 +211,8 @@ def _play_game(agent_class, gamefile):
     env_id = textworld.gym.register_games([gamefile], requested_infos,
                                             max_episode_steps=MAX_EPISODE_STEPS,
                                             name=name)
-    env_id = textworld.gym.make_batch(env_id, batch_size=1)
-    # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
+    # env_id = textworld.gym.make_batch(env_id, batch_size=1)
+    env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=(agent.batch_size > 1))
     env = gym.make(env_id)
 
     for no_episode in range(NB_EPISODES):

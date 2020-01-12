@@ -98,6 +98,9 @@ class NavAction(StandaloneAction):
     def __init__(self, verb):
         super().__init__(verb)
 
+    def text(self):
+        return "go {}".format(self.verb)
+
     def apply(self, gi: GameInstance):
         to_loc = gi.kg.connections.navigate(gi.kg.player_location, self)
         assert to_loc, "Error: Unknown connection"

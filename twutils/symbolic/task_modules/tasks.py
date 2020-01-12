@@ -41,7 +41,7 @@ class SequentialActionsTask(Task):
 
 class SingleActionTask(SequentialActionsTask):
     def __init__(self, act: Action, description=None, use_groundtruth=False):
-        actions = [act]
+        actions = [act] if act else []
         if not description:
             description = f"SingleActionTask[{str(act)}]"
         else:
@@ -52,15 +52,3 @@ class SingleActionTask(SequentialActionsTask):
     def action(self):
         return self.actions[0] if self.actions else None
 
-    def _generate_actions(self, gi) -> Action:
-        """ Generates a sequence of actions.
-        :type gi: GameInstance
-        """
-        ignored = yield   # required handshake
-        while self._current_idx < len(self.actions) and not self._failed:
-            self._done = True  #FIXME: HACK to shortcircuit preconditions check for next iteration
-            result = yield self.actions[self._current_idx]
-            self._current_idx += 1
-            if not self.check_result(result, gi):
-                self._failed = True
-        return None

@@ -682,13 +682,13 @@ class KnowledgeGraph:
                 connection.doorway = door  # add this DOOR to the Connection
             if self.groundtruth and door:
                 door.state.open()   # assume that it's open, until we find a closed() fact...
-        for fact in other_facts:
-            if fact.name == 'closed' and fact.arguments[0].type == 'd':
-                doorname = fact.arguments[0].name
-                doors = self.entities_with_name(doorname, entitytype=DOOR)
-                assert len(doors) == 1
-                door = list(doors)[0]
-                door.state.close()
+        # for fact in other_facts:
+        #     if fact.name == 'closed' and fact.arguments[0].type == 'd':
+        #         doorname = fact.arguments[0].name
+        #         doors = self.entities_with_name(doorname, entitytype=DOOR)
+        #         assert len(doors) == 1
+        #         door = list(doors)[0]
+        #         door.state.close()
 
         if player_loc:  # UPDATE player_location
             prev_loc = self.player_location
@@ -696,18 +696,25 @@ class KnowledgeGraph:
                 if self.groundtruth:
                     print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
                 else:
-                    print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
-                    if prev_action and player_loc != self._unknown_location and prev_loc != self._unknown_location:
-                        verb = prev_action.split()[0]
-                        direction_rel = verb + '_of'
-                        if direction_rel in DIRECTION_ACTIONS:
-                            door = None   # TODO: remember door directions relative to rooms, and look up the appropr door
-                            new_connection = Connection(prev_loc,
-                                                        DIRECTION_ACTIONS[direction_rel],
-                                                        player_loc,
-                                                        doorway=door)
-                            self.add_connection(new_connection, with_inverse=True)
-                # if player_loc != self._unknown_location:
+                    if prev_action:
+                        assert isinstance(prev_action, Action)
+                        print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
+                        if prev_action and player_loc != self._unknown_location and prev_loc != self._unknown_location:
+                            prev_action_words = prev_action.text().split()
+                            verb = prev_action_words[0]
+                            if verb == 'go':
+                                verb = prev_action_words[1]
+                            direction_rel = verb + '_of'
+                            if direction_rel not in DIRECTION_ACTIONS:
+                                print(f"WARNING: UNEXPECTED direction: {verb} (maybe '{prev_action}' is not a NavAction?)")
+                            else:
+                                door = None   # TODO: remember door directions relative to rooms, and look up the appropr door
+                                new_connection = Connection(prev_loc,
+                                                            DIRECTION_ACTIONS[direction_rel],
+                                                            player_loc,
+                                                            doorway=door)
+                                self.add_connection(new_connection, with_inverse=True)
+                # if not Location.is_unknown(player_loc):
         for fact in at_facts:
             # print("DEBUG at_fact", fact)
             o = fact.arguments[0]
@@ -987,7 +994,7 @@ class Connection:
 
     def to_string(self, prefix=''):
         return prefix + "{} --({}{})--> {}".format(self.from_location.name,
-                                                   self.action,
+                                                   self.action.verb,
                                                    _format_doorinfo(self.doorway),
                                                    self.to_location.name)
 

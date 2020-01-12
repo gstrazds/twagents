@@ -16,7 +16,8 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.game_agent import TextGameAgent
-from symbolic.event import NeedToAcquire, NeedToGoTo
+from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
+from symbolic.task_modules import RecipeReaderTask
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
 
@@ -524,6 +525,13 @@ class CustomAgent:
         self.init_with_infos(obs, infos)
         self._episode_has_started = True
 
+    def _get_gameid(self, idx):
+        if len(self.game_ids) > idx:
+            gameid = self.game_ids[idx]
+        else:
+            gameid = str(idx)
+        return gameid
+
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
         """
         Tell the agent the episode has terminated.
@@ -533,14 +541,9 @@ class CustomAgent:
             score: The score obtained so far for each game.
             infos: Additional information for each game.
         """
-        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}>", end='')
-        for idx, actiontxt in enumerate(self.prev_actions):
-            if len(self.game_ids) > idx:
-                game = self.game_ids[idx]
-            else:
-                game = idx
-            print(f" :{game}: [{actiontxt}]", end='')
-        print('\n')
+        all_endactions = " ".join(
+            [":{}: [{}]".format(self._get_gameid(idx), actiontxt) for idx, actiontxt in enumerate(self.prev_actions)])
+        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
         self.finish()
         self._episode_has_started = False
 
@@ -607,7 +610,7 @@ class CustomAgent:
         # reset agent, get vocabulary masks for verbs / adjectives / nouns
         self.scores = []
         self.dones = []
-        self.prev_actions = ["" for _ in range(len(obs))]
+        self.prev_actions = ['' for _ in range(len(obs))]
         for idx in range(len(obs)):
             if 'game_id' in infos:
                 game_id = parse_gameid(infos['game_id'][idx])
@@ -699,18 +702,15 @@ class CustomAgent:
             # Update the agent.
             if use_nail_agent:
                 for idx, agent in enumerate(self.agents):
-                    prevobs = self.prev_obs
-                    prevaction = self.prev_actions[idx]
-                    agent.observe(prevobs[idx], prevaction, scores[idx], obs[idx], dones[idx])
+                    agent.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
                     # Output this step.
                     player_location = agent.gt_nav._knowledge_graph(agent.gi).player_location
                     print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
-                        player_location, prevaction, scores[idx],)) # obs[idx]))
-                    # if dones[idx]:   # has reached terminal state
-                    #     agent.gi.kg.reset()   # remember what the world was like at the beginning of this episode
-                self.prev_obs = obs  # save for constructing transition during next step
+                        player_location, self.prev_actions[idx], scores[idx],)) # obs[idx]))
+
+            self.prev_obs = obs  # save for constructing transition during next step
             self.scores.append(scores)
             self.dones.append(dones)
 
@@ -720,62 +720,58 @@ class CustomAgent:
 
         if use_nail_agent:
             chosen_strings = []
-            agent_id = 0
             game_id = None
-            for idx, (desctext, agent) in enumerate(zip(obs, self.agents)):
-                assert idx == agent_id
-                print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, agent_id, desctext))
+            for idx, (obstxt, agent) in enumerate(zip(obs, self.agents)):
+                # simplify the observation text if it includes notification about incremented score
+                if "Your score has just" in obstxt:
+                    obstxt2 = '\n'.join(
+                        [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
+                    ).strip()
+                else:
+                    obstxt2 = obstxt.strip()
+                print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, idx, obstxt2))
                 if 'inventory' in infos:
-                    print("\tINVENTORY:", infos['inventory'][agent_id])
+                    print("\tINVENTORY:", infos['inventory'][idx])
                 if 'game_id' in infos:
-                    print("infos[game_id]=", infos['game_id'][agent_id])
+                    print("infos[game_id]=", infos['game_id'][idx])
                     #CHEAT on one specific game (to debug some new code)
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
+
+                if self._debug_quit and self._debug_quit == self.current_step:
+                    dbg("[{}] DEBUG QUIT! step={}".format(idx, self.current_step))
+                    # exit(0)
+
                 if 'facts' in infos:
-                    world_facts = infos['facts'][agent_id]
                     verbose = (self.current_step == 0)
                     if agent.gt_nav == agent.active_module and agent.gt_nav._path_idx == len(agent.gt_nav.path):
                         verbose = True
+
+                    world_facts = infos['facts'][idx]
+                    agent.set_ground_truth(world_facts)
                     observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
                     print("FACTS IN SCOPE:")
                     for fact in observable_facts:
                         print('\t', fact)
                         # print_fact(game, fact)
+                else:
+                    observable_facts = None
 
-                    agent.set_ground_truth(world_facts)
-                    if self.current_step == 0:
-                        # agent.gt_navigate("kitchen")  # set nav destination (using Ground Truth knowledge)
-                        agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=agent.gt_nav.use_groundtruth))
-                        # if infos['game_id'][agent_id] == 'tw-cooking-recipe1+open+go6-qqqrhLbXf7bOTRoa.ulx':
-                        #     agent.gi.event_stream.push(NeedToAcquire(objnames=['block of cheese'], groundtruth=True))
-                            # agent.modules[0].add_required_obj('block of cheese')
-                    #     actiontxt = "go west"
-                    # elif self.current_step == 1:
-                    #     actiontxt = "go north"
-                    # else:
-                    if self._debug_quit and self._debug_quit == self.current_step:
-                        dbg("[{}] DEBUG QUIT! step={}".format(agent_id, self.current_step))
-                        # exit(0)
-                    # if self.current_step > 2 and player_room.name == 'kitchen' and not self._debug_quit:
-                    #     self._debug_quit = self.current_step + 2  # early abort after executing one more action
-                    if self.current_step > 0 and observable_facts:
-                        # TODO: CLEANUP - this should really be done as part of/after agent.observe(), above
-                        # world = World.from_facts(facts)
-                        # add obs_facts to our KnowledgeGraph (self.gi.kg)
-                        agent.gi.kg.update_facts(observable_facts, prev_action=self.prev_actions[agent_id])
+                if self.current_step == 0:
+                    # set nav destination (using Ground Truth knowledge)
+                    # agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=agent.gt_nav.use_groundtruth))
+                    # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
+                    agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
 
-                actiontxt = agent.choose_next_action(desctext)
-                print("NAIL[{}] choose_next_action -> {}".format(agent_id, actiontxt))
+                actiontxt = agent.choose_next_action(obstxt2, observable_facts=observable_facts, prev_action=self.prev_actions[idx])
+                print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))
 
                 chosen_strings.append(actiontxt)
-                agent_id += 1
         else:
             input_description, _ = self.get_game_step_info(obs, infos)
             word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
             _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-            chosen_indices = word_indices_maxq
-            chosen_indices = [item.detach() for item in chosen_indices]
+            chosen_indices = [item.detach() for item in word_indices_maxq]
             chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
         self.current_step += 1

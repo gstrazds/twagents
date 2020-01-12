@@ -55,13 +55,13 @@ class TextGameAgent:
         self.modules = [
                         TaskExecutor(True),
                         self.gt_nav,  # GTNavigator
-                        GTRecipeReader(use_groundtruth=False),
                         GTAcquire(True, use_groundtruth=False),
-                        #Explorer(True),
+                        # GTRecipeReader(use_groundtruth=False),
+                        # Explorer(True),
                         # Navigator(True),
-                        #Idler(True),
-                        #Examiner(True),
-                        #Hoarder(True),
+                        # Idler(True),
+                        # Examiner(True),
+                        # Hoarder(True),
                         # Interactor(True),
                         # YesNo(True), YouHaveTo(True), Darkness(True)
                         ]
@@ -99,44 +99,49 @@ class TextGameAgent:
         self.action_generator = self.active_module.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
 
-    def generate_next_action(self, observation):
-        """Returns the action selected by the current active module and
-        selects a new active module if the current one is finished.
-
-        """
-        next_action = None
-        failed_counter = 0
-        while not next_action:
-            failed_counter += 1
-            if failed_counter > 10:
-                gv.dbg(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|")
-                return "Look"
-            try:
-                next_action = self.action_generator.send(observation)
-                print("[NAIL] (generate_next_action): ({}) -> |{}|".format(type(self.active_module).__name__, next_action))
-            except StopIteration:
-                self.consume_event_stream()
-                self.elect_new_active_module()
-        return next_action.text()
-
     def consume_event_stream(self):
         """ Each module processes stored events then the stream is cleared. """
         for module in self.modules:
             module.process_event_stream(self.gi)
         self.gi.event_stream.clear()
 
-    def choose_next_action(self, observation):
+    def generate_next_action(self, observation):
+        """Returns the action selected by the current active module and
+        selects a new active module if the current one is finished.
+        """
+        next_action = None
+        failed_counter = 0
+        while not next_action:
+            failed_counter += 1
+            if failed_counter > 9:
+                gv.dbg(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|")
+                # return "Look"
+                next_action = Look
+            else:
+                try:
+                    next_action = self.action_generator.send(observation)
+                    print("[NAIL] (generate_next_action): ({}) -> |{}|".format(type(self.active_module).__name__, next_action))
+                except StopIteration:
+                    self.consume_event_stream()
+                    self.elect_new_active_module()
+        return next_action
+
+    def choose_next_action(self, observation, observable_facts=None, prev_action=None):
+        if prev_action and self._last_action:
+            assert prev_action == self._last_action.text()
 
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
             if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
                 gv.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
+        # Output a snapshot of the kg.
+        # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
+        #     f.write(str(self.knowledge_graph)+'\n\n')
+        # self.step_num += 1
 
-            # Output a snapshot of the kg.
-            # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
-            #     f.write(str(self.knowledge_graph)+'\n\n')
-            # self.step_num += 1
+        if observable_facts and self.gi.kg:
+            self.gi.kg.update_facts(observable_facts, prev_action=self._last_action)
 
         observation = observation.strip()
         if self.first_step:
@@ -144,12 +149,11 @@ class TextGameAgent:
             self.first_step = False
             #GVS# return 'look' # Do a look to get rid of intro text
 
-        if not self.gi.kg.player_location:
-            loc = Location(description=observation)
-            ev = self.gi.kg.add_location(loc)
-            self.gi.kg.set_player_location(loc)
-            self.gi.kg._init_loc = loc
-            # self.gi.event_stream.push(ev)
+            if not self.gi.kg.player_location:
+                assert False, "This code is no longer used"
+                loc = Location(description=observation)
+                ev = self.gi.kg.add_location(loc)
+                self.gi.kg.set_player_location(loc)
 
         self.consume_event_stream()
 
@@ -157,43 +161,31 @@ class TextGameAgent:
             self.elect_new_active_module()
 
         next_action = self.generate_next_action(observation)
-        self._last_action = next_action   # remember what we were doing
-        return next_action
+        self._last_action = next_action
+        return next_action.text()
 
-    def observe(self, prev_obs, action, score, new_obs, terminal):
-        """ Observe will be used for learning from rewards. """
+    def observe(self, prev_obs, prev_action, score, new_obs, terminal):
+        """ Observe could be used for learning from rewards. """
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
 #        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
-#        if kg.player_location:
-#            dbg("[EAGERNESS] {}".format(' '.join([str(module.get_eagerness()) for module in self.modules[:5]])))
 
         # NewTransitionEvent unused by current code
-        # self.gi.event_stream.push(NewTransitionEvent(prev_obs, action, score, new_obs, terminal))
-        if action:
-            assert action == self._last_action
-        self.gi.action_recognized(action, new_obs)  # Update the unrecognized words
-        # if terminal:
-        #     self.gi.kg.reset()
+        # self.gi.event_stream.push(NewTransitionEvent(prev_obs, prev_action, score, new_obs, terminal))
+        if prev_action and self._last_action:
+            assert prev_action == self._last_action.text()
+        self.gi.action_recognized(prev_action, new_obs)  # Update the unrecognized words
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:
         #     f.write(str(self.knowledge_graph)+'\n\n')
         pass
 
-    # def gt_navigate(self, roomname):
-    #     dest_loc = self.gi.gt.get_location(roomname, create_if_notfound=False)
-    #     assert dest_loc is not None
-    #     self.gt_nav.set_goal(dest_loc, self.gi)
-    #     # self.elect_new_active_module()
-
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
-        # sort into separate lists to control the order in which facts get processed
         # Reinitialize, build complete GT KG from scratch each time
         self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
         #TODO (Disabled ground truth)
         # self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
-
 
 

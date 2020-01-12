@@ -77,10 +77,18 @@ class Interactor(DecisionModule):
         self._eagerness = 0.
 
         response = yield action
+
         p_valid = action.validate(response)
-        ent = None
         if p_valid is None:
             p_valid = self._valid_detector.action_valid(action, first_sentence(response), gi)
+        success = (p_valid > 0.5)
+        self.record(success)
+        if success:
+            action.apply(gi)
+        gv.dbg("[INT]({}) p={:.2f} {} --> {}".format(
+            "val" if success else "inv", p_valid, action, response))
+
+        ent = None
         if isinstance(action, SingleAction):
             ent = action.entity
         elif isinstance(action, DoubleAction):
@@ -89,12 +97,6 @@ class Interactor(DecisionModule):
             gi.kg.act_on_entity(action, ent, ActionRec(p_valid, response))
         else:
             print("WARNING Interactor.take_control(): expecting SingleAction or DoubleAction, but got:", action)
-        success = (p_valid > 0.5)
-        self.record(success)
-        if success:
-            action.apply(gi)
-        gv.dbg("[INT]({}) p={:.2f} {} --> {}".format(
-            "val" if success else "inv", p_valid, action, response))
 
         if ('RESTART' in response and 'RESTORE' in response and 'QUIT' in response) or ('You have died' in response):
             if action not in self.actions_that_caused_death:
