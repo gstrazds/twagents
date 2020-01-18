@@ -89,8 +89,9 @@ class RecipeReaderTask(SingleActionTask):
         if item_name:
             task.prereq.add_required_item(item_name)
         for objname in with_objs:
-            if self._knowledge_graph(gi).is_object_portable(
-                    objname):  # TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
+            if verb in CUT_WITH:   # TODO: this is too specific to TextWorld v1 cooking games
+                # or self._knowledge_graph(gi).is_object_portable(
+                #    objname):  # TODO: THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
                 task.prereq.add_required_item(objname)
             else:
                 task.prereq.add_required_object(objname)

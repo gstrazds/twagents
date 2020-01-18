@@ -67,18 +67,18 @@ class Preconditions:
             here = None
         missing = Preconditions()
         if self.required_objects:
-            for name in list(self.required_objects): # NOTE: we copy the list to allow safe removal while iterating
+            for name in list(self.required_objects): # NOTE: we copy the list to ensure safe removal while iterating
                 if kg and kg.location_of_entity_with_name(name) == here:
                     if kg.is_object_portable(name):
                         if name not in self.required_inventory:
-                            print(f"Transfering '{name}' => required_inventory")
-                            self.required_inventory.append(name)
-                            self.required_objects.remove(name)
-                        print(f"Reclassifying '{name}' as portable")
+                            print(f"POSSIBLY NEED TO transfer '{name}' => required_inventory")
+                            # self.required_inventory.append(name)
+                            # self.required_objects.remove(name)
+                        # print(f"Reclassifying '{name}' as portable")
                         # self.required_objects.remove(name)
-                    else:
-                        missing.required_objects.clear()
-                        break  # we only need one: declare that none are missing
+                    # else:
+                    missing.required_objects.clear()
+                    break  # we only need one: declare that none are missing
                 elif kg and kg.inventory.has_entity_with_name(name):  # portable object was misclassified as non-portable
                     print(f"portable object {name} misclassified as non-portable?")
                     # missing.required_objects.clear()
