@@ -78,11 +78,10 @@ class Preconditions:
                         # self.required_objects.remove(name)
                     # else:
                     missing.required_objects.clear()
-                    break  # we only need one: declare that none are missing
+                    break  # we only need to find one of several possibilities: declare that none are missing
                 elif kg and kg.inventory.has_entity_with_name(name):  # portable object was misclassified as non-portable
                     print(f"portable object {name} misclassified as non-portable?")
-                    # missing.required_objects.clear()
-                    # break   # this counts as having found the correct object
+                    # missing.required_objects.clear(); break   # this counts as having found the correct object
                 else:
                     missing.required_objects.append(name)
         if self.required_inventory:
@@ -94,7 +93,7 @@ class Preconditions:
             missing.required_locations += self.required_locations
         # all(map(lambda t: t.is_done, self.prereq_tasks))
         for t in self.required_tasks:
-            if not t.is_done:
+            if not t.is_done or t.has_failed or not t.check_postconditions(kg):
                 missing.required_tasks.append(t)
         return missing
 
@@ -110,6 +109,11 @@ class Task:
         self.missing = Preconditions()
         self._action_generator = None  # generator: current state of self._generate_actions()
         self._postcondition_checks = []  # closures, invoked with one arg = KnowledgeGraph
+
+    def _knowledge_graph(self, gi):
+        if self.use_groundtruth:
+            return gi.gt
+        return gi.kg
 
     # @property
     # def is_done(self) -> bool:
@@ -137,30 +141,35 @@ class Task:
         self._failed = False
         self._action_generator = None
 
-    def check_preconditions(self, gi) -> bool:
-        if gi:
-            kg = gi.gt if self.use_groundtruth else gi.kg
-        else:
+    def reset_all(self):
+        self.reset()
+
+    def check_preconditions(self, kg) -> bool:
+        # if gi:
+        #     kg = self._knowledge_graph(gi)
+        # else:
+        if not kg:
             print("WARNING: Task({self}).check_preconditions called with gi=None")
-            kg = None
+            # kg = None
         self.missing = self.prereq.check_current_state(kg)
         return self.missing.is_empty
 
-    def check_postconditions(self, gi, deactivate_ifdone=True) -> bool:  # True if postconditions satisfied
+    def check_postconditions(self, kg, deactivate_ifdone=True) -> bool:  # True if postconditions satisfied
+        all_satisfied = True
         if self._postcondition_checks:
-            kg = gi.gt if self.use_groundtruth else gi.kg
+            # kg = self._knowledge_graph(gi)
             # print(f"CHECKING POSTCONDITIONS: {self} /{self._postcondition_checks}/")
             for func in self._postcondition_checks:
                 if not func(kg):
                     # print("POSTCONDITION CHECK failed", self)
-                    return False
+                    all_satisfied = False
+                    break
             print(f"{self}: All postcondition checks passed!")
-            if deactivate_ifdone:
+            if all_satisfied and deactivate_ifdone:
                 print(f"{self} auto-deactivating because postconditions are satisfied!")
-                self.deactivate(gi)
+                self.deactivate(kg)
                 self._done = True
-            return True
-        return False
+        return all_satisfied
 
     def add_postcondition(self, check_func):
         if check_func not in self._postcondition_checks:
@@ -169,28 +178,28 @@ class Task:
         else:
             assert False, f"WTF? {self._postcondition_checks} {check_func}"
 
-    def _generate_actions(self, gi) -> Action:
+    def _generate_actions(self, kg) -> Action:
         """ Generates a sequence of actions.
-        :type gi: GameInstance
+        :type kg: KnowledgeGraph
         """
         ignored = yield
         return None
 
-    def activate(self, gi):
+    def activate(self, kg):
         if not self.is_active:
             print(f"{self} ACTIVATING")
-            self._action_generator = self._generate_actions(gi)  #proxy waiting for.send(obs) at initial "ignored = yield"
+            self._action_generator = self._generate_actions(kg)  #proxy waiting for.send(obs) at initial "ignored = yield"
             self._action_generator.send(None)
-        if gi:
-            self.check_postconditions(gi, deactivate_ifdone=True)
+        if kg:
+            self.check_postconditions(kg, deactivate_ifdone=True)
         return self._action_generator
 
-    def deactivate(self, gi):
+    def deactivate(self, kg):
         if self.is_active:
             print(f"{self} DEACTIVATING")
             self._action_generator = None
 
-    def get_next_action(self, observation, gi) -> Action:
+    def get_next_action(self, observation, kg) -> Action:
         # act = None
         gen = self._action_generator
         if gen:
@@ -199,7 +208,8 @@ class Task:
             except StopIteration:
                 act = None
             if not act:
-                self.deactivate(gi)
+                self.deactivate(kg)
+                # self.deactivate(self._knowledge_graph(gi))
         else:
             errmsg = f"get_next_action() called for inactive task {self}"
             print(f"ERROR: "+errmsg)
@@ -231,6 +241,7 @@ class CompositeTask(Task):
     def reset_all(self):
         for t in self.tasks:
             t.reset()
+        super().reset()
         self._done = False
 
     def reset(self):
@@ -251,25 +262,25 @@ class SequentialTasks(CompositeTask):
         self._current_idx = 0
         super().reset()
 
-    def get_current_task(self, gi):
+    def get_current_task(self, kg):
         if self.tasks and 0 <= self._current_idx < len(self.tasks):
             task = self.tasks[self._current_idx]
-            task.check_postconditions(gi, deactivate_ifdone=True)
+            task.check_postconditions(kg, deactivate_ifdone=True)
             return task
         # print("SequentialTasks.get_current_task(idx={}) => None (tasks:{})".format(self._current_idx, self.tasks))
         return None
 
-    def activate(self, gi):
-        t = self.get_current_task(gi)
+    def activate(self, kg):
+        t = self.get_current_task(kg)  #self._knowledge_graph(gi))
         # self._action_generator = self._generate_actions(gi) #proxy waiting for.send(obs) at initial "ignored = yield"
-        self._action_generator = t.activate(gi) if t else None
+        self._action_generator = t.activate(kg) if t else None
         return self._action_generator
 
-    def deactivate(self, gi):
-        t = self.get_current_task(gi)
+    def deactivate(self, kg):
+        t = self.get_current_task(kg)
         if t:
-            t.deactivate(gi)
-        super().deactivate(gi)
+            t.deactivate(kg)
+        super().deactivate(kg)
 
     @property
     def is_done(self) -> bool:
@@ -279,28 +290,28 @@ class SequentialTasks(CompositeTask):
                 assert self.tasks[idx].is_done
         return super().is_done
 
-    def get_next_action(self, observation, gi) -> Action:
+    def get_next_action(self, observation, kg) -> Action:
         """ Generates a sequence of actions.
         SequentialTask simply invokes the corresponding method on the currently active subtask."""
         if self._done: #shortcut, maybe not needed?
             return None
-        t = self.get_current_task(gi)
+        t = self.get_current_task(kg)
         act = None
         if t: # and not t.is_done:
-            act = t.get_next_action(observation, gi)
+            act = t.get_next_action(observation, kg)
         if act:
             return act
         else:
             if self.tasks[self._current_idx].is_done:
                 self._current_idx += 1  # move on to the next task, if there is one
                 if self._current_idx < len(self.tasks):
-                    self.activate(gi)  # reactivate with new current task
-                    return self.get_next_action(observation, gi)  # RECURSE to next Task
+                    self.activate(kg)  # reactivate with new current task
+                    return self.get_next_action(observation, kg)  # RECURSE to next Task
                 else:
                     self._done = True
-                    self.deactivate(gi)
+                    self.deactivate(kg)
             else:  # current task stopped but is incomplete (failed, at least for now)
-                self.deactivate(gi)  #self.suspend(gi)
+                self.deactivate(kg)  #self.suspend(gi)
         return None
 
 

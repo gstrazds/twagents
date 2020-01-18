@@ -29,7 +29,7 @@ class GTAcquire(DecisionModule):
     def add_required_obj(self, entityname:str):
         print("GTAcquire.add_required_obj({})".format(entityname))
         self.required_objs.add(entityname)
-        self._eagerness = 0.8
+        self._eagerness = 0.8  # 0.7   # 0.8
 
     def remove_required_obj(self, entityname:str):
         self.required_objs.discard(entityname)

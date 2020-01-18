@@ -1,8 +1,8 @@
 from typing import List
 from ..task import Task
 from ..action import Action
-from ..game import GameInstance
-
+# from ..game import GameInstance
+from ..knowledge_graph import KnowledgeGraph
 
 class SequentialActionsTask(Task):
     def __init__(self, actions: List[Action], description=None, use_groundtruth=False):
@@ -25,18 +25,18 @@ class SequentialActionsTask(Task):
         self._current_idx = 0
         super().reset()
 
-    def check_result(self, result: str, gi: GameInstance) -> bool:
+    def check_result(self, result: str, kg: KnowledgeGraph) -> bool:
         return True
 
-    def _generate_actions(self, gi) -> Action:
+    def _generate_actions(self, kg) -> Action:
         """ Generates a sequence of actions.
-        :type gi: GameInstance
+        :type kg: KnowledgeGraph
         """
         ignored = yield   # required handshake
         while self._current_idx < len(self.actions) and not self._failed:
             result = yield self.actions[self._current_idx]
             self._current_idx += 1
-            if self.check_result(result, gi):
+            if self.check_result(result, kg):
                 if self._current_idx >= len(self.actions):
                     self._done = True
             else:

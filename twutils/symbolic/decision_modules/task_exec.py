@@ -5,10 +5,14 @@ from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..gv import dbg
 
+def _get_kg_for_task(task: Task, gi: GameInstance):
+    return gi.gt if task.use_groundtruth else gi.kg
+
 def _check_preconditions(task: Task, gi: GameInstance) -> bool:
     use_groundtruth = task.use_groundtruth
     print("_check_preconditions({}) {}:".format("GT" if use_groundtruth else 'kg', task))
-    all_satisfied = task.check_preconditions(gi)
+    kg = _get_kg_for_task(task, gi)
+    all_satisfied = task.check_preconditions(kg)
     if not all_satisfied:
         print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
     else:
@@ -62,19 +66,20 @@ class TaskExecutor(DecisionModule):
         while self.task_stack:
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
+            if not activating_task.is_done and not activating_task.is_active:
+                assert not activating_task.is_done, f"Unexpected: {activating_task}.is_done !"
+                kg = _get_kg_for_task(activating_task, gi)
+                activating_task.activate(kg)
             if activating_task.is_done:
-
                 self.pop_task(activating_task)
                 self.rescind_broadcasted_preconditions(activating_task, gi)
                 continue   # loop to get next potentially active task
-            if not activating_task.is_active:
-                assert not activating_task.is_done, f"Unexpected: {activating_task}.is_done !"
-                activating_task.activate(gi)
             if not _check_preconditions(activating_task, gi):
                 print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
                 self.handle_missing_preconditions(activating_task.missing, gi,
                                                   use_groundtruth=activating_task.use_groundtruth)
-                activating_task.deactivate(gi)
+                kg = _get_kg_for_task(activating_task, gi)
+                activating_task.deactivate(kg)
             return self.task_stack and self.task_stack[-1].is_active
         return False
 
@@ -85,7 +90,7 @@ class TaskExecutor(DecisionModule):
             if self._have_a_runnable_task(gi):
                 print("ACTIVATING!")
                 self._active = True
-                self._eagerness = 0.7  # lower than GTAcquire -- #XXXhigher than GTEnder
+                self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
             else:
                 print("no runnable task, canceling TaskExecutor activation")
                 self._eagerness = 0
@@ -130,23 +135,37 @@ class TaskExecutor(DecisionModule):
         self.task_stack.append(task)
 
     def pop_task(self, task: Task = None):
-        popped = self.task_stack.pop()
+        if task:
+            popped = task
+            self.task_stack.remove(task)
+        else:
+            popped = self.task_stack.pop()
         print(f"TaskExec.pop_task({task}) => {popped}")
         if task:
             assert task == popped
+        if popped.prereq.required_tasks:
+            for t in popped.prereq.required_tasks:
+                if t in self.task_stack:
+                    self.pop_task(task=t)
+                    t.reset()
             # task.deactivate()
         # self._action_generator = None
         return popped
 
     def start_prereq_task(self, pretask, gi: GameInstance) -> bool:
         print("start_prereq_task:", pretask)
-        assert pretask not in self.task_stack
+        # assert pretask not in self.task_stack
         if pretask in self.task_queue:
             # required task is already queued: activate it now
             print(f"...removing prereq task {pretask} from task_queue...")
             next_task = self.task_queue.pop(self.task_queue.index(pretask))
         else:
             next_task = pretask
+        if next_task in self.task_stack:
+            print(f"WARNING: {next_task} was already in the task stack: pop & re-push")
+            popped = self.pop_task(task=next_task)
+        if next_task.is_done or next_task.has_failed:
+            next_task.reset()  # try again
         self.push_task(next_task)
         return self._activate_next_task(gi)
 
@@ -179,7 +198,6 @@ class TaskExecutor(DecisionModule):
             print("rescind_broadcasted_preconditions OBJECTS:", task, prereqs.required_objects)
             gi.event_stream.push(NoLongerNeed(objnames=prereqs.required_objects, groundtruth=use_groundtruth))
 
-
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
         # print("TaskExecutor PROCESS EVENT: ", event)
@@ -187,23 +205,6 @@ class TaskExecutor(DecisionModule):
             print("TaskExecutor PROCESS EVENT: ", event)
             self.start_prereq_task(event.task, gi)
             self.activate(gi)
-
-        # if isinstance(event, NeedToAcquire) and event.is_groundtruth:
-        #     print("GT Required Objects:", event.objnames)
-        #     for itemname in event.objnames:
-        #         self.add_required_obj(itemname)
-        # elif isinstance(event, NeedToFind) and event.is_groundtruth:
-        #     print("GT Need to Find Objects:", event.objnames)
-        #     for itemname in event.objnames:
-        #         self.add_required_obj(itemname)
-        # elif isinstance(event, NoLongerNeed) and event.is_groundtruth:
-        #     print("GT Not Needed Objects:", event.objnames)
-        #     for itemname in event.objnames:
-        #         self.remove_required_obj(itemname)
-        # elif isinstance(event, AlreadyDone) and event.is_groundtruth:
-        #     print("GT AlreadyDone:", event.instr_step)
-        #     self.remove_step(event.instr_step)
-        pass
 
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction
@@ -251,8 +252,9 @@ class TaskExecutor(DecisionModule):
                 if self.task_stack[-1].is_done:
                     t = self.pop_task()
                     print(f"    (popped because {t}.is_done)")
+                    kg = _get_kg_for_task(t, gi)
                     self.rescind_broadcasted_preconditions(t, gi)
-                    t.deactivate(gi)
+                    t.deactivate(kg)
                     self.completed_tasks.append(t)
                     self._activate_next_task(gi)
                 else:

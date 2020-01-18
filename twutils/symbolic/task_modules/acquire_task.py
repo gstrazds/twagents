@@ -1,23 +1,63 @@
-import random
-from ..decision_module import DecisionModule
 from ..action import Take, Drop, Open, Portable
 from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
-from ..game import GameInstance
+# from ..game import GameInstance
 from ..task import Task
 from .tasks import SequentialActionsTask
+from ..action import Action
 from ..gv import rng, dbg
 
 
-class TakeTask(Task):
-    def __init__(self, itemname, description='', use_groundtruth=True):
-        assert itemname, "REQUIRED ARGUMENT: Must specify the name of an item to acquire"
+class TakeItemTask(Task):
+    def __init__(self, item_name, description='', use_groundtruth=True):
+        def _item_is_in_inventory(kgraph): #closure (captures self pointer) for postcondition check
+            retval = kgraph.inventory.has_entity_with_name(self._item_name)
+            print(f"POSTCONDITION item_is_in_inventory({self._item_name}) => {retval}")
+            return retval
+
+        assert item_name, "REQUIRED ARGUMENT: Must specify the name of an item to acquire"
         if not description:
-            description = f"Take[{itemname}]"
-            super().__init__(description=description, use_groundtruth=use_groundtruth)
+            description = f"Take[{item_name}]"
 
-    def _check_done(self) -> bool:
-        return self._done
+        super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self._item_name = item_name
+        self.add_postcondition(_item_is_in_inventory)
+        self.prereq.add_required_object(item_name)  # need to be in the vicinity of this object
 
+    def _generate_actions(self, kg) -> Action:
+        """ Generates a sequence of actions.
+        :type kg: KnowledgeGraph
+        """
+        #NOTE: at this point, preconditions have been met, and postconditions are not currently all satisfied
+        ignored = yield   # required handshake
+        # here = self._knowledge_graph(gi).player_location
+        here = kg.player_location
+        entityName = self._item_name
+        assert kg.location_of_entity_with_name(entityName) is here
+        entity = kg.get_entity(entityName)
+        # assert Portable in entity.attributes
+        container = kg.get_holding_entity(entity)
+        if container and container.state.openable and not container.state.is_open:
+            response = yield Open(container)
+        take_action = Take(entity)
+        response = yield take_action
+        if "carrying too many" in response or \
+          not kg.inventory.has_entity_with_name(entityName):
+            print(f"TakeItemTask: Take({entityName}) failed, try dropping something...")
+            if len(kg.inventory.entities) > 0:
+                drop_entity = rng.choice(kg.inventory.entities)
+                print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
+                #NOTE: disabling auto-reacquire ---> # self._temporary_drop = drop_entity.name
+                # self._temporary_drop = drop_entity.name
+                response2 = yield Drop(drop_entity)
+                response = yield take_action  # try again, now that we've dropped something
+                print(f"Responses for DROP: [{response2}]; TAKE2: [{response}]")
+            else:
+                print("CAN'T DROP ANYTHING, NOTHING IN INVENTORY!!!")
+                self._failed = True
+        self._failed = not self.check_postconditions(kg, deactivate_ifdone=True)
+        if not self._failed:
+            print(f"SUCCESSFULLY ACQUIRED '{entityName}': {response}")
+        return None  # terminate generator iteration
 
 
 
@@ -37,12 +77,6 @@ class AcquireTask(Task):
     @property
     def maybe_GT(self):
         return "GT " if self.use_groundtruth else ""
-
-    def _knowledge_graph(self, gi):
-        if self.use_groundtruth:
-            return gi.gt
-        return gi.kg
-
 
     def add_required_obj(self, entityname:str):
         print("GTAcquire.add_required_obj({})".format(entityname))
@@ -65,29 +99,29 @@ class AcquireTask(Task):
         print(f"GTAcquire required:{self.required_objs} - found:{self.found_objs}")
         return self.required_objs - self.found_objs
 
-    def process_event(self, event, gi: GameInstance):
-        # if not self._active:
-        #     return
-        # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
-        #     self._eagerness = 1.
-        if event.is_groundtruth == self.use_groundtruth:
-            if isinstance(event, NeedToAcquire) or isinstance(event, NeedToFind):
-                # print("GT Acquire:", event.objnames)
-                for itemname in event.objnames:
-                    self.add_required_obj(itemname)
-                    # self._eagerness = 0.8
-            elif isinstance(event, NoLongerNeed):
-                print("GT Acquire NO LONGER NEED:", event.objnames)
-                for itemname in event.objnames:
-                    if itemname != self._temporary_drop:
-                        self._no_longer_needed.add(itemname)
-                    self.remove_required_obj(itemname)
+    # def process_event(self, event, gi: GameInstance):
+    #     # if not self._active:
+    #     #     return
+    #     # if type(event) is NewLocationEvent and gv.TakeAll.recognized():
+    #     #     self._eagerness = 1.
+    #     if event.is_groundtruth == self.use_groundtruth:
+    #         if isinstance(event, NeedToAcquire) or isinstance(event, NeedToFind):
+    #             # print("GT Acquire:", event.objnames)
+    #             for itemname in event.objnames:
+    #                 self.add_required_obj(itemname)
+    #                 # self._eagerness = 0.8
+    #         elif isinstance(event, NoLongerNeed):
+    #             print("GT Acquire NO LONGER NEED:", event.objnames)
+    #             for itemname in event.objnames:
+    #                 if itemname != self._temporary_drop:
+    #                     self._no_longer_needed.add(itemname)
+    #                 self.remove_required_obj(itemname)
+    #
+    # def parse_response(self, response, gi: GameInstance):
+    #     success = False
+    #     self.record(success)
 
-    def parse_response(self, response, gi: GameInstance):
-        success = False
-        self.record(success)
-
-    def take_control(self, gi: GameInstance):
+    def take_control(self, gi):
         ignored_obs = yield
         if self._temporary_drop:
             gi.event_stream.push(NeedToAcquire([self._temporary_drop], groundtruth=self.use_groundtruth))

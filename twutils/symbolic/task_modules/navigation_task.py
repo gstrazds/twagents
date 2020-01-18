@@ -53,11 +53,6 @@ class NavigationTask(SequentialActionsTask):
     def maybe_GT(self):
         return "GT " if self.use_groundtruth else ""
 
-    def _knowledge_graph(self, gi):
-        if self.use_groundtruth:
-            return gi.gt
-        return gi.kg
-
     def set_goal(self, goal: Location, gi: GameInstance) -> bool:
         self.goal_location = goal
         # compute shortest path from current location to goal
@@ -125,11 +120,11 @@ class NavigationTask(SequentialActionsTask):
                     self._goal_name = None
 
 
-    def get_next_action(self, gi: GameInstance):
+    def get_next_action(self, okg):
         """
             Take next step along the shortest path to goal location
         """
-        current_loc = self._knowledge_graph(gi).player_location
+        current_loc = kg.player_location
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
             if current_loc == self.goal_location or current_loc.name == self._goal_name:
                 gv.dbg("[{}NAV] Goal reached: {}".format(self.maybe_GT, self.goal_location))
@@ -142,7 +137,7 @@ class NavigationTask(SequentialActionsTask):
             else:
                 gv.dbg(f"[{self.maybe_GT}NAV] FAILED! {self.goal_location} {self._path_idx} {self.path}")
                 if self._goal_name and not (self.goal_location and self.goal_location.name == self._goal_name):
-                    self.set_goal_by_name(self._goal_name, gi)
+                    self.set_goal_by_name(self._goal_name, kg)
                 else:
                     self._goal_name = None
                     self._active = False
@@ -154,7 +149,7 @@ class NavigationTask(SequentialActionsTask):
             return None
         next_step = self.path[self._path_idx]
         if self._debug:
-            assert next_step.from_location == self._knowledge_graph(gi).player_location
+            assert next_step.from_location == kg.player_location
         direction = get_direction_from_navaction(next_step.action)
 
         # check for closed door -> "open <the door>" and don't increment _path_idx
@@ -196,7 +191,7 @@ class NavigationTask(SequentialActionsTask):
                         response = yield Open(entity)
                         entity.open()
 
-            act = self.get_next_action(gi)
+            act = self.get_next_action(self._knowledge_graph(gi))
             response = yield act
             # TODO: should check response to verify that actions are succeeding
             if not act:
