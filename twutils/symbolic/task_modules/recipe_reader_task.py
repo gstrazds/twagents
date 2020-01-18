@@ -83,7 +83,8 @@ class RecipeReaderTask(SingleActionTask):
 
         task = SingleActionTask(act, description=instr, use_groundtruth=self.use_groundtruth)
         if item_name:
-            task.prereq.add_required_item(item_name)
+            # task.prereq.add_required_item(item_name)
+            task.prereq.add_required_task(TakeItemTask(item_name, use_groundtruth=self.use_groundtruth))
         for objname in with_objs:
             if verb in CUT_WITH:   # TODO: this is too specific to TextWorld v1 cooking games
                 # or self._knowledge_graph(gi).is_object_portable(objname): # THIS ASSUMES we already know this object (e.g. w/use_groundtruth=True)
@@ -126,7 +127,9 @@ class RecipeReaderTask(SingleActionTask):
                 prep.prereq.add_required_task(task)
             prep.prereq.add_required_location('kitchen')  # meals can be prepared only in the kitchen\
             for ingredient_name in self.ingredients:
-                prep.prereq.add_required_item(ingredient_name)
+                # prep.prereq.add_required_item(ingredient_name)
+                prep.prereq.add_required_task(TakeItemTask(ingredient_name, use_groundtruth=self.use_groundtruth))
+
             return eat
         elif tasks:
             print("WARNING: didn't find Prepare Meal instruction")
