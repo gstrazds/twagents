@@ -1,11 +1,29 @@
+import random
 from ..decision_module import DecisionModule
 from ..action import Take, Drop, Open, Portable
 from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
-from ..gv import rng
+from ..task import Task
+from .tasks import SequentialActionsTask
+from ..gv import rng, dbg
 
 
-class GTAcquire(DecisionModule):
+class TakeTask(Task):
+    def __init__(self, itemname, description='', use_groundtruth=True):
+        assert itemname, "REQUIRED ARGUMENT: Must specify the name of an item to acquire"
+        if not description:
+            description = f"Take[{itemname}]"
+            super().__init__(description=description, use_groundtruth=use_groundtruth)
+
+    def _check_done(self) -> bool:
+        return self._done
+
+
+
+
+
+
+class AcquireTask(Task):
     """ The Ground Truth Acquire module locates and, for takeable objects, takes specific objects (into inventory) """
     def __init__(self, active=False, use_groundtruth=True):
         super().__init__()

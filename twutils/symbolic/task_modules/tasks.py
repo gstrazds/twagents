@@ -6,9 +6,14 @@ from ..game import GameInstance
 
 class SequentialActionsTask(Task):
     def __init__(self, actions: List[Action], description=None, use_groundtruth=False):
-        assert actions, "Required arg: must specify at least one Action"
+        if actions is None:
+            actions = []
+            current_idx = -1
+        else:
+            assert actions, "Must specify at least one Action"
+            current_idx = 0
         self.actions = actions
-        self._current_idx = 0
+        self._current_idx = current_idx
         if not description:
             actions_desc = ','.join([str(act) for act in actions])
             description = f"SequentialActionsTask[{actions_desc}]"

@@ -137,18 +137,28 @@ class Task:
         self._failed = False
         self._action_generator = None
 
-    def check_preconditions(self, kg) -> bool:
+    def check_preconditions(self, gi) -> bool:
+        if gi:
+            kg = gi.gt if self.use_groundtruth else gi.kg
+        else:
+            print("WARNING: Task({self}).check_preconditions called with gi=None")
+            kg = None
         self.missing = self.prereq.check_current_state(kg)
         return self.missing.is_empty
 
-    def check_postconditions(self, kg) -> bool:  # True if postconditions satisfied
+    def check_postconditions(self, gi, deactivate_ifdone=True) -> bool:  # True if postconditions satisfied
         if self._postcondition_checks:
+            kg = gi.gt if self.use_groundtruth else gi.kg
             # print(f"CHECKING POSTCONDITIONS: {self} /{self._postcondition_checks}/")
             for func in self._postcondition_checks:
                 if not func(kg):
                     # print("POSTCONDITION CHECK failed", self)
                     return False
             print(f"{self}: All postcondition checks passed!")
+            if deactivate_ifdone:
+                print(f"{self} auto-deactivating because postconditions are satisfied!")
+                self.deactivate(gi)
+                self._done = True
             return True
         return False
 
@@ -172,11 +182,7 @@ class Task:
             self._action_generator = self._generate_actions(gi)  #proxy waiting for.send(obs) at initial "ignored = yield"
             self._action_generator.send(None)
         if gi:
-            kg = gi.gt if self.use_groundtruth else gi.kg
-            if self.check_postconditions(kg):
-                print(f"{self} auto-deactivating because postconditions are satisfied!")
-                self.deactivate(gi)
-                self._done = True
+            self.check_postconditions(gi, deactivate_ifdone=True)
         return self._action_generator
 
     def deactivate(self, gi):
@@ -248,12 +254,8 @@ class SequentialTasks(CompositeTask):
     def get_current_task(self, gi):
         if self.tasks and 0 <= self._current_idx < len(self.tasks):
             task = self.tasks[self._current_idx]
-            if task.check_postconditions(gi):
-                task._done = True
-                if task.is_active:
-                    task.deactivate(gi)
+            task.check_postconditions(gi, deactivate_ifdone=True)
             return task
-
         # print("SequentialTasks.get_current_task(idx={}) => None (tasks:{})".format(self._current_idx, self.tasks))
         return None
 

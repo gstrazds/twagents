@@ -8,10 +8,8 @@ from ..gv import dbg
 def _check_preconditions(task: Task, gi: GameInstance) -> bool:
     use_groundtruth = task.use_groundtruth
     print("_check_preconditions({}) {}:".format("GT" if use_groundtruth else 'kg', task))
-    kg = gi.gt if use_groundtruth else gi.kg
-    all_satisfied = task.check_preconditions(kg)
+    all_satisfied = task.check_preconditions(gi)
     if not all_satisfied:
-        # print("_check_preconditions: using kg=", kg)
         print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
     else:
         if task.prereq.is_empty:
