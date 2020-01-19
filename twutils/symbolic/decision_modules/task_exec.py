@@ -87,21 +87,43 @@ class TaskExecutor(DecisionModule):
         if True or not self._active:
             print("TaskExecutor: ACTIVATING?...", end='')
             self._activate_next_task(gi)
+            print("Activation Prechecks...")
+            self.remove_completed_tasks(gi)
             if self._have_a_runnable_task(gi):
-                print("ACTIVATING!")
-                self._active = True
-                self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
+                if self._active:
+                    print("already active.")
+                    self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
+                else:
+                    self.print_state()
+                    print("ACTIVATING!")
+                    self._active = True
+                    self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
             else:
-                print("no runnable task, canceling TaskExecutor activation")
+                print("No runnable task, canceling TaskExecutor activation")
+                self.print_state()
                 self._eagerness = 0
                 self._active = False
 
     def deactivate(self, gi: GameInstance):
         if self._active:
             print("TaskExec: DEACTIVATING.")
+            self.print_state()
         self._active = False
         self._eagerness = 0.0
         # self._action_generator = None
+
+    def remove_completed_tasks(self, gi: GameInstance):
+        print("TaskExec -- remove_completed_tasks...")
+        something_changed = True
+        while something_changed and self.task_stack:
+            something_changed = False
+            # task_list = list(self.task_stack)  # copy list of potentially active tasks
+            for t in self.task_stack:
+                kg = _get_kg_for_task(t, gi)
+                if t.has_postcondition_checks and t.check_postconditions(kg, deactivate_ifdone=True):
+                    self.pop_task(task=t)   # removes one or more tasks from task_stack
+                    something_changed = True
+                    break   # exit inner for-loop, continue outer while-loop
 
     def get_eagerness(self, gi: GameInstance):
         print("TaskExecutor.get_eagerness => ", end='')
@@ -172,7 +194,8 @@ class TaskExecutor(DecisionModule):
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
         # assert use_groundtruth is True
         if missing.required_tasks:
-            for task in reversed(missing.required_tasks):
+            # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
+            for task in missing.required_tasks:
                 print(f"handle precondition: {task}")
                 self.start_prereq_task(task, gi)
         # else:

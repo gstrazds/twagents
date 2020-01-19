@@ -93,7 +93,7 @@ class Preconditions:
             missing.required_locations += self.required_locations
         # all(map(lambda t: t.is_done, self.prereq_tasks))
         for t in self.required_tasks:
-            if not t.is_done or t.has_failed or not t.check_postconditions(kg):
+            if not t.check_postconditions(kg) or not t.is_done or t.has_failed:
                 missing.required_tasks.append(t)
         return missing
 
@@ -133,6 +133,10 @@ class Task:
     def has_failed(self) -> bool:
         return self._failed
 
+    @property
+    def has_postcondition_checks(self) -> bool:
+        return self._postcondition_checks and len(self._postcondition_checks) > 0
+
     def _check_done(self) -> bool:
         return self._done
 
@@ -164,7 +168,8 @@ class Task:
                     # print("POSTCONDITION CHECK failed", self)
                     all_satisfied = False
                     break
-            print(f"{self}: All postcondition checks passed!")
+            if all_satisfied:
+                print(f"{self}: All postcondition checks passed!")
             if all_satisfied and deactivate_ifdone:
                 print(f"{self} auto-deactivating because postconditions are satisfied!")
                 self.deactivate(kg)
