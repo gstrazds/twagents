@@ -1,5 +1,5 @@
 from ..action import Take, Drop, Open, Portable
-from ..event import NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
+from ..event import NeedToAcquire, NeedToGoTo, NoLongerNeed #, NeedToFind
 # from ..game import GameInstance
 from ..task import Task
 from .tasks import SequentialActionsTask
@@ -7,16 +7,21 @@ from ..action import Action
 from ..gv import rng, dbg
 
 
+def _location_of_item_is_known(kgraph, itemname: str) -> bool:
+    loc_set = kgraph.where_is_entity(itemname, allow_unknown=False, top_level=True)
+    return len(loc_set) > 0
+
+
 class TakeItemTask(Task):
     def __init__(self, item_name, description='', use_groundtruth=True):
-        def _item_is_in_inventory(kgraph): #closure (captures self pointer) for postcondition check
+        def _item_is_in_inventory(kgraph): #closure (captures self._item_name) for postcondition check
             retval = kgraph.inventory.has_entity_with_name(self._item_name)
             print(f"POSTCONDITION item_is_in_inventory({self._item_name}) => {retval}")
             return retval
 
         assert item_name, "REQUIRED ARGUMENT: Must specify the name of an item to acquire"
         if not description:
-            description = f"Take[{item_name}]"
+            description = f"TakeTask[{item_name}]"
 
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self._item_name = item_name
@@ -40,17 +45,16 @@ class TakeItemTask(Task):
             response = yield Open(container)
         take_action = Take(entity)
         response = yield take_action
-        if "carrying too many" in response or \
-          not kg.inventory.has_entity_with_name(entityName):
+        if "carrying too many" in response \
+           or "need to drop" in response \
+           or not kg.inventory.has_entity_with_name(entityName):
             print(f"TakeItemTask: Take({entityName}) failed, try dropping something...")
             if len(kg.inventory.entities) > 0:
                 drop_entity = rng.choice(kg.inventory.entities)
                 print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
-                #NOTE: disabling auto-reacquire ---> # self._temporary_drop = drop_entity.name
-                # self._temporary_drop = drop_entity.name
                 response2 = yield Drop(drop_entity)
                 response = yield take_action  # try again, now that we've dropped something
-                print(f"Responses for DROP: [{response2}]; TAKE2: [{response}]")
+                print(f"{self} Responses for DROP: [{response2}]; TAKE2: [{response}]")
             else:
                 print("CAN'T DROP ANYTHING, NOTHING IN INVENTORY!!!")
                 self._failed = True

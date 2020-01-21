@@ -192,7 +192,6 @@ class TaskExecutor(DecisionModule):
         return self._activate_next_task(gi)
 
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
-        # assert use_groundtruth is True
         if missing.required_tasks:
             # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
             for task in missing.required_tasks:
