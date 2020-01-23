@@ -2,11 +2,14 @@ import unittest
 
 from symbolic.task import *
 from symbolic.task_modules import SingleActionTask, SequentialActionsTask
+from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.action import StandaloneAction
 from symbolic.decision_modules import TaskExecutor
 from symbolic.game import GameInstance
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.entity import Location
+
+from symbolic.action import Look
 
 
 def sequential_actions_task(start_num=1, count=4):
@@ -439,6 +442,22 @@ class TestTask(unittest.TestCase):
         self.assertTrue(t2.is_done)
         self.assertEqual(te.get_eagerness(gi), 0)
         self.assertEqual(len(te.task_stack), 0)
+
+    def test_explore_here(self):
+        print("......... ExloreHereTask ...")
+        kg = KnowledgeGraph(None, groundtruth=False)
+        t = ExploreHereTask()
+        self.assertEquals(str(t), "ExploreHereTask(idle)")
+        gen1 = t.activate(kg)
+        print(gen1)
+        act = t.get_next_action("nothing to see here", kg)
+        self.assertIs(act, Look)
+        next = t.get_next_action("should be done now", kg)
+        self.assertIsNone(next)
+        self.assertFalse(t.is_active)
+
+
+
 
 if __name__ == '__main__':
     unittest.main()

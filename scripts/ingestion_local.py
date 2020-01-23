@@ -22,7 +22,7 @@ import urllib
 
 
 NB_EPISODES = 2 #10
-MAX_EPISODE_STEPS = 110  #100
+MAX_EPISODE_STEPS = 120  #100
 TIMEOUT = 6 * 3600  # 6 hours
 PORT = 29592
 DEFAULT_IMAGE = "tavianator/textworld-codalab"

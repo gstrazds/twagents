@@ -159,6 +159,10 @@ class Location(Entity):
         self._discovered = True
 
     @property
+    def location(self):
+        return self
+
+    @property
     def entities(self):
         return self._entities
 
@@ -462,7 +466,7 @@ class Thing(Entity):
     def parent(self):
         # if hasattr(self, "_parent"):   # in we have composite objects
         #     return self._parent
-        return self.location
+        return self._current_loc
 
     @property
     def state(self):

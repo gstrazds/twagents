@@ -378,7 +378,7 @@ class KnowledgeGraph:
     def primogenitor(self, entity):
         """ Follows a chain of parent links to an ancestor with no parent """
         ancestor = entity
-        while ancestor and ancestor.parent:
+        while ancestor and ancestor.parent and ancestor.parent is not ancestor:
             ancestor = ancestor.parent
         return ancestor
 

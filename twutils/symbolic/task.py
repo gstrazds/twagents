@@ -104,6 +104,8 @@ class Task:
         self._done = False
         self._failed = False
         self.use_groundtruth = use_groundtruth
+        if not description:
+            description = "{classname}".format(classname=type(self).__name__)
         self.description = description
         self.prereq = Preconditions()
         self.missing = Preconditions()
@@ -114,10 +116,6 @@ class Task:
         if self.use_groundtruth:
             return gi.gt
         return gi.kg
-
-    # @property
-    # def is_done(self) -> bool:
-    #     return self._done
 
     @property
     def is_done(self) -> bool:
@@ -241,7 +239,10 @@ class CompositeTask(Task):
         self.tasks = tasks
 
     def _check_done(self) -> bool:
-        return all(map(lambda t: t.is_done, self.tasks))
+        if self.tasks:
+            return all(map(lambda t: t.is_done, self.tasks))
+        else:
+            return super()._check_done()
 
     def reset_all(self):
         for t in self.tasks:
@@ -321,8 +322,24 @@ class SequentialTasks(CompositeTask):
 
 
 class ParallelTasks(CompositeTask):
-    def __init__(self, tasks: List[Task], description=None, use_groundtruth=False):
+    """ Groups several subtasks in parallel: if activated, any of the subtasks might generate the next low-level action,
+    depending on runnability (preconditions are satisfied). If more than one can run, one is chosen
+    randomly (or potentially based on a priority value); it then continues generating actions until it
+    completes, fails, or becomes not-runnable.
+
+    The num_required argument determines when the overall task is considered completed.
+    If num_required=0 (the default) then the ParallelTask is considered complete when *all* of the subtasks are complete.
+    If num_required=1, then the ParallelTask is considered complete if any one of the subtasks completes successfully.
+    (num_required > 1 is also possible, e.g. specifying that 2, or 3, or n of N subtasks are required to complete).
+    num_required < 0: with N subtasks, N + num_nequired need to complete. (Error if not N > -num_required)
+    """
+
+    def __init__(self, tasks: List[Task], num_required=0, description=None, use_groundtruth=False):
         super().__init__(tasks, description=description, use_groundtruth=use_groundtruth)
+        self.num_required = num_required
+
+    def _generate_actions(self, kg) -> Action:
+        assert False, f"{self} - Not Yet Implemented"
 
     @property
     def is_done(self) -> bool:

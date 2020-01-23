@@ -4,6 +4,7 @@ from ..action import Action
 # from ..game import GameInstance
 from ..knowledge_graph import KnowledgeGraph
 
+
 class SequentialActionsTask(Task):
     def __init__(self, actions: List[Action], description=None, use_groundtruth=False):
         if actions is None:

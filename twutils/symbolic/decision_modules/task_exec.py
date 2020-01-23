@@ -3,9 +3,12 @@ from ..decision_module import DecisionModule
 from ..event import NeedToDo, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
+from ..task_modules.navigation_task import PathTask
 from ..gv import dbg
 
 def _get_kg_for_task(task: Task, gi: GameInstance):
+    if not gi:
+        return None
     return gi.gt if task.use_groundtruth else gi.kg
 
 def _check_preconditions(task: Task, gi: GameInstance) -> bool:
@@ -169,7 +172,7 @@ class TaskExecutor(DecisionModule):
             for t in popped.prereq.required_tasks:
                 if t in self.task_stack:
                     self.pop_task(task=t)
-                    t.reset()
+                    t.reset_all()
             # task.deactivate()
         # self._action_generator = None
         return popped
@@ -187,28 +190,56 @@ class TaskExecutor(DecisionModule):
             print(f"WARNING: {next_task} was already in the task stack: pop & re-push")
             popped = self.pop_task(task=next_task)
         if next_task.is_done or next_task.has_failed:
-            next_task.reset()  # try again
+            next_task.reset_all()  # try again
         self.push_task(next_task)
         return self._activate_next_task(gi)
 
     def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
-        if missing.required_tasks:
-            # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
-            for task in missing.required_tasks:
-                print(f"handle precondition: {task}")
-                self.start_prereq_task(task, gi)
-        # else:
+        if not gi:
+            kg = None
+        else:
+            kg = gi.gt if use_groundtruth else gi.kg
         if missing.required_locations:
-            loc = random.choice(missing.required_locations)
-            gi.event_stream.push(NeedToGoTo(loc, groundtruth=use_groundtruth))
+            locname = list(missing.required_locations)[0]
+            if not use_groundtruth and kg and kg.location_of_entity_with_name(locname, allow_unknown=False):
+                pathtask = PathTask(locname, use_groundtruth=use_groundtruth)
+                print(kg.location_of_entity_with_name(locname), pathtask)
+                # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
+                already_in_prereqs = False
+                for t in missing.required_tasks:
+                    if isinstance(t, PathTask) and t.goal_name == locname:
+                        already_in_prereqs = True
+                        break
+                if not already_in_prereqs:
+                    missing.required_tasks.append(pathtask)
+            else:
+                gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
         # need_to_get = []
         if missing.required_inventory:
             # need_to_get.extend(missing.required_inventory)
             gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
         if missing.required_objects:
-            objname = random.choice(missing.required_objects)
             # need_to_get.append(objname)
-            gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
+            objname = random.choice(missing.required_objects)
+            if not use_groundtruth and kg and kg.location_of_entity_with_name(objname, allow_unknown=False):
+                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+                pathtask = PathTask(objname, use_groundtruth=use_groundtruth)
+                print(kg.location_of_entity_with_name(objname), pathtask)
+                # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
+                already_in_prereqs = False
+                for t in missing.required_tasks:
+                    if isinstance(t, PathTask) and t.goal_name == objname:
+                        already_in_prereqs = True
+                        break
+                if not already_in_prereqs:
+                    missing.required_tasks.append(pathtask)
+            else:
+                gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
+        if missing.required_tasks:
+            # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
+            for task in missing.required_tasks:
+                print(f"handle precondition: {task}")
+                self.start_prereq_task(task, gi)
 
     def rescind_broadcasted_preconditions(self, task, gi: GameInstance):
         use_groundtruth = task.use_groundtruth
