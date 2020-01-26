@@ -5,7 +5,7 @@ from ..knowledge_graph import KnowledgeGraph
 from ..task import SequentialTasks
 from ..task_modules import SingleActionTask
 from ..task_modules.acquire_task import TakeItemTask
-from ..task_modules.navigation_task import FindTask, GoToTask
+from ..task_modules.navigation_task import GoToTask
 from twutils.twlogic import adapt_tw_instr, CUT_WITH, COOK_WITH
 
 
@@ -95,7 +95,7 @@ class RecipeReaderTask(SingleActionTask):
                 # task.prereq.add_required_item(objname)
                 task.prereq.add_required_task(TakeItemTask(objname, use_groundtruth=self.use_groundtruth))
             else:
-                task.prereq.add_required_object(objname)
+                task.prereq.add_required_task(GoToTask(objname, use_groundtruth=self.use_groundtruth))
         if post_checks:
             print("Adding postconditions to task", task, post_checks)
             for func in post_checks:

@@ -104,6 +104,12 @@ class PathTask(SequentialTasks):
             self.deactivate(kg)
             return None
 
+    def reset_all(self):
+        self.goal_location = None
+        self.path = None
+        self.tasks = []
+        super().reset_all()
+
     @property
     def maybe_GT(self):
         return "GT " if self.use_groundtruth else ""
