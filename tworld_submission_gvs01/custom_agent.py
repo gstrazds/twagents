@@ -16,7 +16,7 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.game_agent import TextGameAgent
-from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
+# from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from symbolic.task_modules import RecipeReaderTask
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
@@ -704,7 +704,9 @@ class CustomAgent:
                 for idx, agent in enumerate(self.agents):
                     agent.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
                     # Output this step.
-                    player_location = agent.gt_nav._knowledge_graph(agent.gi).player_location
+                    use_groundtruth_player_loc = False
+                    kg = agent.gi.gt if use_groundtruth_player_loc else agent.gi.kg
+                    player_location = kg.player_location
                     print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
                         idx, agent.env_name if hasattr(agent, 'env_name') else '',
@@ -744,8 +746,8 @@ class CustomAgent:
 
                 if 'facts' in infos:
                     verbose = (self.current_step == 0)
-                    if agent.gt_nav == agent.active_module and agent.gt_nav._path_idx == len(agent.gt_nav.path):
-                        verbose = True
+                    # if agent.gt_nav == agent.active_module and agent.gt_nav._path_idx == len(agent.gt_nav.path):
+                    #     verbose = True
 
                     world_facts = infos['facts'][idx]
                     agent.set_ground_truth(world_facts)
@@ -761,7 +763,9 @@ class CustomAgent:
                     # set nav destination (using Ground Truth knowledge)
                     # agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=agent.gt_nav.use_groundtruth))
                     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
-                    agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
+
+                    # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
+                    agent.task_exec.queue_task(RecipeReaderTask(use_groundtruth=False))
 
                 actiontxt = agent.choose_next_action(obstxt2, observable_facts=observable_facts, prev_action=self.prev_actions[idx])
                 print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))

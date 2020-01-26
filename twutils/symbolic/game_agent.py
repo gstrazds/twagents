@@ -30,7 +30,7 @@ class TextGameAgent:
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
-        self.gt_nav = None
+        self.task_exec = None
         self.modules = []
         self.active_module    = None
         self.action_generator = None
@@ -51,10 +51,10 @@ class TextGameAgent:
         self._init_modules()
 
     def _init_modules(self):
-        self.gt_nav = GTNavigator(False, use_groundtruth=False)
+        self.task_exec = TaskExecutor(True)
         self.modules = [
-                        TaskExecutor(True),
-                        self.gt_nav,  # GTNavigator
+                        self.task_exec,
+                        GTNavigator(False, use_groundtruth=False),
                         GTAcquire(True, use_groundtruth=False),
                         # GTRecipeReader(use_groundtruth=False),
                         # Explorer(True),

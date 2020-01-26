@@ -202,7 +202,7 @@ class GoToTask(Task):
         assert objname
         self._objname = objname
         if not description:
-            description = f"FindTask[{objname}]"
+            description = f"GoToTask[{objname}]"
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.prereq.add_required_task(FindTask(objname, use_groundtruth=use_groundtruth))
 
