@@ -199,45 +199,48 @@ class TaskExecutor(DecisionModule):
             kg = None
         else:
             kg = gi.gt if use_groundtruth else gi.kg
+        if missing.required_inventory:
+            # need_to_get.extend(missing.required_inventory)
+            gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
         if missing.required_locations:
             locname = list(missing.required_locations)[0]
-            if not use_groundtruth and kg and kg.location_of_entity_with_name(locname, allow_unknown=False):
-                pathtask = PathTask(locname, use_groundtruth=use_groundtruth)
-                print(kg.location_of_entity_with_name(locname), pathtask)
+            if not use_groundtruth and kg and kg.location_of_entity_is_known(locname):
                 # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
                 already_in_prereqs = False
                 for t in missing.required_tasks:
-                    if isinstance(t, PathTask) and t.goal_name == locname:
+                    if isinstance(t, PathTask): # and t.goal_name == locname:
                         already_in_prereqs = True
                         break
                 if not already_in_prereqs:
+                    pathtask = PathTask(locname, use_groundtruth=use_groundtruth)
+                    print(kg.location_of_entity_with_name(locname), pathtask)
                     missing.required_tasks.append(pathtask)
             else:
                 gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
         # need_to_get = []
-        if missing.required_inventory:
-            # need_to_get.extend(missing.required_inventory)
-            gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
         if missing.required_objects:
             # need_to_get.append(objname)
             objname = random.choice(missing.required_objects)
-            if not use_groundtruth and kg and kg.location_of_entity_with_name(objname, allow_unknown=False):
-                print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-                pathtask = PathTask(objname, use_groundtruth=use_groundtruth)
-                print(kg.location_of_entity_with_name(objname), pathtask)
+            if not use_groundtruth and kg and kg.location_of_entity_is_known(objname):
                 # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
                 already_in_prereqs = False
                 for t in missing.required_tasks:
-                    if isinstance(t, PathTask) and t.goal_name == objname:
+                    if isinstance(t, PathTask):  # and t.goal_name == objname:
                         already_in_prereqs = True
                         break
                 if not already_in_prereqs:
+                    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+                    pathtask = PathTask(objname, use_groundtruth=use_groundtruth)
+                    print(kg.location_of_entity_with_name(objname), pathtask)
                     missing.required_tasks.append(pathtask)
             else:
                 gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
         if missing.required_tasks:
             # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
-            for task in missing.required_tasks:
+            # answer re: why reversed? LIFO ordering gets reversed to FIFO when all are pushed onto task_stack
+            #TODO: NOTE: here we should maybe activate only one at a time (essentially: sequential tasks)
+            #TODO: or else, activate them all but using a ParallelTasks context (which is not yet implemented)
+            for task in reversed(missing.required_tasks):
                 print(f"handle precondition: {task}")
                 self.start_prereq_task(task, gi)
 
@@ -283,7 +286,7 @@ class TaskExecutor(DecisionModule):
                 self.rescind_broadcasted_preconditions(active_task, gi)
 
             if prereqs_satisfied or active_task.is_done:
-                next_action = active_task.get_next_action(observation,gi)  # ?get next action from DONE task?
+                next_action = active_task.get_next_action(observation, gi)  # ?get next action from DONE task?
             else:
                 self.handle_missing_preconditions(active_task.missing, gi,
                                                   use_groundtruth=active_task.use_groundtruth)

@@ -23,7 +23,7 @@ def get_door_if_closed(connection):
 class ExploreHereTask(Task):
     def __init__(self, description='', use_groundtruth=False):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
-        # self.add_postcondition( check if here has any unvisited/unknown locations or unopened containers or doors )
+        # self.add_postcondition( check if here has any unopened containers or doors )
 
     def check_result(self, result: str, kg: KnowledgeGraph) -> bool:
         return True
@@ -36,6 +36,14 @@ class ExploreHereTask(Task):
         ignored = yield   # required handshake
         response = yield Look
         self.check_result(response, kg)
+        for entity in list(here.entities):
+            print(f"ExploreHereTask -- {here} {entity} is_container:{entity.is_container}")
+            if entity.is_container and entity.state.openable:
+                print(f"ExploreHereTask -- {entity}.is_open:{entity.state.is_open}")
+                if entity.state.openable and not entity.state.is_open:
+                    response = yield Open(entity)
+                    if self.check_result(response, kg):
+                        entity.open()
         return None
 
 
@@ -85,7 +93,7 @@ class PathTask(SequentialTasks):
         self.path = None    # shortest path from start location to goal_location
         task_list: List[Task] = []
         if not description:
-            description=f"PathTask[{goalname}]"
+            description = f"PathTask[{goalname}]"
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
 
     def activate(self, kg):
@@ -104,19 +112,22 @@ class PathTask(SequentialTasks):
         print("PathTask.set_goal()", self.goal_name)
         failure = False   # return value: initially optimistic
         assert self.goal_name
-        loc = kg.location_of_entity_with_name(self.goal_name)
-        if loc:
-            self.goal_location = loc
+        if self.goal_name == '+NearestUnexplored+':
+            self.goal_location = None
+            self.path = kg.path_to_unknown()
         else:
+            self.goal_location = kg.location_of_entity_with_name(self.goal_name)
             print(f"PathTask {self} unknown location or goal entity: {self.goal_name}")
-            self._failed = True
-            self.deactivate(kg)
-            return False
+            if not self.goal_location:
+                self._failed = True
+                self.deactivate(kg)
+                return False
 
-        # compute shortest path from current location to goal
-        current_loc = kg.player_location
-        self.path = kg.connections.shortest_path(current_loc, self.goal_location)
-        print("{}NavigationTask set_goal({}) => {}".format(self.maybe_GT, self.goal_location, self.path))
+            # compute shortest path from current location to goal
+            current_loc = kg.player_location
+            self.path = kg.connections.shortest_path(current_loc, self.goal_location)
+        print("{}NavigationTask set_goal({}) => {}".format(self.maybe_GT, self.goal_name, self.path))
+
         if self.path:
             link_desc = ','.join(["goto({})".format(link.to_location.name) for link in self.path])
             self.description = f"NavigationTask({self.goal_name})[{link_desc}]"
@@ -129,7 +140,7 @@ class PathTask(SequentialTasks):
                     self.maybe_GT, self.goal_location, current_loc))
             else:
                 errmsg = "[{}PathTask] NOPATH: (current={}, goal={}) path={}".format(
-                    self.maybe_GT, current_loc, self.goal_location, self.path)
+                    self.maybe_GT, current_loc, self.goal_name, self.path)
                 gv.dbg(errmsg)
                 self.goal_location = None
                 self._done = True
@@ -143,12 +154,42 @@ class PathTask(SequentialTasks):
         return not failure
 
 
+class FindTask(Task):
+    def __init__(self, objname=None, description='', use_groundtruth=False):
 
-class NavigationTask(Task):
+        def _location_of_obj_is_known(kgraph): #closure (captures self) for postcondition check
+            retval = kgraph.location_of_entity_is_known(self._objname)
+            print(f"POSTCONDITION location_of_obj_is_known({self._objname}) => {retval}")
+            return retval
+
+        assert objname
+        self._objname = objname
+        if not description:
+            description = f"FindTask[{objname}]"
+        super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self.add_postcondition(_location_of_obj_is_known)
+
+    # def check_result(self, response: str, kg: KnowledgeGraph) -> bool:
+    #     return True
+
+    def _generate_actions(self, kg) -> Action:
+        """ Generates a sequence of actions.
+        :type kg: KnowledgeGraph
+        """
+        ignored = yield   # required handshake
+        here = kg.player_location
+
+        # TODO: more code here....
+        # while not kg.location_of_entity_is_known(self._objname):
+        #     activate required_task PathTask('+NearestUnexplored+')
+        return None
+
+
+class GoToTask(Task):
 
     def get_path_to_goal_by_name(self, gi) -> bool:
         current_loc = self._knowledge_graph(gi).player_location
-        print(f"{self.maybe_GT}NavigationTask.set_goal_by_name({self._goal_name} (player_location={current_loc})")
+        print(f"{self.maybe_GT}GoToTask.set_goal_by_name({self._goal_name} (player_location={current_loc})")
         if self.use_groundtruth:
             loc = gi.gt.location_of_entity_with_name(self._goal_name)
         else:
@@ -174,7 +215,7 @@ class NavigationTask(Task):
                         gi.event_stream.push(NoLongerNeed([objname], groundtruth=self.use_groundtruth))
                         self._goal_name = None
             else:
-                print(f"{self.maybe_GT}NavigationTask({self._goal_name},{self.goal_location}) ignoring event NeedToGoTo:{event.target_location} GT={event.is_groundtruth}")
+                print(f"{self.maybe_GT}GoToTask({self._goal_name},{self.goal_location}) ignoring event NeedToGoTo:{event.target_location} GT={event.is_groundtruth}")
         elif isinstance(event, GroundTruthComplete):
             if self._goal_name and not self._active:
                 name_of_goal = self._goal_name
@@ -250,7 +291,7 @@ class NavigationTask(Task):
             for entity in list(current_loc.entities):
                 # print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
                 if entity.is_container and entity.state.openable:
-                    print(f"NavigationTask -- {entity}.is_open:{entity.state.is_open}")
+                    print(f"GoToTask -- {entity}.is_open:{entity.state.is_open}")
                     if entity.state.openable and not entity.state.is_open:
                         response = yield Open(entity)
                         entity.open()

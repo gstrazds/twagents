@@ -364,6 +364,14 @@ class KnowledgeGraph:
             return room_set.pop()  # choose one (TODO: choose with shortest path to player_location)
         return None
 
+    def location_of_entity_is_known(self, entityname: str) -> bool:
+        loc_set = self.where_is_entity(entityname, allow_unknown=False, top_level=True)
+        return len(loc_set) > 0
+
+    def path_to_unknown(self):
+        return self.connections.shortest_path(self.player_location, self._unknown_location)
+        return self.connections.shortest_path(self.player_location, self._unknown_location)
+
     def get_holding_entity(self, entity):
         """ Returns container (or support) where an entity with a specific name can be found """
         if entity.location != self._unknown_location:
