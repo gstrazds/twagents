@@ -5,6 +5,7 @@ from ..knowledge_graph import KnowledgeGraph
 from ..task import SequentialTasks
 from ..task_modules import SingleActionTask
 from ..task_modules.acquire_task import TakeItemTask
+from ..task_modules.navigation_task import FindTask, GoToTask
 from twutils.twlogic import adapt_tw_instr, CUT_WITH, COOK_WITH
 
 
@@ -18,7 +19,8 @@ class RecipeReaderTask(SingleActionTask):
         self.ingredients = []
         self.recipe_steps = []
         self.use_groundtruth = use_groundtruth
-        self.prereq.required_locations = ['kitchen']
+        self.prereq.add_required_task(GoToTask('cookbook', use_groundtruth=use_groundtruth))
+        # self.prereq.required_locations = ['kitchen']
 
     @property
     def maybe_GT(self):

@@ -112,6 +112,7 @@ class PathTask(SequentialTasks):
         print("PathTask.set_goal()", self.goal_name)
         failure = False   # return value: initially optimistic
         assert self.goal_name
+        current_loc = kg.player_location
         if self.goal_name == '+NearestUnexplored+':
             self.goal_location = None
             self.path = kg.path_to_unknown()
@@ -124,13 +125,12 @@ class PathTask(SequentialTasks):
                 return False
 
             # compute shortest path from current location to goal
-            current_loc = kg.player_location
             self.path = kg.connections.shortest_path(current_loc, self.goal_location)
-        print("{}NavigationTask set_goal({}) => {}".format(self.maybe_GT, self.goal_name, self.path))
+        print("{}PathTask set_goal({}) => {}".format(self.maybe_GT, self.goal_name, self.path))
 
         if self.path:
             link_desc = ','.join(["goto({})".format(link.to_location.name) for link in self.path])
-            self.description = f"NavigationTask({self.goal_name})[{link_desc}]"
+            self.description = f"PathTask({self.goal_name})[{link_desc}]"
             self.tasks = [GoToNextRoomTask(link) for link in self.path]
         else:
             if self.goal_location == current_loc:
@@ -180,31 +180,38 @@ class FindTask(Task):
         here = kg.player_location
 
         # TODO: more code here....
-        while not kg.location_of_entity_is_known(self._objname):
+        if not kg.location_of_entity_is_known(self._objname):
             if self._children:
                 pathtask = self._children[0]
                 assert isinstance(pathtask, PathTask)
                 if pathtask.has_failed:
                     self._failed = True
-                    break
+                    # break
                 if pathtask.is_done and not pathtask.has_failed:
                     pathtask.reset_all()
             else:
                 pathtask = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
                 self._children.append(pathtask)
-            if not pathtask.has_failed:
+            if not pathtask.has_failed and not pathtask.is_active:
                 self._task_exec.start_prereq_task(pathtask)
         return None
 
 
 class GoToTask(Task):
     def __init__(self, objname=None, description='', use_groundtruth=False):
+        def _location_of_obj_is_here(kgraph):  # closure (captures self) for postcondition check
+            loc = kgraph.location_of_entity_with_name(self._objname)
+            retval = (loc == kgraph.player_location)
+            print(f"POSTCONDITION location_of_obj_is_here({self._objname}) => {retval}")
+            return retval
+
         assert objname
         self._objname = objname
         if not description:
             description = f"GoToTask[{objname}]"
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.prereq.add_required_task(FindTask(objname, use_groundtruth=use_groundtruth))
+        self.add_postcondition(_location_of_obj_is_here)
 
     def _generate_actions(self, kg) -> Action:
         """ Generates a sequence of actions.
@@ -214,8 +221,21 @@ class GoToTask(Task):
         here = kg.player_location
 
         # TODO: more code here....
-        if not kg.location_of_entity_is_known(self._objname):
-            self.activate_subtask( PathTask('+NearestUnexplored+') )
+        if kg.location_of_entity_is_known(self._objname):
+            if self._children:
+                pathtask = self._children[0]
+                assert isinstance(pathtask, PathTask)
+                assert pathtask.goal_name == self._objname
+                if pathtask.has_failed:
+                    self._failed = True
+                    # break
+                if pathtask.is_done and not pathtask.has_failed:
+                    pathtask.reset_all()
+            else:
+                pathtask = PathTask(self._objname, use_groundtruth=self.use_groundtruth)
+                self._children.append(pathtask)
+            if not pathtask.has_failed and not pathtask.is_active:
+                self._task_exec.start_prereq_task(pathtask)
         return None
 
 
