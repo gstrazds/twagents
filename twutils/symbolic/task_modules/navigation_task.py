@@ -84,7 +84,7 @@ class GoToNextRoomTask(Task):
 
 class PathTask(SequentialTasks):
     """
-    Responsible for choosing navigation actions to
+    Responsible for sequencing navigation actions to
     take the agent to a given destination, using the knowledge graph.
     """
     def __init__(self, goalname: str, description=None, use_groundtruth=True):
@@ -96,10 +96,10 @@ class PathTask(SequentialTasks):
             description = f"PathTask[{goalname}]"
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
 
-    def activate(self, kg):
+    def activate(self, kg, exec):
         print("PathTask.activate!!!!")
         if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
-            return super().activate(kg)
+            return super().activate(kg, exec)
         else:
             self.deactivate(kg)
             return None
@@ -180,13 +180,46 @@ class FindTask(Task):
         here = kg.player_location
 
         # TODO: more code here....
-        # while not kg.location_of_entity_is_known(self._objname):
-        #     activate required_task PathTask('+NearestUnexplored+')
+        while not kg.location_of_entity_is_known(self._objname):
+            if self._children:
+                pathtask = self._children[0]
+                assert isinstance(pathtask, PathTask)
+                if pathtask.has_failed:
+                    self._failed = True
+                    break
+                if pathtask.is_done and not pathtask.has_failed:
+                    pathtask.reset_all()
+            else:
+                pathtask = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
+                self._children.append(pathtask)
+            if not pathtask.has_failed:
+                self._task_exec.start_prereq_task(pathtask)
         return None
 
 
 class GoToTask(Task):
+    def __init__(self, objname=None, description='', use_groundtruth=False):
+        assert objname
+        self._objname = objname
+        if not description:
+            description = f"FindTask[{objname}]"
+        super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self.prereq.add_required_task(FindTask(objname, use_groundtruth=use_groundtruth))
 
+    def _generate_actions(self, kg) -> Action:
+        """ Generates a sequence of actions.
+        :type kg: KnowledgeGraph
+        """
+        ignored = yield   # required handshake
+        here = kg.player_location
+
+        # TODO: more code here....
+        if not kg.location_of_entity_is_known(self._objname):
+            self.activate_subtask( PathTask('+NearestUnexplored+') )
+        return None
+
+
+class Foo:
     def get_path_to_goal_by_name(self, gi) -> bool:
         current_loc = self._knowledge_graph(gi).player_location
         print(f"{self.maybe_GT}GoToTask.set_goal_by_name({self._goal_name} (player_location={current_loc})")

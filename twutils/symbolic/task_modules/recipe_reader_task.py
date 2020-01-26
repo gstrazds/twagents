@@ -201,8 +201,9 @@ class RecipeReaderTask(SingleActionTask):
             if directions:
                 self.recipe_steps = directions
                 main_task = self.convert_instructions_to_tasks(kg)
-                if main_task:
-                    kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
+                if main_task and self._task_exec:
+                    # kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
+                    self._task_exec.queue_task(main_task)
         self.deactivate(kg)
         self._done = True
         return None

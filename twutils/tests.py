@@ -113,7 +113,7 @@ class TestTask(unittest.TestCase):
     def test_singleaction(self):
         action1 = StandaloneAction('action1')
         t = SingleActionTask(act=action1)
-        gen1 = t.activate(None)
+        gen1 = t.activate(None, None)
         print(gen1)
         act = t.get_next_action("nothing to see here", None)
         self.assertIs(act, action1)
@@ -124,7 +124,7 @@ class TestTask(unittest.TestCase):
     def test_sequential_actions(self):
         count = 4
         mt = sequential_actions_task(start_num=1, count=count)
-        mt.activate(None)
+        mt.activate(None, None)
         obsnum = 0
         while mt.is_active:
             obsnum += 1
@@ -145,7 +145,7 @@ class TestTask(unittest.TestCase):
         self.assertFalse(t3.is_done)
         self.assertFalse(t4.is_done)
         mt = SequentialTasks(tasklist)
-        mt.activate(None)
+        mt.activate(None, None)
         obsnum = 0
         while mt.is_active:
             obsnum += 1
@@ -177,7 +177,7 @@ class TestTask(unittest.TestCase):
         mt3 = sequential_actions_task(start_num=10, count=5)
         tasklist = [t0, mt1, t5, t6, mt2, mt3]
         mt = SequentialTasks(tasklist)
-        mt.activate(None)
+        mt.activate(None, None)
         obsnum = 0
         done_tasks = []
         while mt.is_active:
@@ -448,7 +448,7 @@ class TestTask(unittest.TestCase):
         kg = KnowledgeGraph(None, groundtruth=False)
         t = ExploreHereTask()
         self.assertEquals(str(t), "ExploreHereTask(idle)")
-        gen1 = t.activate(kg)
+        gen1 = t.activate(kg, None)
         print(gen1)
         act = t.get_next_action("nothing to see here", kg)
         self.assertIs(act, Look)

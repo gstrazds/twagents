@@ -31,6 +31,7 @@ class TaskExecutor(DecisionModule):
     """
     def __init__(self, active=False):
         super().__init__()
+        self._gi = None     # keep a pointer to caller (GameInstance) while active
         self._active = active
         self._eagerness = 0.0
         self.found_objs = set()
@@ -52,7 +53,7 @@ class TaskExecutor(DecisionModule):
         for t in self.task_queue:
             print(t)
 
-    def _have_a_runnable_task(self, gi: GameInstance):
+    def _current_task_is_runnable(self):
         print("TaskExecutor _have_a_runnable_task?...", end='')
         all_satisfied = False
         if self.task_stack:
@@ -60,7 +61,8 @@ class TaskExecutor(DecisionModule):
             all_satisfied = active_task.missing.is_empty
         return all_satisfied
 
-    def _activate_next_task(self, gi: GameInstance):
+    def _activate_next_task(self):
+        gi = self._gi
         # assert self._action_generator is None, "Shouldn't be called if a task is already active"
         if not self.task_stack:
             if self.task_queue:
@@ -72,14 +74,14 @@ class TaskExecutor(DecisionModule):
             if not activating_task.is_done and not activating_task.is_active:
                 assert not activating_task.is_done, f"Unexpected: {activating_task}.is_done !"
                 kg = _get_kg_for_task(activating_task, gi)
-                activating_task.activate(kg)
+                activating_task.activate(kg, self)
             if activating_task.is_done:
                 self.pop_task(activating_task)
-                self.rescind_broadcasted_preconditions(activating_task, gi)
+                self.rescind_broadcasted_preconditions(activating_task)
                 continue   # loop to get next potentially active task
             if not _check_preconditions(activating_task, gi):
                 print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
-                self.handle_missing_preconditions(activating_task.missing, gi,
+                self.handle_missing_preconditions(activating_task.missing,
                                                   use_groundtruth=activating_task.use_groundtruth)
                 kg = _get_kg_for_task(activating_task, gi)
                 activating_task.deactivate(kg)
@@ -87,12 +89,13 @@ class TaskExecutor(DecisionModule):
         return False
 
     def activate(self, gi: GameInstance):
+        self._gi = gi
         if True or not self._active:
             print("TaskExecutor: ACTIVATING?...", end='')
-            self._activate_next_task(gi)
+            self._activate_next_task()
             print("Activation Prechecks...")
-            self.remove_completed_tasks(gi)
-            if self._have_a_runnable_task(gi):
+            self.remove_completed_tasks()
+            if self._current_task_is_runnable():
                 if self._active:
                     print("already active.")
                     self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
@@ -113,9 +116,11 @@ class TaskExecutor(DecisionModule):
             self.print_state()
         self._active = False
         self._eagerness = 0.0
+        self._gi = None
         # self._action_generator = None
 
-    def remove_completed_tasks(self, gi: GameInstance):
+    def remove_completed_tasks(self):
+        gi = self._gi
         print("TaskExec -- remove_completed_tasks...")
         something_changed = True
         while something_changed and self.task_stack:
@@ -134,7 +139,6 @@ class TaskExecutor(DecisionModule):
         if self.task_stack or self.task_queue:  # if we have some tasks
             if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
                 # if nothing currently active, move a task from pending to active
-                # if self._activate_next_task(gi):
                 self.activate(gi)
             else:
                 print(f"(already active: task={self.task_stack[-1]})", end='')
@@ -168,8 +172,9 @@ class TaskExecutor(DecisionModule):
         print(f"TaskExec.pop_task({task}) => {popped}")
         if task:
             assert task == popped
-        if popped.prereq.required_tasks:
-            for t in popped.prereq.required_tasks:
+        subtasks = popped.subtasks  #popped.subtasks
+        if subtasks:
+            for t in subtasks:
                 if t in self.task_stack:
                     self.pop_task(task=t)
                     t.reset_all()
@@ -177,7 +182,8 @@ class TaskExecutor(DecisionModule):
         # self._action_generator = None
         return popped
 
-    def start_prereq_task(self, pretask, gi: GameInstance) -> bool:
+    def start_prereq_task(self, pretask) -> bool:
+        # gi = self._gi
         print("start_prereq_task:", pretask)
         # assert pretask not in self.task_stack
         if pretask in self.task_queue:
@@ -192,9 +198,10 @@ class TaskExecutor(DecisionModule):
         if next_task.is_done or next_task.has_failed:
             next_task.reset_all()  # try again
         self.push_task(next_task)
-        return self._activate_next_task(gi)
+        return self._activate_next_task()
 
-    def handle_missing_preconditions(self, missing: Preconditions, gi: GameInstance, use_groundtruth=False):
+    def handle_missing_preconditions(self, missing: Preconditions, use_groundtruth=False):
+        gi = self._gi
         if not gi:
             kg = None
         else:
@@ -242,9 +249,10 @@ class TaskExecutor(DecisionModule):
             #TODO: or else, activate them all but using a ParallelTasks context (which is not yet implemented)
             for task in reversed(missing.required_tasks):
                 print(f"handle precondition: {task}")
-                self.start_prereq_task(task, gi)
+                self.start_prereq_task(task)
 
-    def rescind_broadcasted_preconditions(self, task, gi: GameInstance):
+    def rescind_broadcasted_preconditions(self, task):
+        gi = self._gi
         use_groundtruth = task.use_groundtruth
         prereqs = task.prereq
         if prereqs.required_inventory:
@@ -259,12 +267,14 @@ class TaskExecutor(DecisionModule):
         # print("TaskExecutor PROCESS EVENT: ", event)
         if isinstance(event, NeedToDo):
             print("TaskExecutor PROCESS EVENT: ", event)
-            self.start_prereq_task(event.task, gi)
+            self._gi = gi
+            self.start_prereq_task(event.task)
             self.activate(gi)
 
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction
         print("++++TaskExecutor.take_control")
+        assert self._gi == gi
         # assert observation is None, f"TaskExec.take_control() got initial observation={observation}"
         # print(f"TaskExec.take_control() got initial observation={observation}")
         # assert self._active, \
@@ -273,7 +283,7 @@ class TaskExecutor(DecisionModule):
         if not self._active:
             self._eagerness = 0.0
             return None  #ends the generator
-        self._activate_next_task(gi)
+        self._activate_next_task()
         # assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
         failed_counter = 0
         while self.task_stack and self.task_stack[-1].is_active:
@@ -283,12 +293,13 @@ class TaskExecutor(DecisionModule):
             if not active_task.is_done:
                 prereqs_satisfied = _check_preconditions(active_task, gi)
             else:
-                self.rescind_broadcasted_preconditions(active_task, gi)
+                self.rescind_broadcasted_preconditions(active_task)
 
             if prereqs_satisfied or active_task.is_done:
-                next_action = active_task.get_next_action(observation, gi)  # ?get next action from DONE task?
+                kg = _get_kg_for_task(active_task, gi)
+                next_action = active_task.get_next_action(observation, kg)  # ?get next action from DONE task?
             else:
-                self.handle_missing_preconditions(active_task.missing, gi,
+                self.handle_missing_preconditions(active_task.missing,
                                                   use_groundtruth=active_task.use_groundtruth)
                 next_action = None
 
@@ -309,10 +320,10 @@ class TaskExecutor(DecisionModule):
                     t = self.pop_task()
                     print(f"    (popped because {t}.is_done)")
                     kg = _get_kg_for_task(t, gi)
-                    self.rescind_broadcasted_preconditions(t, gi)
+                    self.rescind_broadcasted_preconditions(t)
                     t.deactivate(kg)
                     self.completed_tasks.append(t)
-                    self._activate_next_task(gi)
+                    self._activate_next_task()
                 else:
                     yield None
                     failed_counter += 1

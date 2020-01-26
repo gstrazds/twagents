@@ -109,8 +109,10 @@ class Task:
         self.description = description
         self.prereq = Preconditions()
         self.missing = Preconditions()
-        self._action_generator = None  # generator: current state of self._generate_actions()
         self._postcondition_checks = []  # closures, invoked with one arg = KnowledgeGraph
+        self._action_generator = None  # generator: current state of self._generate_actions()
+        self._task_exec = None   # when a task is activated, it gets a pointer to the TaskExecutor
+        self._children = []   # keep track of subtasks that need to be revoked if this task fails or is revoked
 
     def _knowledge_graph(self, gi):
         if self.use_groundtruth:
@@ -135,6 +137,13 @@ class Task:
     def has_postcondition_checks(self) -> bool:
         return self._postcondition_checks and len(self._postcondition_checks) > 0
 
+    @property
+    def subtasks(self):
+        subtask_list = []
+        subtask_list += self.prereq.required_tasks
+        subtask_list += self._children
+        return subtask_list
+
     def _check_done(self) -> bool:
         return self._done
 
@@ -144,6 +153,8 @@ class Task:
         self._action_generator = None
 
     def reset_all(self):
+        for t in self._children:
+            t.reset()
         self.reset()
 
     def check_preconditions(self, kg) -> bool:
@@ -188,7 +199,11 @@ class Task:
         ignored = yield
         return None
 
-    def activate(self, kg):
+    def activate(self, kg, exec):
+        if self._task_exec:
+            assert exec is self._task_exec
+        self._task_exec = exec
+
         if not self.is_active:
             print(f"{self} ACTIVATING")
             self._action_generator = self._generate_actions(kg)  #proxy waiting for.send(obs) at initial "ignored = yield"
@@ -238,6 +253,13 @@ class CompositeTask(Task):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.tasks = tasks
 
+    @property
+    def subtasks(self):
+        subtask_list = super().subtasks
+        if self.tasks:
+            subtask_list += self.tasks
+        return subtask_list
+
     def _check_done(self) -> bool:
         if self.tasks:
             return all(map(lambda t: t.is_done, self.tasks))
@@ -276,10 +298,10 @@ class SequentialTasks(CompositeTask):
         # print("SequentialTasks.get_current_task(idx={}) => None (tasks:{})".format(self._current_idx, self.tasks))
         return None
 
-    def activate(self, kg):
+    def activate(self, kg, exec):
         t = self.get_current_task(kg)  #self._knowledge_graph(gi))
         # self._action_generator = self._generate_actions(gi) #proxy waiting for.send(obs) at initial "ignored = yield"
-        self._action_generator = t.activate(kg) if t else None
+        self._action_generator = t.activate(kg, exec) if t else None
         return self._action_generator
 
     def deactivate(self, kg):
@@ -311,7 +333,7 @@ class SequentialTasks(CompositeTask):
             if self.tasks[self._current_idx].is_done:
                 self._current_idx += 1  # move on to the next task, if there is one
                 if self._current_idx < len(self.tasks):
-                    self.activate(kg)  # reactivate with new current task
+                    self.activate(kg, self._task_exec)  # reactivate with new current task
                     return self.get_next_action(observation, kg)  # RECURSE to next Task
                 else:
                     self._done = True

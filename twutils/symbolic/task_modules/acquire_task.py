@@ -70,10 +70,10 @@ class AcquireTask(SequentialTasks):
             description = f"AcquireTask[{objname}]"
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
 
-    def activate(self, kg):
-        print("PathTask.activate!!!!")
+    def activate(self, kg, exec):
+        print("AcquireTask.activate!!!!")
         if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
-            return super().activate(kg)
+            return super().activate(kg, exec)
         else:
             self.deactivate(kg)
             return None
