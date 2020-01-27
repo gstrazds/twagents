@@ -18,6 +18,7 @@ from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_item
 from symbolic.game_agent import TextGameAgent
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from symbolic.task_modules import RecipeReaderTask
+from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
 
@@ -765,7 +766,11 @@ class CustomAgent:
                     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
 
                     # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
-                    agent.task_exec.queue_task(RecipeReaderTask(use_groundtruth=False))
+                    use_groundtruth = False
+                    task_list = [ExploreHereTask(use_groundtruth=use_groundtruth),
+                                 RecipeReaderTask(use_groundtruth=use_groundtruth)]
+                    for task in task_list:
+                        agent.task_exec.queue_task(task)
 
                 actiontxt = agent.choose_next_action(obstxt2, observable_facts=observable_facts, prev_action=self.prev_actions[idx])
                 print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))

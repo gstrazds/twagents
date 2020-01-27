@@ -54,8 +54,8 @@ class TextGameAgent:
         self.task_exec = TaskExecutor(True)
         self.modules = [
                         self.task_exec,
-                        GTNavigator(False, use_groundtruth=False),
-                        GTAcquire(True, use_groundtruth=False),
+                        # GTNavigator(False, use_groundtruth=False),
+                        # GTAcquire(True, use_groundtruth=False),
                         # GTRecipeReader(use_groundtruth=False),
                         # Explorer(True),
                         # Navigator(True),

@@ -20,13 +20,21 @@ def get_door_if_closed(connection):
         return connection.doorway
     return None
 
+
 class ExploreHereTask(Task):
     def __init__(self, description='', use_groundtruth=False):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        # self._path_task = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
+        # self._children.append(self._path_task)
+        # self.prereq.add_required_task(self._path_task)
         # self.add_postcondition( check if here has any unopened containers or doors )
 
     def check_result(self, result: str, kg: KnowledgeGraph) -> bool:
         return True
+
+    def reset_all(self):
+        self._path_task.reset_all()
+        super().reset_all()
 
     def _generate_actions(self, kg) -> Action:
         """ Generates a sequence of actions.
@@ -44,6 +52,7 @@ class ExploreHereTask(Task):
                     response = yield Open(entity)
                     if self.check_result(response, kg):
                         entity.open()
+        self._done = True
         return None
 
 
@@ -66,6 +75,17 @@ class GoToNextRoomTask(Task):
         here = kg.player_location
         link = self._connection
         ignored = yield   # required handshake
+
+        # ExploreHereTask
+        ## if self.open_all_containers:
+        # for entity in list(here.entities):
+        #     # print(f"GoToNextRoomTask -- {here} {entity} is_container:{entity.is_container}")
+        #     if entity.is_container and entity.state.openable:
+        #         print(f"GoToNextRoomTask -- {entity}.is_open:{entity.state.is_open}")
+        #         if entity.state.openable and not entity.state.is_open:
+        #             response = yield Open(entity)
+        #             entity.open()
+
         if link.from_location != here:
             print(f"{self} ASSERTION FAILURE from_location={link.from_location} != player_location={here}")
             self._failed = True
@@ -79,6 +99,7 @@ class GoToNextRoomTask(Task):
             response = yield link.action
             if not self.check_result(response, kg):
                 self._failed = True
+        self._done = True
         return None
 
 
@@ -97,12 +118,17 @@ class PathTask(SequentialTasks):
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
 
     def activate(self, kg, exec):
-        print("PathTask.activate!!!!")
-        if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
+        if self.is_active:
+            print(f"{self} .activate(): ALREADY ACTIVE")
             return super().activate(kg, exec)
         else:
-            self.deactivate(kg)
-            return None
+            print("PathTask.activate!!!!")
+            if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
+                return super().activate(kg, exec)
+            else:
+                self.deactivate(kg)
+                self._done = True
+                return None
 
     def reset_all(self):
         self.goal_location = None
@@ -115,6 +141,7 @@ class PathTask(SequentialTasks):
         return "GT " if self.use_groundtruth else ""
 
     def set_goal(self, kg: KnowledgeGraph) -> bool:
+        super().reset_all()
         print("PathTask.set_goal()", self.goal_name)
         failure = False   # return value: initially optimistic
         assert self.goal_name
@@ -137,7 +164,9 @@ class PathTask(SequentialTasks):
         if self.path:
             link_desc = ','.join(["goto({})".format(link.to_location.name) for link in self.path])
             self.description = f"PathTask({self.goal_name})[{link_desc}]"
-            self.tasks = [GoToNextRoomTask(link) for link in self.path]
+            self.tasks = []   #ExploreHereTask(use_groundtruth=self.use_groundtruth)]
+            self.tasks += [GoToNextRoomTask(link) for link in self.path]
+            self.tasks.append(ExploreHereTask(use_groundtruth=self.use_groundtruth))
         else:
             if self.goal_location == current_loc:
                 self._done = True
@@ -188,18 +217,20 @@ class FindTask(Task):
         # TODO: more code here....
         if not kg.location_of_entity_is_known(self._objname):
             if self._children:
-                pathtask = self._children[0]
-                assert isinstance(pathtask, PathTask)
-                if pathtask.has_failed:
+                explore = self._children[0]
+                assert isinstance(explore, PathTask)
+                if explore.has_failed:
                     self._failed = True
                     # break
-                if pathtask.is_done and not pathtask.has_failed:
-                    pathtask.reset_all()
+                if explore.is_done and not explore.has_failed:
+                    explore.reset_all()
             else:
-                pathtask = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
-                self._children.append(pathtask)
-            if not pathtask.has_failed and not pathtask.is_active:
-                self._task_exec.start_prereq_task(pathtask)
+                task_list = [PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth),
+                             ExploreHereTask(use_groundtruth=self.use_groundtruth)]
+                explore = task_list[0]  #SequentialTasks(tasks=task_list, use_groundtruth=self.use_groundtruth)
+                self._children.append(explore)
+            if not explore.has_failed and not explore.is_active:
+                self._task_exec.start_prereq_task(explore)
         return None
 
 

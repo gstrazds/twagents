@@ -3,7 +3,7 @@ from ..decision_module import DecisionModule
 from ..event import NeedToDo, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
-from ..task_modules.navigation_task import PathTask
+from ..task_modules.navigation_task import PathTask, GoToTask
 from ..gv import dbg
 
 def _get_kg_for_task(task: Task, gi: GameInstance):
@@ -211,17 +211,17 @@ class TaskExecutor(DecisionModule):
             gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
         if missing.required_locations:
             locname = list(missing.required_locations)[0]
-            if not use_groundtruth and kg and kg.location_of_entity_is_known(locname):
+            if not use_groundtruth and kg: # and kg.location_of_entity_is_known(locname):
                 # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
                 already_in_prereqs = False
                 for t in missing.required_tasks:
-                    if isinstance(t, PathTask): # and t.goal_name == locname:
+                    if isinstance(t, GoToTask): # and t.goal_name == locname:
                         already_in_prereqs = True
                         break
                 if not already_in_prereqs:
-                    pathtask = PathTask(locname, use_groundtruth=use_groundtruth)
-                    print(kg.location_of_entity_with_name(locname), pathtask)
-                    missing.required_tasks.append(pathtask)
+                    gototask = GoToTask(locname, use_groundtruth=use_groundtruth)
+                    print(kg.location_of_entity_with_name(locname), gototask)
+                    missing.required_tasks.append(gototask)
             else:
                 gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
         # need_to_get = []

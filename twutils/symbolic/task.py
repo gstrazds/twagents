@@ -238,8 +238,8 @@ class Task:
         return "{}({}{}{})".format(
             self.description,
             "ACTIVE" if self.is_active else "idle",
-            " DONE" if self.is_done else '',
-            " FAILED" if self.has_failed else '')
+            " DONE" if self._done else '',
+            " FAILED" if self._failed else '')
 
     def __repr__(self):
         return str(self)
@@ -315,7 +315,8 @@ class SequentialTasks(CompositeTask):
         if self._current_idx > 0 and len(self.tasks) > 0 and not self._done:
             for idx in range(self._current_idx):
                 assert idx < len(self.tasks)
-                assert self.tasks[idx].is_done
+                if idx < self._current_idx - 1:
+                    assert self.tasks[idx].is_done, f"{self.description} current={self._current_idx} idx={idx}:{self.tasks[idx]}"
         return super().is_done
 
     def get_next_action(self, observation, kg) -> Action:
@@ -330,7 +331,7 @@ class SequentialTasks(CompositeTask):
         if act:
             return act
         else:
-            if self.tasks[self._current_idx].is_done:
+            if self._current_idx < len(self.tasks) and self.tasks[self._current_idx].is_done:
                 self._current_idx += 1  # move on to the next task, if there is one
                 if self._current_idx < len(self.tasks):
                     self.activate(kg, self._task_exec)  # reactivate with new current task
@@ -339,6 +340,7 @@ class SequentialTasks(CompositeTask):
                     self._done = True
                     self.deactivate(kg)
             else:  # current task stopped but is incomplete (failed, at least for now)
+                self._done = True
                 self.deactivate(kg)  #self.suspend(gi)
         return None
 
