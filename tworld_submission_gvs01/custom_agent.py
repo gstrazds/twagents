@@ -21,6 +21,7 @@ from symbolic.task_modules import RecipeReaderTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
+from symbolic.entity import MEAL
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
@@ -625,12 +626,19 @@ class CustomAgent:
                     self.game_ids.append(game_id)
 
             if idx == len(self.agents):
-                self.agents.append(
-                    TextGameAgent(
+                tw_game_agent = TextGameAgent(
                         self.config['general']['random_seed'],  #seed
                         "TW",     # rom_name
                         game_id)  # env_name
-                )
+
+                self.agents.append(tw_game_agent)
+                # FIXME: initialization HACK for MEAL
+                kg = tw_game_agent.gi.kg
+                meal = kg.create_new_object('meal', MEAL)
+                meal.location = kg._nowhere  # the meal doesn't yet exist in the world
+                gt = tw_game_agent.gi.gt
+                meal = gt.create_new_object('meal', MEAL)
+                meal.location = gt._nowhere  # the meal doesn't yet exist in the world
             else:
                 assert idx < len(self.agents)
                 if self.current_episode > 0:

@@ -3,7 +3,7 @@
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
-from symbolic.entity import DOOR, ROOM, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC, MEAL
+from symbolic.entity import DOOR, ROOM, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
 from twutils.twlogic import reverse_direction
 
 DIRECTION_ACTIONS = {
@@ -210,9 +210,6 @@ class KnowledgeGraph:
         self._update_entity_index(self._unknown_location)
         self._update_entity_index(self._player)
         self._update_entity_index(self._player.inventory)  # add the player's inventory to index of Locations
-
-        meal = self.create_new_object('meal', MEAL)
-        meal.location = self._nowhere   # the meal doesn't yet exist in the world
 
 
     # ASSUMPTIONS: name=>entity mapping is many-to-one. A given name can refer to at most one entity or location.
