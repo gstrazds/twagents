@@ -116,7 +116,7 @@ class TaskExecutor(DecisionModule):
             self.print_state()
         self._active = False
         self._eagerness = 0.0
-        self._gi = None
+        # self._gi = None
         # self._action_generator = None
 
     def remove_completed_tasks(self):
@@ -274,7 +274,8 @@ class TaskExecutor(DecisionModule):
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction
         print("++++TaskExecutor.take_control")
-        assert self._gi == gi
+        if self._gi:
+            assert self._gi == gi, f"\nself._gi:{self._gi}\ngi:{gi}"
         # assert observation is None, f"TaskExec.take_control() got initial observation={observation}"
         # print(f"TaskExec.take_control() got initial observation={observation}")
         # assert self._active, \

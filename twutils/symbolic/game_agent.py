@@ -34,13 +34,13 @@ class TextGameAgent:
         self.modules = []
         self.active_module    = None
         self.action_generator = None
-        self.first_step       = True
+        self.first_step = True
+        self.step_num = 0
         self._valid_detector  = None  #LearnedValidDetector()
         self._last_action = None
         if env_name and rom_name:
             self.rom_name = rom_name
             self.env_name = env_name
-            self.step_num = 0
         self._init_modules()
 
     def reset(self):
@@ -49,6 +49,8 @@ class TextGameAgent:
         observed_knowledge_graph.reset()
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
         self._init_modules()
+        self.first_step = True
+        self.step_num = 0
 
     def _init_modules(self):
         self.task_exec = TaskExecutor(True)
@@ -138,7 +140,6 @@ class TextGameAgent:
         # Output a snapshot of the kg.
         # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
         #     f.write(str(self.knowledge_graph)+'\n\n')
-        # self.step_num += 1
 
         if observable_facts and self.gi.kg:
             self.gi.kg.update_facts(observable_facts, prev_action=self._last_action)
@@ -162,6 +163,7 @@ class TextGameAgent:
 
         next_action = self.generate_next_action(observation)
         self._last_action = next_action
+        self.step_num += 1
         return next_action.text()
 
     def observe(self, prev_obs, prev_action, score, new_obs, terminal):
