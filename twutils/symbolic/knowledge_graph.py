@@ -901,18 +901,26 @@ class ConnectionGraph:
                 return connection.to_location
         return None
 
-    def shortest_path(self, start_location, end_location, path=[]):
+    def shortest_path(self, start_location, end_location, bestpath=None, visited=None):
         """ Find the shortest path between start and end locations. """
+        if bestpath is None:
+            bestpath = []
+        if visited is None:
+            visited = []
         if start_location == end_location:
-            return path
+            return bestpath
         if start_location not in self._out_graph:
             return None
+        if start_location in visited:
+            print(f"shortest_path: SKIPPING {start_location} to avoid looping")
+            return None
+        visited.append(start_location)
         shortest = None
         for connection in self.outgoing(start_location):
-            if connection not in path:
+            if connection not in bestpath:
                 newpath = self.shortest_path(connection.to_location,
                                              end_location,
-                                             path + [connection])
+                                             bestpath + [connection], visited=visited)
                 if newpath:
                     if not shortest or len(newpath) < len(shortest):
                         shortest = newpath
