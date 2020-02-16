@@ -297,6 +297,24 @@ class SayLocationOfEntityTask(SingleActionTask):
         return super().activate(kg, exec)
 
 
+class AnswerFoundTask(SingleActionTask):
+    def __init__(self, entityname: str, description=None, use_groundtruth=False):
+        super().__init__(act=StandaloneAction("answer: 0"),
+                         description=f"AnswerFoundTask[{entityname}]",
+                         use_groundtruth=use_groundtruth)
+        self._entityname = entityname
+
+    def activate(self, kg, exec):
+        if super().action:
+            assert isinstance(super().action, StandaloneAction)
+            if kg.location_of_entity_is_known(self._entityname):
+                found = "1"
+            else:
+                found = "0"
+            super().action.verb = f"answer: {found}"
+
+        return super().activate(kg, exec)
+
 class Foo:
     def get_path_to_goal_by_name(self, gi) -> bool:
         current_loc = self._knowledge_graph(gi).player_location
