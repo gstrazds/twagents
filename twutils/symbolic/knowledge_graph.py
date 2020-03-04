@@ -274,9 +274,9 @@ class KnowledgeGraph:
         kg = self
         print(f"RESETTING Knowledge Graph {kg}")
         # self.inventory.reset(kg)  -- done in _player.reset()
-        print("***** reset _player")
+        # print("***** reset _player")
         self._player.reset(kg)
-        print("***** reset locations")
+        # print("***** reset locations")
         for location in self.locations:
             location.reset(kg)
 
@@ -424,26 +424,11 @@ class KnowledgeGraph:
             else:  # not self.groundtruth:
                 assert ev, "Adding a newly created Location should return a NewLocationEvent"
                 self.event_stream.push(ev)
-            if not self.groundtruth:
-                print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
+            # if not self.groundtruth:
+            #     print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
             return new_loc
         print("LOCATION NOT FOUND:", roomname)
         return None
-
-    # def move_entity(self, entity, origin, dest):
-    # # TODO: refactor this. Currently used in exactly one place = maybe_move_entity
-    #     """ Moves entity from origin to destination. """
-    #     assert origin is not dest
-    #     assert origin.has_entity(entity), \
-    #         "Can't move entity {} that isn't present at origin {}" \
-    #         .format(entity, origin)
-    #     # origin.del_entity(entity)   # this is now done automatically within dest.add_entity()
-    #     if not dest.add_entity(entity):
-    #         msg = f"Unexpected: already at target location {dest}.add_entity(entity={entity}) origin={origin})"
-    #         print("!!!WARNING: "+msg)
-    #         assert False, msg
-    #     if not self.groundtruth:
-    #         self.event_stream.push(EntityMovedEvent(entity, origin, dest, groundtruth=False))
 
     def maybe_move_entity(self, entity, locations=None):
         assert locations
@@ -458,51 +443,11 @@ class KnowledgeGraph:
             if loc.add_entity(entity):
                 if not self.groundtruth and not Location.is_unknown(loc):
                     if entity.location == entity._init_loc:
-                        print(f"DISCOVERED NEW entity: {entity} at {loc}")
+                        print(f"\tDISCOVERED NEW entity: {entity} at {loc}")
                         ev = NewEntityEvent(entity)
                         self.event_stream.push(ev)
                     else:
-                        print(f"MOVED entity: {entity} to {loc}")
-        # prev_loc_set = self.where_is_entity(entity.name, entitytype=entity._type, allow_unknown=True)
-        # loc_set = set(locations)
-        # if prev_loc_set != loc_set:
-        #     # print(f"get_entity() WARNING - MOVING {entity} to {loc_set}")
-        #     if len(prev_loc_set) != len(loc_set):
-        #         print("WARNING: len(prev_loc_set) != len(loc_set):", entity, prev_loc_set, locations)
-        #     if prev_loc_set:  # available information about location object seems to have changed
-        #         if len(prev_loc_set) == 2 and len(loc_set) == 2:
-        #             if entity._type != DOOR:
-        #                 print("WARNING: expected type==DOOR:", entity)
-        #             new_locs = loc_set - prev_loc_set   # set.difference()
-        #             prev_locs = prev_loc_set - loc_set
-        #             if len(new_locs) == 1 and len(prev_locs) == 1:
-        #                 prev_loc_set = set([self._unknown_location])
-        #                 loc_set = new_locs
-        #                 # drop through to if len(prev_loc_set) == 1 case, below...
-        #             else:
-        #                 print(f"WARNING: UNEXPECTED previous locations for {entity} prev:{prev_loc_set} "
-        #                       f"-> new:{new_locs}; {locations}")
-        #
-        #         if len(prev_loc_set) == 1:
-        #             assert len(loc_set) == 1, f"prev={prev_loc_set} loc_set={loc_set}"
-        #             loc_prev = prev_loc_set.pop()
-        #             loc_new = loc_set.pop()
-        #             # TODO: here we are assuming exactly one found entity and one location
-        #             if loc_new == self._unknown_location:
-        #                 print(f"ERROR: not moving {entity} to UnknownLocation")
-        #             else:
-        #                 if loc_prev != self._unknown_location:
-        #                     print(f"WARNING: KG.get_entity() triggering move_entity(entity={entity},"
-        #                           f" dest={loc_new}, origin={loc_prev})")
-        #                 else:   # loc_prev == self._unknown_location:
-        #                     if not self.groundtruth:
-        #                         print("DISCOVERED NEW entity:", entity)
-        #                         ev = NewEntityEvent(entity)
-        #                         self.event_stream.push(ev)
-        #                 self.move_entity(entity, loc_prev, loc_new)
-        #         else:
-        #             print("WARNING: CAN'T HANDLE multiple locations > 2", prev_loc_set, locations)
-        #             assert False
+                        print(f"\tMOVED entity: {entity} to {loc}")
 
     def get_entity(self, name, entitytype=None):
         entities = self.entities_with_name(name, entitytype=entitytype)
@@ -542,9 +487,8 @@ class KnowledgeGraph:
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             if not self.groundtruth:
-                print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
-            if not self.groundtruth:
-                print("DISCOVERED NEW entity:", obj)
+                print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+                # print("DISCOVERED NEW entity:", obj)
                 ev = NewEntityEvent(obj)
                 self.event_stream.push(ev)
 
@@ -573,7 +517,7 @@ class KnowledgeGraph:
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
-            print("ADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
         self.maybe_move_entity(obj, locations=loc_list)
         # DEBUGGING: redundant SANITY CHECK
         if not self.inventory.get_entity_by_name(obj.name):
@@ -626,7 +570,7 @@ class KnowledgeGraph:
                     door_facts.append(fact)
                     # pass
                 else:
-                    print("--IGNORING DIRECTION_FACT:", fact)
+                    # print("--IGNORING DIRECTION_FACT:", fact)
                     pass
             else:
                 other_facts.append(fact)
@@ -812,8 +756,8 @@ class ConnectionGraph:
             self._out_graph[from_location] = {direction: connection}
         else:
             if direction in self._out_graph[from_location]:
-                if self._out_graph[from_location][direction] != connection:
-                    print(f"... updating {self._out_graph[from_location][direction]} <= {connection}")
+                # if self._out_graph[from_location][direction] != connection:
+                    # print(f"... updating {self._out_graph[from_location][direction]} <= {connection}")
                 connection = self._out_graph[from_location][direction].update(connection)
             else:
                 added_new.append(f"out_graph[{from_location.name}][{direction}]")
@@ -826,8 +770,8 @@ class ConnectionGraph:
                 self._in_graph[to_location] = {incoming_rel: connection}
             else:
                 if incoming_rel in self._in_graph[to_location]:
-                    if self._in_graph[to_location][incoming_rel] != connection:
-                        print(f"... updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
+                    # if self._in_graph[to_location][incoming_rel] != connection:
+                    #     print(f"... updating {self._in_graph[to_location][incoming_rel]} <= {connection}")
                     self._in_graph[to_location][incoming_rel].update(connection)
                 else:
                     added_new.append(f"in_graph[{to_location.name}][{incoming_rel}]")
@@ -864,9 +808,8 @@ class ConnectionGraph:
                 self.add(reverse_connection, kg, assume_inverse=False)
                 assume_inverse = False   # since we've just built a reverse connection, skip default inverse logic
 
-        if added_new:
-            if not kg.groundtruth:
-                print("ADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), added_new, connection)
+        # if added_new and not kg.groundtruth:
+        #         print("\tADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), added_new, connection)
 
         if assume_inverse:  # assume that 180 inverse direction connects to_location => from_location
             if not Location.is_unknown(connection.to_location):
@@ -912,7 +855,7 @@ class ConnectionGraph:
         if start_location not in self._out_graph:
             return None
         if start_location in visited:
-            print(f"shortest_path: SKIPPING {start_location} to avoid looping")
+            # print(f"shortest_path: SKIPPING {start_location} to avoid looping")
             return None
         visited.append(start_location)
         shortest = None
@@ -1001,8 +944,8 @@ class Connection:
             else:
                 updated.append("doorway")
             self.doorway = other.doorway
-        if updated:
-            print(f"ConnectionGraph updated {self} {updated} from {other}")
+        # if updated:
+        #     print(f"ConnectionGraph updated {self} {updated} from {other}")
         return self
 
     def to_string(self, prefix=''):

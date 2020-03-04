@@ -12,17 +12,16 @@ def _get_kg_for_task(task: Task, gi: GameInstance):
     return gi.gt if task.use_groundtruth else gi.kg
 
 def _check_preconditions(task: Task, gi: GameInstance) -> bool:
-    use_groundtruth = task.use_groundtruth
-    print("_check_preconditions({}) {}:".format("GT" if use_groundtruth else 'kg', task))
     kg = _get_kg_for_task(task, gi)
+    # print("_check_preconditions({}) {}:".format("GT" if use_groundtruth else 'kg', task))
     all_satisfied = task.check_preconditions(kg)
-    if not all_satisfied:
-        print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
-    else:
-        if task.prereq.is_empty:
-            print(f"task {task} has no prereqs")
-        else:
-            print(f"task {task}: all preconditions {task.prereq} SATISFIED")
+    # if not all_satisfied:
+    #     print(f"TaskExecutor {task} has unsatisfied preconditions:\n{task.missing}")
+    # else:
+    #     if task.prereq.is_empty:
+    #         print(f"task {task} has no prereqs")
+    #     else:
+    #         print(f"task {task}: all preconditions {task.prereq} SATISFIED")
     return all_satisfied
 
 class TaskExecutor(DecisionModule):
@@ -38,6 +37,7 @@ class TaskExecutor(DecisionModule):
         self.task_stack = []  # stack of currently active tasks (of which the top most is currently in control)
         self.task_queue = []  # tasks waiting to begin
         self.completed_tasks = []
+        self._debug_print = False
         # self._action_generator = None
 
     def print_state(self):
@@ -46,15 +46,16 @@ class TaskExecutor(DecisionModule):
         if not self.task_stack:
             print("            EMPTY")
         for t in self.task_stack:
-            print(t)
+            print(" ", t)
         print("[[       .task_queue:   ]]")
         if not self.task_queue:
             print("            EMPTY")
         for t in self.task_queue:
-            print(t)
+            print(" ", t)
+        print("[[----------------------]]")
 
     def _current_task_is_runnable(self):
-        print("TaskExecutor _have_a_runnable_task?...", end='')
+        # print("TaskExecutor _have_a_runnable_task?...", end='')
         all_satisfied = False
         if self.task_stack:
             active_task = self.task_stack[-1]
@@ -80,7 +81,7 @@ class TaskExecutor(DecisionModule):
                 self.rescind_broadcasted_preconditions(activating_task)
                 continue   # loop to get next potentially active task
             if not _check_preconditions(activating_task, gi):
-                print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
+                # print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
                 self.handle_missing_preconditions(activating_task.missing,
                                                   use_groundtruth=activating_task.use_groundtruth)
                 kg = _get_kg_for_task(activating_task, gi)
@@ -91,21 +92,26 @@ class TaskExecutor(DecisionModule):
     def activate(self, gi: GameInstance):
         self._gi = gi
         if True or not self._active:
-            print("TaskExecutor: ACTIVATING?...", end='')
+            if self._debug_print:
+                print("TaskExecutor: ACTIVATING?...", end='')
             self._activate_next_task()
-            print("Activation Prechecks...")
+            if self._debug_print:
+                print("Activation Prechecks...")
             self.remove_completed_tasks()
             if self._current_task_is_runnable():
                 if self._active:
-                    print("already active.")
+                    if self._debug_print:
+                        print("already active.")
                     self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
                 else:
                     self.print_state()
-                    print("ACTIVATING!")
+                    if self._debug_print:
+                        print("ACTIVATING!")
                     self._active = True
                     self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
             else:
-                print("No runnable task, canceling TaskExecutor activation")
+                if self._debug_print:
+                    print("No runnable task, canceling TaskExecutor activation")
                 self.print_state()
                 self._eagerness = 0
                 self._active = False
@@ -121,7 +127,8 @@ class TaskExecutor(DecisionModule):
 
     def remove_completed_tasks(self):
         gi = self._gi
-        print("TaskExec -- remove_completed_tasks...")
+        if self._debug_print:
+            print("TaskExec -- remove_completed_tasks...")
         something_changed = True
         while something_changed and self.task_stack:
             something_changed = False
@@ -134,19 +141,20 @@ class TaskExecutor(DecisionModule):
                     break   # exit inner for-loop, continue outer while-loop
 
     def get_eagerness(self, gi: GameInstance):
-        print("TaskExecutor.get_eagerness => ", end='')
         """ Returns a float in [0,1] indicating how eager this module is to take control. """
+        if self._debug_print:
+            print("TaskExecutor.get_eagerness => ", end='')
         if self.task_stack or self.task_queue:  # if we have some tasks
             if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
                 # if nothing currently active, move a task from pending to active
                 self.activate(gi)
             else:
-                print(f"(already active: task={self.task_stack[-1]})", end='')
+                if self._debug_print:
+                    print(f"(already active: task={self.task_stack[-1]})", end='')
         else:
             self.deactivate(gi)
-        print(self._eagerness)
-        # if self._eagerness == 0:
-        #     self.print_state()
+        if self._debug_print:
+            print(self._eagerness)
         return self._eagerness
 
     def queue_task(self, task: Task):
@@ -248,7 +256,7 @@ class TaskExecutor(DecisionModule):
             #TODO: NOTE: here we should maybe activate only one at a time (essentially: sequential tasks)
             #TODO: or else, activate them all but using a ParallelTasks context (which is not yet implemented)
             for task in reversed(missing.required_tasks):
-                print(f"handle precondition: {task}")
+                # print(f"handle precondition: {task}")
                 self.start_prereq_task(task)
 
     def rescind_broadcasted_preconditions(self, task):
@@ -311,8 +319,8 @@ class TaskExecutor(DecisionModule):
             #     break
                 # self.deactivate(gi)
                 # return None
-            print(f"[TaskExecutor] (generate_next_action) active:{str(self.task_stack[-1])} -> |{next_action}|")
             if next_action:
+                print(f"[TaskExecutor] (generate_next_action) active:{str(self.task_stack[-1])} -> |{next_action}|")
                 observation = yield next_action
                 # print(f"RECEIVED observation={observation}")
             else:

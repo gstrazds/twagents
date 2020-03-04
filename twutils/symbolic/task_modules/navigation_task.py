@@ -42,12 +42,12 @@ class ExploreHereTask(Task):
         """
         here = kg.player_location
         ignored = yield   # required handshake
-        response = yield Look
-        self.check_result(response, kg)
+        # response = yield Look
+        # self.check_result(response, kg)
         for entity in list(here.entities):
-            print(f"ExploreHereTask -- {here} {entity} is_container:{entity.is_container}")
+            # print(f"ExploreHereTask -- {here} {entity} is_container:{entity.is_container}")
             if entity.is_container and entity.state.openable:
-                print(f"ExploreHereTask -- {entity}.is_open:{entity.state.is_open}")
+                # print(f"ExploreHereTask -- {entity}.is_open:{entity.state.is_open}")
                 if entity.state.openable and not entity.state.is_open:
                     response = yield Open(entity)
                     if self.check_result(response, kg):
@@ -122,7 +122,7 @@ class PathTask(SequentialTasks):
             print(f"{self} .activate(): ALREADY ACTIVE")
             return super().activate(kg, exec)
         else:
-            print("PathTask.activate!!!!")
+            # print("PathTask.activate!!!!")
             if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
                 return super().activate(kg, exec)
             else:
@@ -142,7 +142,7 @@ class PathTask(SequentialTasks):
 
     def set_goal(self, kg: KnowledgeGraph) -> bool:
         super().reset_all()
-        print("PathTask.set_goal()", self.goal_name)
+        # print("PathTask.set_goal()", self.goal_name)
         failure = False   # return value: initially optimistic
         assert self.goal_name
         current_loc = kg.player_location
@@ -166,7 +166,8 @@ class PathTask(SequentialTasks):
             self.description = f"PathTask({self.goal_name})[{link_desc}]"
             self.tasks = []   #ExploreHereTask(use_groundtruth=self.use_groundtruth)]
             self.tasks += [GoToNextRoomTask(link) for link in self.path]
-            self.tasks.append(ExploreHereTask(use_groundtruth=self.use_groundtruth))
+            if self.goal_name == '+NearestUnexplored+':
+                self.tasks.append(ExploreHereTask(use_groundtruth=self.use_groundtruth))
         else:
             if self.goal_location == current_loc:
                 self._done = True
@@ -194,7 +195,7 @@ class FindTask(Task):
 
         def _location_of_obj_is_known(kgraph): #closure (captures self) for postcondition check
             retval = kgraph.location_of_entity_is_known(self._objname)
-            print(f"POSTCONDITION location_of_obj_is_known({self._objname}) => {retval}")
+            # print(f"POSTCONDITION location_of_obj_is_known({self._objname}) => {retval}")
             return retval
 
         assert objname
@@ -217,20 +218,23 @@ class FindTask(Task):
         # TODO: more code here....
         if not kg.location_of_entity_is_known(self._objname):
             if self._children:
-                explore = self._children[0]
-                assert isinstance(explore, PathTask)
-                if explore.has_failed:
+                go_somewhere_new = self._children[0]
+                assert isinstance(go_somewhere_new, PathTask)
+                if go_somewhere_new.has_failed:
                     self._failed = True
                     # break
-                if explore.is_done and not explore.has_failed:
-                    explore.reset_all()
+                if go_somewhere_new.is_done and not go_somewhere_new.has_failed:
+                    go_somewhere_new.reset_all()
             else:
                 task_list = [PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth),
                              ExploreHereTask(use_groundtruth=self.use_groundtruth)]
-                explore = task_list[0]  #SequentialTasks(tasks=task_list, use_groundtruth=self.use_groundtruth)
-                self._children.append(explore)
-            if not explore.has_failed and not explore.is_active:
-                self._task_exec.start_prereq_task(explore)
+                go_somewhere_new = task_list[0]  #SequentialTasks(tasks=task_list, use_groundtruth=self.use_groundtruth)
+                self._children.append(go_somewhere_new)
+            if not go_somewhere_new.is_active:
+                if go_somewhere_new.has_failed:
+                    self._done = True
+                else:
+                    self._task_exec.start_prereq_task(go_somewhere_new)
         return None
 
 
@@ -239,7 +243,7 @@ class GoToTask(Task):
         def _location_of_obj_is_here(kgraph):  # closure (captures self) for postcondition check
             loc = kgraph.location_of_entity_with_name(self._objname)
             retval = (loc == kgraph.player_location)
-            print(f"POSTCONDITION location_of_obj_is_here({self._objname}) => {retval}")
+            # print(f"POSTCONDITION location_of_obj_is_here({self._objname}) => {retval}")
             return retval
 
         assert objname
@@ -273,6 +277,7 @@ class GoToTask(Task):
                 self._children.append(pathtask)
             if not pathtask.has_failed and not pathtask.is_active:
                 self._task_exec.start_prereq_task(pathtask)
+        self._done = True
         return None
 
 
@@ -420,7 +425,7 @@ class Foo:
             for entity in list(current_loc.entities):
                 # print(f"GTNavigator -- {current_loc} {entity} is_container:{entity.is_container}")
                 if entity.is_container and entity.state.openable:
-                    print(f"GoToTask -- {entity}.is_open:{entity.state.is_open}")
+                    # print(f"GoToTask -- {entity}.is_open:{entity.state.is_open}")
                     if entity.state.openable and not entity.state.is_open:
                         response = yield Open(entity)
                         entity.open()

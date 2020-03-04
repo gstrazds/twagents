@@ -116,13 +116,17 @@ class TextGameAgent:
         while not next_action:
             failed_counter += 1
             if failed_counter > 9:
-                gv.dbg(f"[NAIL] generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|")
+                msg = f"[game_agent] Step:{self.step_num} generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|"
+                print(msg)
+                gv.dbg(msg)
                 # return "Look"
                 next_action = Look
             else:
                 try:
                     next_action = self.action_generator.send(observation)
-                    print("[NAIL] (generate_next_action): ({}) -> |{}|".format(type(self.active_module).__name__, next_action))
+                    if next_action:
+                        msg = f"[game_agent] Step:{self.step_num} (generate_next_action): ({type(self.active_module).__name__}) -> |{next_action}|"
+                        gv.dbg(msg)
                 except StopIteration:
                     self.consume_event_stream()
                     self.elect_new_active_module()
@@ -146,7 +150,7 @@ class TextGameAgent:
 
         observation = observation.strip()
         if self.first_step:
-            gv.dbg("[NAIL] {}".format(observation))
+            gv.dbg("[game_agent] {}".format(observation))
             self.first_step = False
             #GVS# return 'look' # Do a look to get rid of intro text
 

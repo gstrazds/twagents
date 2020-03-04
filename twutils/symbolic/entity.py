@@ -459,7 +459,7 @@ class Thing(Entity):
             self._current_loc = new_location
             if not Location.is_unknown(new_location):
                 if Location.is_unknown(self._init_loc):
-                    print(f"SETTING initial_location for {self} to: {new_location}")
+                    # print(f"\tSETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
 
     @property
@@ -559,7 +559,7 @@ class Door(Thing):
             self._current_loc = new_location
             if not Location.is_unknown(new_location):
                 if Location.is_unknown(self._init_loc):
-                    print(f"SETTING initial_location for {self} to: {new_location}")
+                    # print(f"SETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
                 if not self.direction_from_loc1:
                     self.direction_from_loc1 = ConnectionRelation(from_location=new_location, direction=None)
@@ -577,7 +577,7 @@ class Door(Thing):
             if not Location.is_unknown(new_location):
                 assert self.location != new_location, "Both sides of a door shouldn't be the same location"
                 if Location.is_unknown(self._init_loc2):
-                    print(f"SETTING initial_location2 for {self} to: {new_location}")
+                    # print(f"SETTING initial_location2 for {self} to: {new_location}")
                     self._init_loc2 = new_location
                 if not self.direction_from_loc2:
                     self.direction_from_loc2 = ConnectionRelation(from_location=new_location, direction=None)
