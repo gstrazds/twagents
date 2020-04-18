@@ -566,7 +566,7 @@ class KnowledgeGraph:
                     new_connection = Connection(loc1, DIRECTION_ACTIONS[fact.name], loc0, doorway=door)
                     self.add_connection(new_connection, with_inverse=True)  # does nothing if connection already present
                 elif (a0.type == 'd' or a0.type == 'e') and a1.type == 'r':
-                    print("\t\tdoor fact -- ", fact)
+                    # print("\t\tdoor fact -- ", fact)
                     door_facts.append(fact)
                     # pass
                 else:

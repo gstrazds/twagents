@@ -21,8 +21,10 @@ class TextGameAgent:
     decision modules. The modules then update how eager they are to take control.
 
     """
-    def __init__(self, seed, rom_name, env_name, output_subdir='.'):
+    def __init__(self, seed, rom_name, env_name, game=None, output_subdir='.'):
         self.setup_logging(env_name, output_subdir)
+        if game:
+            self._game = game  # if provided, can do nicer logging
         gv.rng.seed(seed)
         gv.dbg("RandomSeed: {}".format(seed))
         observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False)
@@ -38,9 +40,9 @@ class TextGameAgent:
         self.step_num = 0
         self._valid_detector  = None  #LearnedValidDetector()
         self._last_action = None
-        if env_name and rom_name:
-            self.rom_name = rom_name
+        if env_name:
             self.env_name = env_name
+            # self.rom_name = rom_name
         self._init_modules()
 
     def reset(self):
@@ -73,7 +75,7 @@ class TextGameAgent:
         self.first_step       = True
         self._last_action = None
 
-    def setup_logging(self, rom_name, output_subdir):
+    def setup_logging(self, env_name, output_subdir):
         """ Configure the logging facilities. """
         for handler in logging.root.handlers[:]:
             handler.close()
@@ -84,7 +86,7 @@ class TextGameAgent:
         self.kgs_dir_path = os.path.join(output_subdir, 'kgs')
         if not os.path.exists(self.kgs_dir_path):
             os.mkdir(self.kgs_dir_path)
-        self.logpath = os.path.join(self.logpath, rom_name)
+        self.logpath = os.path.join(self.logpath, env_name)
         logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
                             level=logging.DEBUG, filemode='w')
 

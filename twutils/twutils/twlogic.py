@@ -90,7 +90,7 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
             #         local_facts.append(locked_fact)
 
 
-def filter_observables(world_facts: Iterable[Proposition], verbose=False):
+def filter_observables(world_facts: Iterable[Proposition], verbose=False, game=None):
     fixups = defaultdict(set)
     if not world_facts:
         return None
@@ -134,10 +134,10 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
     #         print('\t', fact)
     #         # print_fact(game, fact)
 
-    if verbose:
-        print("VARIABLES:")
-        for v in world_state.variables:
-            print('\t\t{}:{}'.format(v.name, v.type))
+    # if verbose:
+    #     print("VARIABLES:")
+    #     for v in world_state.variables:
+    #         print('\t\t{}:{}'.format(v.name, v.type))
 
     print(where_fact, world.player_room)
     facts_in_scope = world.get_facts_in_scope()
@@ -176,9 +176,18 @@ def filter_observables(world_facts: Iterable[Proposition], verbose=False):
     if verbose:
         print("++WORLD FACTS++:")
         for fact in world_facts:
-            print('\t', fact)
-            # print_fact(game, fact)
+            prettyprint_fact(fact, game=game)
     return observable_facts, player_location
+
+
+def prettyprint_fact(fact, game=None, indent=1):
+    if indent > 0:
+        print('\t' * indent, end='')
+    if game:
+        print_fact(game, fact)
+    else:
+        print(fact)
+
 
 def get_obj_infos(infos, entities, room_infos, gid):
     # select just the non-room objects (also excluding abstract objects like "slots", "ingredients", etc)
@@ -217,16 +226,16 @@ def get_obj_infos(infos, entities, room_infos, gid):
     return out_list
 
 
-def _filter_unnamed_and_room_entities(e):
+def _filter_out_unnamed_and_room_entities(e):
     return e.name and e.type != "r"
 
 
-def _filter_rooms(e):
+def _select_rooms(e):
     return e.name and e.type == "r"
 
 
 def find_room_info(game, room_name):
-    room_infos = [ri for ri in filter(_filter_rooms, game.infos.values())
+    room_infos = [ri for ri in filter(_select_rooms, game.infos.values())
                     if ri.name == room_name or ri.id == room_name]
     if room_infos:
         return room_infos[0]
@@ -235,8 +244,8 @@ def find_room_info(game, room_name):
 
 
 def find_entity_info(game, entity_name):
-    entity_infos = [ei for ei in filter(_filter_unnamed_and_room_entities,
-                                       game.infos.values()) if ei.name == entity_name]
+    entity_infos = [ei for ei in filter(_filter_out_unnamed_and_room_entities,
+                                        game.infos.values()) if ei.name == entity_name]
     return entity_infos[0] if entity_infos else None
 
 
@@ -281,16 +290,50 @@ def print_fact(game, fact):
         print_variable(game, fact.arguments[0])
         print(' ', end='')
         argrest = 1
-    print(":{}:".format(fact.name), end='')
+    print(":---{}".format(fact.name), end='')
     if len(fact.arguments) > argrest:
-        for arg in fact.arguments[argrest:]:
-            print(' ', end='')
-            print_variable(game, arg)
+        if len(fact.arguments[argrest:]) > 1:
+            print("{", end='')
+            print_variable(game, fact.arguments[argrest])
+            print("}", end='')
+            argrest += 1
+        print("---: ", end='')
+        if len(fact.arguments[argrest:]) > 1:
+            for arg in fact.arguments[argrest:-1]:
+                print_variable(game, arg)
+                print(', ', end='')
+        print_variable(game, fact.arguments[-1])
     print()
 
 
 def format_adj(adj):
     return 'None' if adj is None else "'{}'".format(adj)
+
+
+def get_recipe(game, verbose=False):   # HACK: In TW-cooking games, the first object is always the recipe
+    RECIPE_OID = 'o_0'
+    recipe = None
+    if RECIPE_OID in game.infos and game.infos[RECIPE_OID].desc:
+        if game.infos[RECIPE_OID].desc.find("Recipe #1") > -1:
+            recipe = game.infos[RECIPE_OID].desc
+    if verbose:
+        print("----------BEGIN-RECIPE---------")
+        print(recipe)
+        print("---------END-OF-RECIPE------")
+    else:
+        print("Recipe NOT FOUND")
+    return recipe
+
+
+def print_ids_and_names(game):
+    entities_infos = filter(_filter_out_unnamed_and_room_entities, game.infos.values())
+    room_infos = filter(_select_rooms, game.infos.values())
+    print("ROOMS:")
+    for info in room_infos:
+        print("{}: '{}'".format(info.id, info.name))
+    print("--------------")
+    for info in entities_infos:  # game1.infos.values()
+        print("{}: '{}' [{}]".format(info.id, info.name, format_adj(info.adj)))  # , info.type ))
 
 
 def _convert_cooking_instruction(words, device: str, change_verb=None):

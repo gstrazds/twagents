@@ -456,6 +456,36 @@ class TestTask(unittest.TestCase):
         self.assertIsNone(next)
         self.assertFalse(t.is_active)
 
+    def test_seqtask_subtask_postconds(self):
+        print("......... Sequential Subtasks w/ Postconditions ...")
+        kg = KnowledgeGraph(None, groundtruth=False)
+        tasklist = create_simple_tasks(start_num=1, count=4)
+        t1,t2,t3,t4 = tasklist
+        self.assertFalse(t1.is_done)
+        self.assertFalse(t2.is_done)
+        self.assertFalse(t3.is_done)
+        self.assertFalse(t4.is_done)
+        mt = SequentialTasks(tasklist)
+        mt.activate(None, None)
+        obsnum = 0
+        while mt.is_active:
+            obsnum += 1
+            act = mt.get_next_action(f"obs:{obsnum}", None)
+            if act:
+                self.assertEqual(act.verb, f"action{obsnum}")
+            else:
+                self.assertEqual(obsnum, len(tasklist)+1)
+        self.assertFalse(mt.is_active)
+        self.assertFalse(mt.has_failed)
+        self.assertTrue(mt.is_done)
+        self.assertTrue(t1.is_done)
+        self.assertFalse(t1.is_active)
+        self.assertTrue(t2.is_done)
+        self.assertFalse(t2.is_active)
+        self.assertTrue(t3.is_done)
+        self.assertFalse(t4.is_active)
+        self.assertTrue(t4.is_done)
+        self.assertFalse(t4.is_active)
 
 
 
