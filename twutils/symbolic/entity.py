@@ -352,19 +352,21 @@ class Thing(Entity):
 
     """
 
-    def __init__(self, name=None, description='', entitytype=None, location=None):
+    def __init__(self, name=None, description='', entitytype=None):  #, location=None):
         super().__init__(name=name, description=description, entitytype=entitytype)
         # self._names       = [name]  # List of names for the entity
         # self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
         self._state       = EntityState()
         self._attributes  = []
-        self._init_loc    = location
-        self._current_loc = location   # location where this entity can currently be found
+        self._init_loc    = None
+        self._current_loc = None   # location where this entity can currently be found
         # self._entities    = []
         self._container   = None   # if not None, a location holding objects contained by this entity
         self._supporting_surface = None   # if not None, a location with objects supported by/on this entity
         self._type        = entitytype
+        # if location is not None:
+        #     self.location = location
 
     @property
     def action_records(self):
@@ -532,8 +534,8 @@ class Thing(Entity):
 
 
 class Door(Thing):
-    def __init__(self, name=None, description=None, location=None):
-        super().__init__(name=name, description=description, entitytype=DOOR, location=location)
+    def __init__(self, name=None, description=None):  #, location=None):
+        super().__init__(name=name, description=description, entitytype=DOOR)  #, location=location)
         self._2nd_loc = None   # location (room) to which the door leads
         self._init_loc2 = None
         self.direction_from_loc1 = None
@@ -601,8 +603,8 @@ class Door(Thing):
         return strout
 
 class Person(Thing):
-    def __init__(self, name='Somebody', description='An entity with volition', location=None):
-        super().__init__(name=name, description=description, entitytype=PERSON, location=location)
+    def __init__(self, name='Somebody', description='An entity with volition'):  #, location=None):
+        super().__init__(name=name, description=description, entitytype=PERSON)  #, location=location)
         self._container = Inventory(owner=self)
 
     @property

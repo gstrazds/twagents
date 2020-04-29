@@ -68,7 +68,7 @@ def get_attributes_for_type(twvartype:str):
     return attrib_list
 
 
-def get_attributes_for_predicate(predicate, entity2):
+def get_attributes_for_predicate(predicate, entity2, groundtruth=False):
     attrib_list = []
     if predicate == 'sharp':
         attrib_list.append(Sharp)
@@ -106,15 +106,29 @@ def get_attributes_for_predicate(predicate, entity2):
         attrib_list.append(Cookable)
     elif predicate == 'needs_cooking':
         attrib_list.append(Cookable)
+        # assert groundtruth, "Non-GT KG should not receive these facts"
     elif predicate == 'uncut':
         attrib_list.append(Cutable)
     elif predicate == 'cuttable':
         attrib_list.append(Cutable)
-    elif predicate == 'chopped' \
-     or predicate == 'sliced' \
-     or predicate == 'diced' \
-     or predicate == 'minced':
+    elif predicate in ['chopped', 'sliced', 'diced', 'minced']:
         attrib_list.append(Cutable)
+   # if GT mode, accept some ground-truth predicates (to avoid excess warnings)
+    elif predicate == 'portable':
+        attrib_list.append(Portable)
+        assert groundtruth, "Non-GT KG should not receive these facts"
+    elif predicate in ['closeable', 'openable']:
+        attrib_list.append(Openable)
+        assert groundtruth, "Non-GT KG should not receive these facts"
+    elif predicate in ['lockable', 'unlockable']:
+        attrib_list.append(Lockable)
+        assert groundtruth, "Non-GT KG should not receive these facts"
+    elif predicate == 'heat_source':
+        attrib_list.append(Cooker)
+        assert groundtruth, "Non-GT KG should not receive these facts"
+    elif predicate in ['fixed', 'holder', 'inedible']:
+        assert groundtruth, "Non-GT KG should not receive these facts"
+        pass
     else:
         print("Warning -- get_attributes_for_predicate() unexpected predicate:", predicate)
     return attrib_list
@@ -133,8 +147,8 @@ def add_attributes_for_type(entity, twvartype):
         # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
         entity.state.close()
 
-def add_attributes_for_predicate(entity, predicate, entity2=None):
-    attrib_list = get_attributes_for_predicate(predicate, entity2)
+def add_attributes_for_predicate(entity, predicate, entity2=None, groundtruth=False):
+    attrib_list = get_attributes_for_predicate(predicate, entity2, groundtruth=groundtruth)
     for attrib in attrib_list:
         entity.add_attribute(attrib)
 
@@ -199,18 +213,24 @@ class KnowledgeGraph:
     def __init__(self, event_stream, groundtruth=False):
         self._unknown_location   = UnknownLocation()
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
-        self._player             = Person(name="You",
-                                          description="The Protagonist",
-                                          location=self._unknown_location)
+        self._player             = Person(name="You", description="The Protagonist")
         self._locations          = set()   # a set of top-level locations (rooms)
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
         self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
         self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
+
+        self._unknown_location.add_entity(self._player)
+
         self._update_entity_index(self._unknown_location)
         self._update_entity_index(self._player)
         self._update_entity_index(self._player.inventory)  # add the player's inventory to index of Locations
 
+    def broadcast_event(self, ev):
+        if self.event_stream:
+            self.event_stream.push(ev, groundtruth=self.groundtruth)
+        else:
+            print("KG: No Event Stream! event not sent:", ev)
 
     # ASSUMPTIONS: name=>entity mapping is many-to-one. A given name can refer to at most one entity or location.
     # ASSUMPTION: names are stable. A given name will always refer to the same entity. Entity names don't change over time.
@@ -254,7 +274,8 @@ class KnowledgeGraph:
             return False
         if new_location:
             new_location.visit()
-            self.event_stream.push(LocationChangedEvent(new_location, groundtruth=self.groundtruth))
+            if not Location.is_unknown(prev_location):  # Don't bother broadcasting spawn location
+                self.broadcast_event(LocationChangedEvent(new_location))
         self._player.location = new_location
         return True
 
@@ -391,24 +412,24 @@ class KnowledgeGraph:
         if location.add_entity(entity):
             if self.event_stream and not self.groundtruth:
                 ev = NewEntityEvent(entity)
-                self.event_stream.push(ev)
+                self.broadcast_event(ev)
 
     def act_on_entity(self, action, entity, rec: ActionRec):
         if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.groundtruth:
             ev = NewActionRecordEvent(entity, action, rec.result_text)
-            self.event_stream.push(ev)
+            self.broadcast_event(ev)
 
     # def add_entity_attribute(self, entity, attribute, groundtruth=False):
     #     if entity.add_attribute(attribute):
     #         if not groundtruth:
     #             ev = event.NewAttributeEvent(entity, attribute, groundtruth=groundtruth)
-    #             self.event_stream.push(ev)
+    #             self.broadcast_event(ev)
     def action_at_current_location(self, action, p_valid, result_text):
         loc = self.player_location
         loc.action_records[action] = ActionRec(p_valid, result_text)
         if not self.groundtruth:
             ev = NewActionRecordEvent(loc, action, result_text)
-            self.event_stream.push(ev)
+            self.broadcast_event(ev)
 
     def get_location(self, roomname, create_if_notfound=False, entitytype=ROOM):
         locations = self.locations_with_name(roomname)
@@ -418,12 +439,12 @@ class KnowledgeGraph:
         elif create_if_notfound:
             new_loc = Location(name=roomname, entitytype=entitytype)
             ev = self.add_location(new_loc)
-            # if self.groundtruth: DISCARD NewLocationEvent else gi.event_stream.push(ev)
+            # if self.groundtruth: DISCARD NewLocationEvent else gi.broadcast_event(ev)
             if self.groundtruth:
                 new_loc._discovered = True   # HACK for GT: all locations (except the UnknownLocation) are known
             else:  # not self.groundtruth:
                 assert ev, "Adding a newly created Location should return a NewLocationEvent"
-                self.event_stream.push(ev)
+                self.broadcast_event(ev)
             # if not self.groundtruth:
             #     print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
             return new_loc
@@ -445,7 +466,7 @@ class KnowledgeGraph:
                     if entity.location == entity._init_loc:
                         print(f"\tDISCOVERED NEW entity: {entity} at {loc}")
                         ev = NewEntityEvent(entity)
-                        self.event_stream.push(ev)
+                        self.broadcast_event(ev)
                     else:
                         print(f"\tMOVED entity: {entity} to {loc}")
 
@@ -490,7 +511,7 @@ class KnowledgeGraph:
                 print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
                 # print("DISCOVERED NEW entity:", obj)
                 ev = NewEntityEvent(obj)
-                self.event_stream.push(ev)
+                self.broadcast_event(ev)
 
         holder = self.get_entity(h.name, entitytype=entity_type_for_twvar(h.type))
         if holder:
@@ -695,11 +716,11 @@ class KnowledgeGraph:
             # print("DEBUG on_fact", fact)
             o1, o2 = self.add_obj_to_obj(fact, rel='on')
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'on', o2)
+                add_attributes_for_predicate(o1, 'on', o2, groundtruth=self.groundtruth)
         for fact in in_facts:
             o1, o2 = self.add_obj_to_obj(fact, rel='in')
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'in', o2)
+                add_attributes_for_predicate(o1, 'in', o2, groundtruth=self.groundtruth)
         for fact in inventory_facts:
             o1 = self.add_obj_to_inventory(fact)
 
@@ -725,7 +746,7 @@ class KnowledgeGraph:
             if a1:
                 o2 = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
             if o1:
-                add_attributes_for_predicate(o1, predicate, entity2=o2)
+                add_attributes_for_predicate(o1, predicate, entity2=o2, groundtruth=self.groundtruth)
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
@@ -750,7 +771,7 @@ class ConnectionGraph:
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
         added_new = []
-        # kg.event_stream.push(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
+        # kg.broadcast_event(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
         if from_location not in self._out_graph:
             added_new.append(f"out_graph[{from_location.name}]")
             self._out_graph[from_location] = {direction: connection}
