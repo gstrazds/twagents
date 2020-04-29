@@ -136,7 +136,10 @@ class TextGameAgent:
 
     def choose_next_action(self, observation, observable_facts=None, prev_action=None):
         if prev_action and self._last_action:
-            assert prev_action == self._last_action.text()
+            if prev_action != self._last_action.text() and \
+                    not self._last_action.text().startswith("answer:"):
+                print(f"WARNING: prev_action:|{prev_action}| != self._last_action: |{self._last_action.text()}|")
+                assert prev_action == self._last_action.text()
 
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
