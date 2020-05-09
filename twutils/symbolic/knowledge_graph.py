@@ -228,7 +228,7 @@ class KnowledgeGraph:
 
     def broadcast_event(self, ev):
         if self.event_stream:
-            self.event_stream.push(ev, groundtruth=self.groundtruth)
+            self.event_stream.push(ev)
         else:
             print("KG: No Event Stream! event not sent:", ev)
 
