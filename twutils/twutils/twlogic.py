@@ -235,21 +235,24 @@ def _select_rooms(e):
 
 
 def find_room_info(game, room_name):
+    room_name = room_name.lower()
     room_infos = [ri for ri in filter(_select_rooms, game.infos.values())
-                    if ri.name == room_name or ri.id == room_name]
+                    if ri.name.lower() == room_name or ri.id == room_name]
     if room_infos:
         return room_infos[0]
     else:
-        print("------failed to find room info for '{}'".format(room_name))
-
+        # print("------failed to find room info for '{}'".format(room_name))
+        return None
 
 def find_entity_info(game, entity_name):
+    entity_name = entity_name.lower()
     entity_infos = [ei for ei in filter(_filter_out_unnamed_and_room_entities,
                                         game.infos.values()) if ei.name == entity_name]
     return entity_infos[0] if entity_infos else None
 
 
 def find_info(game, info_key):  # info_key might be info.id or info.name
+    info_key = info_key.lower()
     if info_key in game.infos:
         return game.infos[info_key]
     entity_infos = [ei for ei in game.infos.values()
@@ -260,10 +263,8 @@ def find_info(game, info_key):  # info_key might be info.id or info.name
 def print_variable(game, arg):
     info = None
     outname = ''
-    if arg.type == 'r':
+    if False and arg.type == 'r':
         info = find_room_info(game, arg.name)
-        info_id = info.id
-        outname = info.name
     else:
         info_id = arg.name
         if not info_id:
@@ -272,15 +273,20 @@ def print_variable(game, arg):
             if info_id in game.infos:
                 info = game.infos[info_id]
             else:
-                info = find_entity_info(game, info_id)
-            if info:
-                info_id = info.id
-                if arg.type == 'I':
-                    outname = 'Inventory'
-                elif info.type == 'P':
-                    outname = 'Player'
-                else:
-                    outname = info.name
+                info = find_info(game, info_id)
+    if info:
+        info_id = info.id
+        if arg.type == 'I':
+            outname = 'Inventory'
+        elif info.type == 'P':
+            outname = 'Player'
+        else:
+            outname = info.name
+    else:
+        outname = arg.name
+        info_id = arg.type
+        # print("ARG:", arg)
+
     print("'{}'[{}]".format(outname, info_id), end='')
 
 
