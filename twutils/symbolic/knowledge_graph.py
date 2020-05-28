@@ -906,13 +906,19 @@ class ConnectionGraph:
         return self.to_string()
 
 
-
 def _format_doorinfo(doorentity):
     if doorentity is None:
         return ''
     if doorentity.state.openable and not doorentity.state.is_open:
         return ":{}(closed)".format(doorentity.name)
     return ":{}(open)".format(doorentity.name)
+
+
+def _format_location(location):
+    if not location:
+        return ''
+    return ":{}[{}]".format('', location.name)
+
 
 class Connection:
     """
@@ -970,10 +976,10 @@ class Connection:
         return self
 
     def to_string(self, prefix=''):
-        return prefix + "{} --({}{})--> {}".format(self.from_location.name,
+        return prefix + "{} --({}{})--> {}".format(_format_location(self.from_location),
                                                    self.action.verb,
                                                    _format_doorinfo(self.doorway),
-                                                   self.to_location.name)
+                                                   _format_location(self.to_location))
 
     def __str__(self):
         return self.to_string()
