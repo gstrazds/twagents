@@ -667,10 +667,12 @@ class KnowledgeGraph:
                     print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
                 else:
                     if prev_action:
-                        assert isinstance(prev_action, Action)
                         print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
                         if prev_action and player_loc != self._unknown_location and prev_loc != self._unknown_location:
-                            prev_action_words = prev_action.text().split()
+                            if isinstance(prev_action, Action):
+                                prev_action_words = prev_action.text().split()
+                            else:
+                                prev_action_words = prev_action.split()
                             verb = prev_action_words[0]
                             if verb == 'go':
                                 verb = prev_action_words[1]

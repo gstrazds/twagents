@@ -6,7 +6,7 @@ from textworld.generator import World
 OBSERVABLE_RELATIONS = ('at', 'in', 'on',
                         'chopped', 'diced', 'sliced', 'peeled', 'cut',
                         'baked', 'fried', 'roasted', 'cooked', 'grilled',
-                        'closed', 'locked')
+                        'closed', 'open', 'locked')
 DIRECTION_RELATIONS = ('north_of', 'south_of', 'west_of', 'east_of')
 
 COOK_WITH = {
