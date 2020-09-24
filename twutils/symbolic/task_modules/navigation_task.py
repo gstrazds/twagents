@@ -4,7 +4,6 @@ from ..action import *
 from ..entity import Location
 from ..task import Task, SequentialTasks
 from .tasks import SingleActionTask
-from ..gv import rng, dbg
 
 
 _nav_actions = [GoNorth, GoSouth, GoWest, GoEast]
@@ -177,7 +176,7 @@ class PathTask(SequentialTasks):
             else:
                 errmsg = "[{}PathTask] NOPATH: (current={}, goal={}) path={}".format(
                     self.maybe_GT, current_loc, self.goal_name, self.path)
-                gv.dbg(errmsg)
+                kg.dbg(errmsg)
                 self.goal_location = None
                 self._done = True
                 failure = True
@@ -366,7 +365,7 @@ class Foo:
         current_loc = kg.player_location
         if not self.path or self._path_idx < 0 or self._path_idx >= len(self.path):
             if current_loc == self.goal_location or current_loc.name == self._goal_name:
-                gv.dbg("[{}NAV] Goal reached: {}".format(self.maybe_GT, self.goal_location))
+                kg.dbg("[{}NAV] Goal reached: {}".format(self.maybe_GT, self.goal_location))
                 if current_loc.name == self._goal_name or not self._goal_name:
                     self._goal_name = None
                     self._active = False
@@ -374,7 +373,7 @@ class Foo:
                 elif self._goal_name:
                     self.set_goal_by_name(self._goal_name)
             else:
-                gv.dbg(f"[{self.maybe_GT}NAV] FAILED! {self.goal_location} {self._path_idx} {self.path}")
+                kg.dbg(f"[{self.maybe_GT}NAV] FAILED! {self.goal_location} {self._path_idx} {self.path}")
                 if self._goal_name and not (self.goal_location and self.goal_location.name == self._goal_name):
                     self.set_goal_by_name(self._goal_name, kg)
                 else:

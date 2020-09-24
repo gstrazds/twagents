@@ -1,8 +1,6 @@
 from collections import namedtuple
 from symbolic import util
-# from symbolic.location import Location
 from .entity_state import EntityState
-from .gv import logger
 from .util import text_similarity
 
 # Entity types for TextWorld CodaLab challenge #1 (recipe games)
@@ -200,7 +198,8 @@ class Location(Entity):
         if entity in self._entities:
             self._entities.remove(entity)
         else:
-            logger.warning("WARNING Location.del_entity could not find entity {}".format(entity.name))
+            print("***WARNING*** Location.del_entity could not find entity {}".format(entity.name))
+            # logger.warning("WARNING Location.del_entity could not find entity {}".format(entity.name))
 
     def has_entity(self, entity):
         return self.has_entity_with_name(entity.name) or \

@@ -26,10 +26,10 @@ class TextGameAgent:
         if game:
             self._game = game  # if provided, can do nicer logging
         gv.rng.seed(seed)
-        gv.dbg("RandomSeed: {}".format(seed))
+        self.dbg("RandomSeed: {}".format(seed))
         observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False)
         groundtruth_graph = KnowledgeGraph(None, groundtruth=True)
-        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.logger)
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.task_exec = None
@@ -77,6 +77,7 @@ class TextGameAgent:
 
     def setup_logging(self, env_name, output_subdir):
         """ Configure the logging facilities. """
+        print("setup_logging:", env_name)
         for handler in logging.root.handlers[:]:
             handler.close()
             logging.root.removeHandler(handler)
@@ -89,6 +90,12 @@ class TextGameAgent:
         self.logpath = os.path.join(self.logpath, env_name)
         logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
                             level=logging.DEBUG, filemode='w')
+        self.logger = logging.getLogger(env_name)
+        self.logger.setLevel(logging.DEBUG)
+        print("setup_logging - logger = ", self.logger)
+        self.dbg = self.logger.debug
+        self.dbg("SETUP LOGGING env_name: "+env_name)
+        self.warn = self.logger.warning
 
     def elect_new_active_module(self):
         """ Selects the most eager module to take control. """
@@ -99,7 +106,7 @@ class TextGameAgent:
                 self.active_module = module
                 most_eager = eagerness
         print("elect_new_active_module:", "[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
-        gv.dbg("[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
+        self.dbg("[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
         self.action_generator = self.active_module.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
 
@@ -120,7 +127,7 @@ class TextGameAgent:
             if failed_counter > 9:
                 msg = f"[game_agent] Step:{self.step_num} generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|"
                 print(msg)
-                gv.dbg(msg)
+                self.dbg(msg)
                 # return "Look"
                 next_action = Look
             else:
@@ -128,7 +135,7 @@ class TextGameAgent:
                     next_action = self.action_generator.send(observation)
                     if next_action:
                         msg = f"[game_agent] Step:{self.step_num} (generate_next_action): ({type(self.active_module).__name__}) -> |{next_action}|"
-                        gv.dbg(msg)
+                        self.dbg(msg)
                 except StopIteration:
                     self.consume_event_stream()
                     self.elect_new_active_module()
@@ -145,7 +152,7 @@ class TextGameAgent:
             # Add true locations to the .log file.
             loc = self.env.get_player_location()
             if loc and hasattr(loc, 'num') and hasattr(loc, 'name') and loc.num and loc.name:
-                gv.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
+                self.dbg("[TRUE_LOC] {} \"{}\"".format(loc.num, loc.name))
         # Output a snapshot of the kg.
         # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
         #     f.write(str(self.knowledge_graph)+'\n\n')
@@ -155,7 +162,7 @@ class TextGameAgent:
 
         observation = observation.strip()
         if self.first_step:
-            gv.dbg("[game_agent] {}".format(observation))
+            self.dbg("[game_agent] {}".format(observation))
             self.first_step = False
             #GVS# return 'look' # Do a look to get rid of intro text
 
@@ -178,7 +185,7 @@ class TextGameAgent:
     def observe(self, prev_obs, prev_action, score, new_obs, terminal):
         """ Observe could be used for learning from rewards. """
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
-#        gv.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
+#        self.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 
         # NewTransitionEvent unused by current code
         # self.gi.event_stream.push(NewTransitionEvent(prev_obs, prev_action, score, new_obs, terminal))

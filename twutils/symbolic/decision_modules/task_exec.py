@@ -4,7 +4,6 @@ from ..event import NeedToDo, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNee
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..task_modules.navigation_task import PathTask, GoToTask
-from ..gv import dbg
 
 def _get_kg_for_task(task: Task, gi: GameInstance):
     if not gi:

@@ -31,8 +31,9 @@ def get_unrecognized(action, response):
 
 
 class GameInstance:
-    def __init__(self, kg=None, gt=None):  # kg : knowledge_graph.KnowledgeGraph
-        self.event_stream = event.EventStream()
+    def __init__(self, kg=None, gt=None, logger=None):  # kg : knowledge_graph.KnowledgeGraph
+        self._logger = logger
+        self.event_stream = event.EventStream(logger)
         self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]  #makes a copy of list
         self.kg = None
         self.gt = None
@@ -47,6 +48,7 @@ class GameInstance:
             graph.event_stream = self.event_stream
             assert graph.groundtruth == groundtruth
             graph.groundtruth = groundtruth
+            graph.set_logger(self._logger)
         if groundtruth:
             self.gt = graph
         else:
@@ -67,7 +69,7 @@ class GameInstance:
         unrecognized_word = get_unrecognized(action, response)
         if unrecognized_word:
             if unrecognized_word not in self._unrecognized_words:
-                gv.dbg("[UTIL] Added unrecognized word \"{}\"".format(unrecognized_word))
+                self._logger.debug("[UTIL] Added unrecognized word \"{}\"".format(unrecognized_word))
                 self._unrecognized_words.append(unrecognized_word)
             return False
         return True

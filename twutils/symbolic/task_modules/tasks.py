@@ -1,7 +1,6 @@
 from typing import List
 from ..task import Task
 from ..action import Action
-# from ..game import GameInstance
 from ..knowledge_graph import KnowledgeGraph
 
 

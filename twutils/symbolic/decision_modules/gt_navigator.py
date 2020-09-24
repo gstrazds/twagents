@@ -2,7 +2,6 @@ from ..decision_module import DecisionModule
 from ..knowledge_graph import *
 from ..action import *
 from ..entity import Location
-from ..gv import rng, dbg
 
 
 def get_direction_from_navaction(navaction):

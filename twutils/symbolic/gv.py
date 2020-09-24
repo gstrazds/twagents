@@ -8,9 +8,9 @@ import spacy
 rng = random.Random()
 
 # Global logger
-logger = logging.getLogger('nail')
-logger.setLevel(logging.DEBUG)
-dbg = logger.debug
+# logger = logging.getLogger('nail')
+# logger.setLevel(logging.DEBUG)
+# dbg = logger.debug
 
 # Global Event Stream
 # event_stream = event.EventStream()

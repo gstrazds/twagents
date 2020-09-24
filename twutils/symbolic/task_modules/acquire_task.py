@@ -4,7 +4,7 @@ from ..action import Take, Drop, Open, Portable
 # from ..game import GameInstance
 from ..task import Task, SequentialTasks
 from ..action import Action
-from ..gv import rng, dbg
+from ..gv import rng
 
 
 class TakeItemTask(Task):

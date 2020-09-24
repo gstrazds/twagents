@@ -210,7 +210,8 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False):
+    def __init__(self, event_stream, groundtruth=False, logger=None):
+        self._logger = logger
         self._unknown_location   = UnknownLocation()
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
         self._player             = Person(name="You", description="The Protagonist")
@@ -225,6 +226,15 @@ class KnowledgeGraph:
         self._update_entity_index(self._unknown_location)
         self._update_entity_index(self._player)
         self._update_entity_index(self._player.inventory)  # add the player's inventory to index of Locations
+
+    def set_logger(self, logger):
+        self._logger = logger
+
+    def dbg(self, msg):
+        if self._logger:
+            self._logger.debug(msg)
+        else:
+            print("### DEBUG:", msg)
 
     def broadcast_event(self, ev):
         if self.event_stream:
@@ -706,7 +716,7 @@ class KnowledgeGraph:
                     obj = self.create_new_object(o.name, entitytype)  #, locations=locs)
                 self.maybe_move_entity(obj, locations=locs)
             else:
-                gv.dbg("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
+                print("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
             # add_attributes_for_type(obj, o.type)
 
         #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects

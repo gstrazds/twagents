@@ -7,12 +7,13 @@ class EventStream:
     An event stream keeps track of incoming events.
 
     """
-    def __init__(self):
+    def __init__(self, logger):
         self._stream = []
+        self._logger = logger
 
     def push(self, event):
         if not event.is_groundtruth:
-            gv.dbg("[LOG]({}) {}".format(type(event).__name__, event.message))
+            self._logger.debug("[LOG]({}) {}".format(type(event).__name__, event.message))
         self._stream.append(event)
 
     def clear(self):
