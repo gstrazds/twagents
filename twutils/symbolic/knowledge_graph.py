@@ -232,7 +232,8 @@ class KnowledgeGraph:
 
     def dbg(self, msg):
         if self._logger:
-            self._logger.debug(msg)
+            logger = self._logger
+            logger.debug(msg)
         else:
             print("### DEBUG:", msg)
 

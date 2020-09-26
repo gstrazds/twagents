@@ -29,7 +29,7 @@ class TextGameAgent:
         self.dbg("RandomSeed: {}".format(seed))
         observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False)
         groundtruth_graph = KnowledgeGraph(None, groundtruth=True)
-        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.logger)
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.get_logger())
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.task_exec = None
@@ -77,25 +77,59 @@ class TextGameAgent:
 
     def setup_logging(self, env_name, output_subdir):
         """ Configure the logging facilities. """
+        logging.basicConfig(format='%(message)s',
+                            level=logging.DEBUG, filemode='w')
         print("setup_logging:", env_name)
-        for handler in logging.root.handlers[:]:
-            handler.close()
-            logging.root.removeHandler(handler)
-        self.logpath = os.path.join(output_subdir, 'nail_logs')
-        if not os.path.exists(self.logpath):
-            os.mkdir(self.logpath)
+        # for handler in logging.root.handlers[:]:
+        #     handler.close()
+        #     logging.root.removeHandler(handler)
+        logdir = os.path.join(output_subdir, 'nail_logs')
+        if not os.path.exists(logdir):
+            os.mkdir(logdir)
         self.kgs_dir_path = os.path.join(output_subdir, 'kgs')
         if not os.path.exists(self.kgs_dir_path):
             os.mkdir(self.kgs_dir_path)
-        self.logpath = os.path.join(self.logpath, env_name)
-        logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
-                            level=logging.DEBUG, filemode='w')
-        self.logger = logging.getLogger(env_name)
-        self.logger.setLevel(logging.DEBUG)
-        print("setup_logging - logger = ", self.logger)
-        self.dbg = self.logger.debug
-        self.dbg("SETUP LOGGING env_name: "+env_name)
-        self.warn = self.logger.warning
+        self.logpath = os.path.join(logdir, env_name)
+        # logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
+        #                     level=logging.DEBUG, filemode='w')
+        self._logger_name = env_name
+        logger = self.get_logger()
+        logger.setLevel(logging.DEBUG)
+        print("setup_logging - logger = ", logger)
+        if logger.handlers:   # skip if this logger has already been configured
+            print("setup_logging HAS HANDLERS = True!", logger.handlers[:], logging.root.handlers[:])
+            for h in logger.handlers[:]:
+                print(f"setup_logging({env_name}) PREEXISTING handler:", h)
+        else:
+            fh = logging.FileHandler(self.logpath)
+            fh.setLevel(logging.DEBUG)
+            # create console handler with a higher log level
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            ch.setFormatter(formatter)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+            print("setup_logging ADDED HANDLER", fh)
+            logger.addHandler(ch)
+            print("setup_logging ADDED HANDLER", ch)
+            for h in logger.handlers:
+                print(f"setup_logging({env_name}) CONFIGURED NEW handler:", h)
+        self.info("SETUP LOGGING -- env_name: "+env_name)
+        self.dbg("TEST DBG LOGGING -- env_name: "+env_name)
+        # self.warn("LOGGING: THIS SHOULD GET LOGGED!")
+
+    def get_logger(self):
+        return logging.getLogger(self._logger_name)
+
+    def dbg(self, msg, *args, **kwargs):
+        self.get_logger().debug(msg, *args, **kwargs)
+
+    def info(self, msg, *args, **kwargs):
+        self.get_logger().info(msg, *args, **kwargs)
+
+    def warn(self, msg, *args, **kwargs):
+        self.get_logger().warning(msg, *args, **kwargs)
 
     def elect_new_active_module(self):
         """ Selects the most eager module to take control. """
