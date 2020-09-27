@@ -16,12 +16,12 @@ from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
 
 from symbolic.game_agent import TextGameAgent
-# from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from symbolic.task_modules import RecipeReaderTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
-from symbolic.gv import dbg
 from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
+# from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
+# from symbolic.gv import dbg
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
@@ -750,7 +750,7 @@ class CustomAgent:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
 
                 if self._debug_quit and self._debug_quit == self.current_step:
-                    dbg("[{}] DEBUG QUIT! step={}".format(idx, self.current_step))
+                    agent.dbg("[{}] DEBUG QUIT! step={}".format(idx, self.current_step))
                     # exit(0)
 
                 if 'facts' in infos:

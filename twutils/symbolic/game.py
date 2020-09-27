@@ -1,8 +1,8 @@
-from symbolic import gv
 from symbolic import event
+from symbolic import util
+# from symbolic import gv
 # from symbolic import action
 # from symbolic.knowledge_graph import KnowledgeGraph
-from symbolic import util
 
 
 def get_unrecognized(action, response):
@@ -30,11 +30,15 @@ def get_unrecognized(action, response):
     return ''
 
 
+# Actions that are dissallowed in any game
+ILLEGAL_ACTIONS = ['restart', 'verbose', 'save', 'restore', 'score', 'quit', 'moves']
+
+
 class GameInstance:
     def __init__(self, kg=None, gt=None, logger=None):  # kg : knowledge_graph.KnowledgeGraph
         self._logger = logger
         self.event_stream = event.EventStream(logger)
-        self._unrecognized_words = gv.ILLEGAL_ACTIONS[:]  #makes a copy of list
+        self._unrecognized_words = ILLEGAL_ACTIONS[:]  #makes a copy of list
         self.kg = None
         self.gt = None
         self.set_knowledge_graph(kg, groundtruth=False)
