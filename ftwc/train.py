@@ -8,15 +8,21 @@ import gym
 import textworld.gym
 from textworld import EnvInfos
 
-from custom_agent import CustomAgent
+from ftwc_agent import CustomAgent
 
 # List of additional information available during evaluation.
 AVAILABLE_INFORMATION = EnvInfos(
-    description=True, inventory=True,
-    max_score=True, objective=True, entities=True, verbs=True,
-    command_templates=True, admissible_commands=True,
-    has_won=True, has_lost=True,
-    extras=["recipe"]
+    description=True,
+    inventory=True,
+    max_score=True,
+    objective=True,
+    entities=True,
+    verbs=True,
+    command_templates=True,
+    admissible_commands=True,
+    won=True,
+    lost=True,
+    extras=["recipe", "uuid"]
 )
 
 
@@ -24,11 +30,13 @@ def _validate_requested_infos(infos: EnvInfos):
     msg = "The following information cannot be requested: {}"
     for key in infos.basics:
         if not getattr(AVAILABLE_INFORMATION, key):
-            raise ValueError(msg.format(key))
+            print(msg.format(key))
+            # raise ValueError(msg.format(key))
 
     for key in infos.extras:
         if key not in AVAILABLE_INFORMATION.extras:
-            raise ValueError(msg.format(key))
+            print(msg.format(key))
+            # raise ValueError(msg.format(key))
 
 
 def train(game_files):
@@ -36,23 +44,32 @@ def train(game_files):
     agent = CustomAgent()
     requested_infos = agent.select_additional_infos()
     _validate_requested_infos(requested_infos)
-
-    requested_infos.facts = True  # initially use ground truth facts about the world (since this is an 'oracle')
-
-    env_id = textworld.gym.register_games(game_files, requested_infos,
-                                          max_episode_steps=agent.max_nb_steps_per_episode,
-                                          name="training")
-    env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
-    env = gym.make(env_id)
+    requested_infos.facts = True  # use ground truth facts about the world (this is a training oracle)
 
     for epoch_no in range(1, agent.nb_epochs + 1):
+        # start fresh for each epoch
+        # TODO: this is a hack to work around bugs in resetting kg to initial state
+        if epoch_no > 1:
+            agent = CustomAgent()
         stats = {
             "scores": [],
             "steps": [],
         }
         for game_no in tqdm(range(len(game_files))):
+            agent.train()  # agent in training mode
+            gamefile = game_files[game_no]
+            env_id = textworld.gym.register_games([gamefile],
+                                                  requested_infos,
+                                                  max_episode_steps=agent.max_nb_steps_per_episode,
+                                                  batch_size=agent.batch_size,
+                                                  asynchronous=True,
+                                                  # auto_reset=auto_reset,
+                                                  # action_space=action_space,
+                                                  # observation_space=observation_space,
+                                                  name="training")
+            # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
+            env = gym.make(env_id)
             obs, infos = env.reset()
-            agent.train()
 
             scores = [0] * len(obs)
             dones = [False] * len(obs)

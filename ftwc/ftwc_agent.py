@@ -456,7 +456,7 @@ class CustomAgent:
             word_vocab: List of words supported.
         """
         self.mode = "train"
-        with open("config.yaml") as reader:
+        with open("conf/ftwc.yaml") as reader:
             self.config = yaml.safe_load(reader)
         self.vocab = WordVocab(vocab_file="./vocab.txt")
         self.batch_size = self.config['training']['batch_size']
@@ -534,6 +534,15 @@ class CustomAgent:
             gameid = str(idx)
         return gameid
 
+    def set_game_id(self, game_id, idx):
+        if idx < len(self.game_ids):
+            if game_id != self.game_ids[idx]:
+                print(f"{game_id} != {self.game_ids[idx]} NEED TO RESET KG")
+                return True
+        else:
+            self.game_ids.append(game_id)
+            return False
+
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
         """
         Tell the agent the episode has terminated.
@@ -596,7 +605,7 @@ class CustomAgent:
         request_infos.inventory = True
         request_infos.entities = True
         request_infos.verbs = True
-        request_infos.extras = ["recipe"]
+        request_infos.extras = ["recipe", "uuid"]
         request_infos.facts = True
         request_infos.location = True
         return request_infos
@@ -614,12 +623,13 @@ class CustomAgent:
         self.dones = []
         self.prev_actions = ['' for _ in range(len(obs))]
         for idx in range(len(obs)):
+            need_to_forget = True
             if 'game_id' in infos:
                 game_id = parse_gameid(infos['game_id'][idx])
-                if idx < len(self.game_ids):
-                    assert game_id == self.game_ids[idx]
-                else:
-                    self.game_ids.append(game_id)
+                need_to_forget = self.set_game_id(game_id, idx)
+            elif 'extra.uuid' in infos:
+                game_id = infos['extra.uuid'][idx]
+                need_to_forget = self.set_game_id(game_id, idx)
             else:
                 game_id = str(idx)
                 if idx == len(self.game_ids):
@@ -629,7 +639,9 @@ class CustomAgent:
                 tw_game_agent = TextGameAgent(
                         self.config['general']['random_seed'],  #seed
                         "TW",     # rom_name
-                        game_id)  # env_name
+                        game_id,  # env_name
+                        game=None  #TODO: infos['game'][idx]  # for better logging
+                )
 
                 self.agents.append(tw_game_agent)
                 # FIXME: initialization HACK for MEAL
@@ -642,7 +654,8 @@ class CustomAgent:
             else:
                 assert idx < len(self.agents)
                 if self.current_episode > 0:
-                    self.agents[idx].reset()
+                    self.agents[idx].set_game_id(game_id)
+                    self.agents[idx].reset(forget_everything=need_to_forget)
 
         self.vocab.init_with_infos(infos)
         self.prev_obs = obs
