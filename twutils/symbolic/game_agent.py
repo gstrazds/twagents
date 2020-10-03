@@ -27,8 +27,8 @@ class TextGameAgent:
             self._game = game  # if provided, can do nicer logging
         gv.rng.seed(seed)
         self.dbg("RandomSeed: {}".format(seed))
-        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False)
-        groundtruth_graph = KnowledgeGraph(None, groundtruth=True)
+        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger())
+        groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.get_logger())
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
@@ -45,11 +45,14 @@ class TextGameAgent:
             # self.rom_name = rom_name
         self._init_modules()
 
-    def reset(self):
-        groundtruth_graph = KnowledgeGraph(None, groundtruth=True)    # start fresh with empty graph
-        observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
-        observed_knowledge_graph.reset()
-        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph)
+    def reset(self, forget_everything=False):
+        groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())    # start fresh with empty graph
+        if forget_everything:
+            observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger())    # start fresh with empty graph
+        else:
+            observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
+            observed_knowledge_graph.reset()        # bet restore to initial state (start of episode)
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.get_logger())
         self._init_modules()
         self.first_step = True
         self.step_num = 0
@@ -78,7 +81,7 @@ class TextGameAgent:
     def setup_logging(self, env_name, output_subdir):
         """ Configure the logging facilities. """
         logging.basicConfig(format='%(message)s',
-                            level=logging.DEBUG, filemode='w')
+                            level=logging.DEBUG, filemode='a')
         print("setup_logging:", env_name)
         # for handler in logging.root.handlers[:]:
         #     handler.close()
@@ -86,9 +89,9 @@ class TextGameAgent:
         logdir = os.path.join(output_subdir, 'nail_logs')
         if not os.path.exists(logdir):
             os.mkdir(logdir)
-        self.kgs_dir_path = os.path.join(output_subdir, 'kgs')
-        if not os.path.exists(self.kgs_dir_path):
-            os.mkdir(self.kgs_dir_path)
+        # self.kgs_dir_path = os.path.join(output_subdir, 'kgs')
+        # if not os.path.exists(self.kgs_dir_path):
+        #     os.mkdir(self.kgs_dir_path)
         self.logpath = os.path.join(logdir, env_name)
         # logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
         #                     level=logging.DEBUG, filemode='w')
@@ -101,7 +104,7 @@ class TextGameAgent:
             for h in logger.handlers[:]:
                 print(f"setup_logging({env_name}) PREEXISTING handler:", h)
         else:
-            fh = logging.FileHandler(self.logpath)
+            fh = logging.FileHandler(self.logpath, 'a')
             fh.setLevel(logging.DEBUG)
             # create console handler with a higher log level
             ch = logging.StreamHandler()
@@ -118,6 +121,12 @@ class TextGameAgent:
         self.info("SETUP LOGGING -- env_name: "+env_name)
         self.dbg("TEST DBG LOGGING -- env_name: "+env_name)
         # self.warn("LOGGING: THIS SHOULD GET LOGGED!")
+
+    def set_game_id(self, game_id):
+        self._logger_name = game_id
+        logger = self.get_logger()
+        logger.info(f"[LOG] set_game_id({game_id})")
+        return logger
 
     def get_logger(self):
         return logging.getLogger(self._logger_name)
@@ -235,7 +244,7 @@ class TextGameAgent:
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # Reinitialize, build complete GT KG from scratch each time
-        self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True), groundtruth=True)
+        self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True, logger=self.get_logger()), groundtruth=True)
         #TODO (Disabled ground truth)
         # self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
