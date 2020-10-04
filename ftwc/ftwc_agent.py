@@ -540,6 +540,7 @@ class CustomAgent:
                 print(f"{game_id} != {self.game_ids[idx]} NEED TO RESET KG")
                 return True
         else:
+            assert idx == len(self.game_ids)
             self.game_ids.append(game_id)
             return False
 
@@ -640,9 +641,9 @@ class CustomAgent:
                         self.config['general']['random_seed'],  #seed
                         "TW",     # rom_name
                         game_id,  # env_name
+                        idx=idx,
                         game=None  #TODO: infos['game'][idx]  # for better logging
                 )
-
                 self.agents.append(tw_game_agent)
                 # FIXME: initialization HACK for MEAL
                 kg = tw_game_agent.gi.kg
@@ -654,7 +655,8 @@ class CustomAgent:
             else:
                 assert idx < len(self.agents)
                 if self.current_episode > 0:
-                    self.agents[idx].set_game_id(game_id)
+                    if need_to_forget:
+                        self.agents[idx].setup_logging(game_id, idx)
                     self.agents[idx].reset(forget_everything=need_to_forget)
 
         self.vocab.init_with_infos(infos)

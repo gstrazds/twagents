@@ -21,8 +21,8 @@ class TextGameAgent:
     decision modules. The modules then update how eager they are to take control.
 
     """
-    def __init__(self, seed, rom_name, env_name, game=None, output_subdir='.'):
-        self.setup_logging(env_name, output_subdir)
+    def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.'):
+        self.setup_logging(env_name, idx, output_subdir)
         if game:
             self._game = game  # if provided, can do nicer logging
         gv.rng.seed(seed)
@@ -78,10 +78,11 @@ class TextGameAgent:
         self.first_step       = True
         self._last_action = None
 
-    def setup_logging(self, env_name, output_subdir):
+    def setup_logging(self, game_id, idx, output_subdir="."):
         """ Configure the logging facilities. """
         logging.basicConfig(format='%(message)s',
                             level=logging.DEBUG, filemode='a')
+        env_name = f"{idx}-{game_id}"
         print("setup_logging:", env_name)
         # for handler in logging.root.handlers[:]:
         #     handler.close()
@@ -121,12 +122,6 @@ class TextGameAgent:
         self.info("SETUP LOGGING -- env_name: "+env_name)
         self.dbg("TEST DBG LOGGING -- env_name: "+env_name)
         # self.warn("LOGGING: THIS SHOULD GET LOGGED!")
-
-    def set_game_id(self, game_id):
-        self._logger_name = game_id
-        logger = self.get_logger()
-        logger.info(f"[LOG] set_game_id({game_id})")
-        return logger
 
     def get_logger(self):
         return logging.getLogger(self._logger_name)
