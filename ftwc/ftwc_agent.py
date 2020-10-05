@@ -418,6 +418,15 @@ class WordVocab:
             res_str.append(self._word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
         return res_str
 
+def get_game_id_from_infos(infos, idx):
+    if 'game_id' in infos:
+        game_id = parse_gameid(infos['game_id'][idx])
+    elif 'extra.uuid' in infos:
+        game_id = infos['extra.uuid'][idx]
+    else:
+        print(f"WARNING: couldn't determine game_id for slot {idx} {len(infos)} {infos.keys()}")
+        game_id = None
+    return game_id
 
 def parse_gameid(game_id: str) -> str:
     segments = game_id.split('-')
@@ -450,28 +459,31 @@ def parse_gameid(game_id: str) -> str:
     return shortcode
 
 class CustomAgent:
-    def __init__(self):
+    def __init__(self,
+                 cfg: Dict[str, Any],
+                 vocab: WordVocab,):
         """
         Arguments:
-            word_vocab: List of words supported.
+            vocab: List of words supported.
         """
         self.mode = "train"
-        with open("conf/ftwc.yaml") as reader:
-            self.config = yaml.safe_load(reader)
-        self.vocab = WordVocab(vocab_file="./vocab.txt")
-        self.batch_size = self.config['training']['batch_size']
-        self.max_nb_steps_per_episode = self.config['training']['max_nb_steps_per_episode']
-        self.nb_epochs = self.config['training']['nb_epochs']
+        # with open("conf/ftwc.yaml") as reader:
+        #     self.config = yaml.safe_load(reader)
+        self._config = cfg
+        self.vocab = vocab
+        self.batch_size = cfg.training.batch_size
+        self.max_nb_steps_per_episode = cfg.training.max_nb_steps_per_episode
+        self.nb_epochs = cfg.training.nb_epochs
         self._debug_quit = False
         self.game_ids = []
         self.agents = []
 
         # Set the random seed manually for reproducibility.
-        seedval = self.config['general']['random_seed']
+        seedval = cfg.general.random_seed
         np.random.seed(seedval)
         torch.manual_seed(seedval)
         if torch.cuda.is_available():
-            if not self.config['general']['use_cuda']:
+            if not cfg.general.use_cuda:
                 print("WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
             else:
@@ -481,17 +493,17 @@ class CustomAgent:
         else:
             self.use_cuda = False
 
-        self.agentNN = AgentDQN(self.config, self.vocab, self.use_cuda)
+        self.agentNN = AgentDQN(cfg, self.vocab, self.use_cuda)
 
-        self.save_frequency = self.config['checkpoint']['save_frequency']
+        self.save_frequency = cfg.checkpoint.save_frequency
 
 
         # epsilon greedy
-        self.epsilon_anneal_episodes = self.config['general']['epsilon_anneal_episodes']
-        self.epsilon_anneal_from = self.config['general']['epsilon_anneal_from']
-        self.epsilon_anneal_to = self.config['general']['epsilon_anneal_to']
+        self.epsilon_anneal_episodes = cfg.general.epsilon_anneal_episodes
+        self.epsilon_anneal_from = cfg.general.epsilon_anneal_from
+        self.epsilon_anneal_to = cfg.general.epsilon_anneal_to
         self.epsilon = self.epsilon_anneal_from
-        self.update_per_k_game_steps = self.config['general']['update_per_k_game_steps']
+        self.update_per_k_game_steps = cfg.general.update_per_k_game_steps
 
         # self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
         self.nlp = None
@@ -524,6 +536,8 @@ class CustomAgent:
             obs: Initial feedback for each game.
             infos: Additional information for each game.
         """
+        _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
+        print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
         self.init_with_infos(obs, infos)
         self._episode_has_started = True
 
@@ -537,9 +551,14 @@ class CustomAgent:
     def set_game_id(self, game_id, idx):
         if idx < len(self.game_ids):
             if game_id != self.game_ids[idx]:
-                print(f"{game_id} != {self.game_ids[idx]} NEED TO RESET KG")
+                print(f"[{idx}] {game_id} != {self.game_ids[idx]} NEED TO RESET KG")
+                self.game_ids[idx] = game_id
                 return True
+            else:
+                print(f"[{idx}] {game_id} == {self.game_ids[idx]} DON'T RESET KG")
+                return False
         else:
+            print(f"[{idx}] {game_id} ** NEW AGENT, DON'T RESET: {self.game_ids}")
             assert idx == len(self.game_ids)
             self.game_ids.append(game_id)
             return False
@@ -625,12 +644,9 @@ class CustomAgent:
         self.prev_actions = ['' for _ in range(len(obs))]
         for idx in range(len(obs)):
             need_to_forget = True
-            if 'game_id' in infos:
-                game_id = parse_gameid(infos['game_id'][idx])
-                need_to_forget = self.set_game_id(game_id, idx)
-            elif 'extra.uuid' in infos:
-                game_id = infos['extra.uuid'][idx]
-                need_to_forget = self.set_game_id(game_id, idx)
+            game_id = get_game_id_from_infos(infos, idx)
+            if game_id:
+                need_to_forget = self.set_game_id(game_id, idx)   # if the same game again, remember initial layout
             else:
                 game_id = str(idx)
                 if idx == len(self.game_ids):
@@ -638,7 +654,7 @@ class CustomAgent:
 
             if idx == len(self.agents):
                 tw_game_agent = TextGameAgent(
-                        self.config['general']['random_seed'],  #seed
+                        self._config['general']['random_seed'],  #seed
                         "TW",     # rom_name
                         game_id,  # env_name
                         idx=idx,

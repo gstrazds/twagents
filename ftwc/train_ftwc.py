@@ -2,13 +2,17 @@ import os
 import glob
 import argparse
 
+import datetime
+import hydra
+from omegaconf import OmegaConf, DictConfig
+
 from tqdm import tqdm
 
 import gym
 import textworld.gym
 from textworld import EnvInfos
 
-from ftwc_agent import CustomAgent
+from ftwc_agent import CustomAgent, WordVocab
 
 # List of additional information available during evaluation.
 AVAILABLE_INFORMATION = EnvInfos(
@@ -39,18 +43,18 @@ def _validate_requested_infos(infos: EnvInfos):
             # raise ValueError(msg.format(key))
 
 
-def train(game_files):
-
-    agent = CustomAgent()
+def train(cfg, game_files):
+    vocab = WordVocab(vocab_file=cfg.general.vocab_words)
+    agent = CustomAgent(cfg, vocab=vocab)
     requested_infos = agent.select_additional_infos()
     _validate_requested_infos(requested_infos)
     requested_infos.facts = True  # use ground truth facts about the world (this is a training oracle)
 
     for epoch_no in range(1, agent.nb_epochs + 1):
-        # start fresh for each epoch
-        # TODO: this is a hack to work around bugs in resetting kg to initial state
-        if epoch_no > 1:
-            agent = CustomAgent()
+        # # start fresh for each epoch
+        # # TODO: (GVS Oct-02-2020: this is a hack to work around bugs in resetting kg to initial state)
+        # if epoch_no > 1:
+        #     agent = CustomAgent()
         stats = {
             "scores": [],
             "steps": [],
@@ -91,18 +95,58 @@ def train(game_files):
         print("Epoch: {:3d} | {:2.1f} pts | {:4.1f} steps".format(epoch_no, score, steps))
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Train an agent.")
-    parser.add_argument("games", metavar="game", nargs="+",
-                       help="List of games (or folders containing games) to use for training.")
-    args = parser.parse_args()
+@hydra.main(config_path="conf", config_name="ftwc")
+def main(cfg: DictConfig) -> None:
+    cfg.cwd_path = hydra.utils.to_absolute_path(cfg.cwd_path)
+    print(OmegaConf.to_yaml(cfg, resolve=True))
+    print("cwd_path = ", cfg.cwd_path)
+    start_time = datetime.datetime.now()
+    print("=================================================== evaluate.py - Start time:", start_time)
+    print(os.getcwd(), '\n')
 
     games = []
-    for game in args.games:
+    for game in cfg.training.games:
+        game = os.path.expanduser(game)
         if os.path.isdir(game):
             games += glob.glob(os.path.join(game, "*.ulx"))
         else:
             games.append(game)
 
     print("{} games found for training.".format(len(games)))
-    train(games)
+    # print(games)
+    train(cfg, games)
+
+    # model = DQNLightning(**cfg)
+    #
+    # trainer = pl.Trainer(
+    #     gpus=1,
+    #     distributed_backend='dp',
+    #     early_stop_callback=False,
+    #     val_check_interval=100
+    # )
+    #
+    # trainer.fit(model)
+    finish_time = datetime.datetime.now()
+    print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
+
+
+if __name__ == '__main__':
+    main()
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser(description="Train an agent.")
+#     parser.add_argument("games", metavar="game", nargs="+",
+#                        help="List of games (or folders containing games) to use for training.")
+#     args = parser.parse_args()
+#
+#     games = []
+#     for game in args.games:
+#         if os.path.isdir(game):
+#             games += glob.glob(os.path.join(game, "*.ulx"))
+#         else:
+#             games.append(game)
+#
+#     print("{} games found for training.".format(len(games)))
+#     train(games)
+#
+

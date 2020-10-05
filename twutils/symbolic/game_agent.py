@@ -82,7 +82,7 @@ class TextGameAgent:
         """ Configure the logging facilities. """
         logging.basicConfig(format='%(message)s',
                             level=logging.DEBUG, filemode='a')
-        env_name = f"{idx}-{game_id}"
+        env_name = f"{game_id}_{idx:02}"
         print("setup_logging:", env_name)
         # for handler in logging.root.handlers[:]:
         #     handler.close()

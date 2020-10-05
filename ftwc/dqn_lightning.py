@@ -365,7 +365,7 @@ class DQNLightning(pl.LightningModule):
 #     args = parser.parse_args()
 #     main(args)
 
-@hydra.main(config_path="conf", config_name="ftwc")
+@hydra.main(config_path="conf", config_name="dqn_lit")
 def main(cfg) -> None:
     print(OmegaConf.to_yaml(cfg, resolve=True))
     cfg.data_path = hydra.utils.to_absolute_path(cfg.data_path)
