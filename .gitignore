@@ -4,9 +4,14 @@ foo
 # console output files
 out/
 results/
+console_out/
 
 # trained models
 saved_models/
+
+# pytorch lightning and Hydra-config output dirs
+outputs/
+multirun/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
