@@ -620,14 +620,17 @@ class CustomAgent:
 
             * 'walkthrough', 'facts'
         """
-        request_infos = EnvInfos()
-        request_infos.description = True
-        request_infos.inventory = True
-        request_infos.entities = True
-        request_infos.verbs = True
-        request_infos.extras = ["recipe", "uuid"]
-        request_infos.facts = True
-        request_infos.location = True
+        _REQUESTED_EXTRAS = ["recipe", "uuid"]
+
+        request_infos = EnvInfos(
+            description=True,
+            inventory=True,
+            location=True,
+            entities=True,
+            verbs=True,
+            facts=True,
+            extras=_REQUESTED_EXTRAS
+        )
         return request_infos
 
     def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
