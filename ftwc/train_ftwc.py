@@ -12,7 +12,7 @@ import gym
 import textworld.gym
 from textworld import EnvInfos
 
-from ftwc_agent import CustomAgent, WordVocab
+from ftwc_agent import FtwcAgent, WordVocab
 
 # List of additional information available during evaluation.
 AVAILABLE_INFORMATION = EnvInfos(
@@ -45,10 +45,10 @@ def _validate_requested_infos(infos: EnvInfos):
 
 def train(cfg, game_files):
     vocab = WordVocab(vocab_file=cfg.general.vocab_words)
-    agent = CustomAgent(cfg, vocab=vocab)
+    agent = FtwcAgent(cfg, vocab=vocab)
     requested_infos = agent.select_additional_infos()
     _validate_requested_infos(requested_infos)
-    requested_infos.facts = True  # use ground truth facts about the world (this is a training oracle)
+    # requested_infos.facts = True  # use ground truth facts about the world (this is a training oracle)
 
     for epoch_no in range(1, agent.nb_epochs + 1):
         # # start fresh for each epoch

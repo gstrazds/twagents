@@ -2,7 +2,7 @@ import os
 import random
 import yaml
 import copy
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from collections import namedtuple
 
 import numpy as np
@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from textworld import EnvInfos
 
 from model import LSTM_DQN
-from generic import to_np, to_pt, preproc, _words_to_ids, get_token_ids_for_items, pad_sequences, max_len
+from generic import to_np, to_pt, preproc, pad_sequences, max_len
 
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
@@ -22,6 +22,49 @@ from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 # from symbolic.gv import dbg
+
+
+def get_game_id_from_infos(infos, idx):
+    if 'game_id' in infos:
+        game_id = parse_gameid(infos['game_id'][idx])
+    elif 'extra.uuid' in infos:
+        game_id = infos['extra.uuid'][idx]
+    else:
+        print(f"WARNING: couldn't determine game_id for slot {idx} {len(infos)} {infos.keys()}")
+        game_id = None
+    return game_id
+
+
+def parse_gameid(game_id: str) -> str:
+    segments = game_id.split('-')
+    if len(segments) >= 4:
+        code, guid = segments[2:4]
+        guid = guid.split('.')[0]
+        guid = "{}..{}".format(guid[0:4],guid[-4:])
+        segments = code.split('+')
+        r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
+        for seg in segments:
+            if seg.startswith('recipe'):
+                r = seg[len('recipe'):]
+            elif seg.startswith('go'):
+                g = seg[len('go'):]
+            elif seg.startswith('take'):
+                t = seg[len('take'):]
+            elif seg == 'cook':
+                k = 'k'
+            elif seg == 'cut':
+                c = 'c'
+            elif seg == 'open':
+                o = 'o'
+            elif seg == 'drop':
+                d = 'd'
+            else:
+                assert False, "unparsable game_id: {}".format(game_id)
+        shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
+    else:
+        shortcode = game_id
+    return shortcode
+
 
 # a snapshot of state to be stored in replay memory
 Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
@@ -93,116 +136,6 @@ class PrioritizedReplayMemory(object):
 
     def __len__(self):
         return len(self.alpha_memory) + len(self.beta_memory)
-
-
-class AgentDQN:
-    def __init__(self, config, vocab, use_cuda):
-        self.model_config = config['model']
-        self.experiment_tag = config['checkpoint']['experiment_tag']
-        self.model_checkpoint_path = config['checkpoint']['model_checkpoint_path']
-        self.discount_gamma = config['general']['discount_gamma']
-        self.clip_grad_norm = config['training']['optimizer']['clip_grad_norm']
-
-        self.replay_batch_size = config['general']['replay_batch_size']
-
-        self.use_cuda = use_cuda
-        self.vocab = vocab
-        self.model = LSTM_DQN(model_config=self.model_config,
-                              word_vocab=self.vocab.word_vocab,
-                              enable_cuda=self.use_cuda)
-        if config['checkpoint']['load_pretrained']:
-            self.load_pretrained_model(self.model_checkpoint_path + '/' +
-                                       config['checkpoint']['pretrained_experiment_tag'] + '.pt')
-        if self.use_cuda:
-            self.model.cuda()
-
-        self.replay_memory = PrioritizedReplayMemory(
-                                config['general']['replay_memory_capacity'],
-                                priority_fraction=config['general']['replay_memory_priority_fraction'])
-        # optimizer
-        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
-        self.optimizer = torch.optim.Adam(parameters, lr=config['training']['optimizer']['learning_rate'])
-
-
-    def infer_word_ranks(self, input_description):
-        """
-        Given input description tensor, call model forward, to get Q values of words.
-
-        Arguments:
-            input_description: Input tensors, which include all the information chosen in
-            select_additional_infos() concatenated together.
-        """
-        state_representation = self.model.representation_generator(input_description)
-        word_ranks = self.model.action_scorer(state_representation)  # each element in list has batch x n_vocab size
-        return word_ranks
-
-    def save_checkpoint(self, episode_num):
-        save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
-        if not os.path.isdir(self.model_checkpoint_path):
-            os.mkdir(self.model_checkpoint_path)
-        torch.save(self.model.state_dict(), save_to)
-        print("========= saved checkpoint =========")
-
-    def load_pretrained_model(self, load_from):
-        """
-        Load pretrained checkpoint from file.
-
-        Arguments:
-            load_from: File name of the pretrained model checkpoint.
-        """
-        # print("loading model from %s\n" % (load_from))
-        try:
-            if self.use_cuda:
-                state_dict = torch.load(load_from)
-            else:
-                state_dict = torch.load(load_from, map_location='cpu')
-            self.model.load_state_dict(state_dict)
-        except:
-            print("Failed to load checkpoint...")
-
-    def update(self):
-        """
-        Update neural model in agent. In this example we follow algorithm
-        of updating model in dqn with replay memory.
-
-        """
-        if len(self.replay_memory) < self.replay_batch_size:
-            return None
-        transitions = self.replay_memory.sample(self.replay_batch_size)
-        batch = Transition(*zip(*transitions))
-
-        observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
-        input_observation = to_pt(observation_id_list, self.use_cuda)
-        next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
-        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
-        chosen_indices = list(list(zip(*batch.word_indices)))
-        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
-
-        word_ranks = self.infer_word_ranks(input_observation)  # list of batch x vocab, len=5 (one per potential output word)
-        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
-        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
-
-        next_word_ranks = self.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
-        next_word_masks = list(list(zip(*batch.next_word_masks)))
-        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
-        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
-        next_q_value = next_q_value.detach()
-
-        rewards = torch.stack(batch.reward)  # batch
-        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
-        not_done = to_pt(not_done, self.use_cuda, type='float')
-        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
-        mask = torch.stack(batch.mask)  # batch
-        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
-        return loss
-
-    def backpropagate(self, loss):
-        self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
-        self.optimizer.step()  # apply gradients
 
 
 def _choose_random_command(word_ranks, word_masks_np, use_cuda):
@@ -331,19 +264,19 @@ class WordVocab:
         # self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
         self.word_masks_np = []  # will be a list of np.array (x5), one for each potential output word
 
-    def init_with_infos(self, infos):
+    def init_from_infos_lists(self, verbs_word_lists, entities_word_lists):
         # get word masks
-        batch_size = len(infos["verbs"])
+        batch_size = len(verbs_word_lists)
+        assert len(entities_word_lists) == batch_size, f"{batch_size} {len(entities_word_lists)}"
         mask_shape = (batch_size, len(self.word_vocab))
         verb_mask = np.zeros(mask_shape, dtype="float32")
         noun_mask = np.zeros(mask_shape, dtype="float32")
         adj_mask = np.zeros(mask_shape, dtype="float32")
 
-        verbs_word_lists = infos["verbs"]
         # print("batch_size=", batch_size)
         # print('verbs_word_list:', verbs_word_list)
         noun_word_lists, adj_word_lists = [], []
-        for entities in infos["entities"]:
+        for entities in entities_word_lists:
             tmp_nouns, tmp_adjs = [], []
             for name in entities:
                 split = name.split()
@@ -418,65 +351,175 @@ class WordVocab:
             res_str.append(self._word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
         return res_str
 
-def get_game_id_from_infos(infos, idx):
-    if 'game_id' in infos:
-        game_id = parse_gameid(infos['game_id'][idx])
-    elif 'extra.uuid' in infos:
-        game_id = infos['extra.uuid'][idx]
-    else:
-        print(f"WARNING: couldn't determine game_id for slot {idx} {len(infos)} {infos.keys()}")
-        game_id = None
-    return game_id
+    def _words_to_ids(self, words):
+        ids = []
+        for word in words:
+            try:
+                ids.append(self.word2id[word])
+            except KeyError:
+                ids.append(1)
+        return ids
 
-def parse_gameid(game_id: str) -> str:
-    segments = game_id.split('-')
-    if len(segments) >= 4:
-        code, guid = segments[2:4]
-        guid = guid.split('.')[0]
-        guid = "{}..{}".format(guid[0:4],guid[-4:])
-        segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
-        for seg in segments:
-            if seg.startswith('recipe'):
-                r = seg[len('recipe'):]
-            elif seg.startswith('go'):
-                g = seg[len('go'):]
-            elif seg.startswith('take'):
-                t = seg[len('take'):]
-            elif seg == 'cook':
-                k = 'k'
-            elif seg == 'cut':
-                c = 'c'
-            elif seg == 'open':
-                o = 'o'
-            elif seg == 'drop':
-                d = 'd'
-            else:
-                assert False, "unparsable game_id: {}".format(game_id)
-        shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
-    else:
-        shortcode = game_id
-    return shortcode
+    def get_token_ids_for_items(self, item_list, tokenizer=None, subst_if_empty=None):
+        token_list = [preproc(item, tokenizer=tokenizer) for item in item_list]
+        if subst_if_empty:
+            for i, d in enumerate(token_list):
+                if len(d) == 0:
+                    token_list[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
+        id_list = [self._words_to_ids(tokens) for tokens in token_list]
+        return id_list
+
 
 class CustomAgent:
-    def __init__(self,
-                 cfg: Dict[str, Any],
-                 vocab: WordVocab,):
-        """
-        Arguments:
-            vocab: List of words supported.
-        """
+    """ Template agent for the TextWorld competition. """
+
+    def __init__(self) -> None:
+        self._initialized = False
+        self._episode_has_started = False
         self.mode = "train"
-        # with open("conf/ftwc.yaml") as reader:
-        #     self.config = yaml.safe_load(reader)
+
+    def train(self) -> None:
+        """ Tell the agent it is in training mode. """
+        self.mode = 'train'  # [You can insert code here.]
+
+    def eval(self) -> None:
+        """ Tell the agent it is in evaluation mode. """
+        self.mode = 'eval'  # [You can insert code here.]
+
+    def select_additional_infos(self) -> EnvInfos:
+        """
+        Returns what additional information should be made available at each game step.
+
+        Requested information will be included within the `infos` dictionary
+        passed to `CustomAgent.act()`. To request specific information, create a
+        :py:class:`textworld.EnvInfos <textworld.envs.wrappers.filter.EnvInfos>`
+        and set the appropriate attributes to `True`. The possible choices are:
+
+        * `description`: text description of the current room, i.e. output of the `look` command;
+        * `inventory`: text listing of the player's inventory, i.e. output of the `inventory` command;
+        * `max_score`: maximum reachable score of the game;
+        * `objective`: objective of the game described in text;
+        * `entities`: names of all entities in the game;
+        * `verbs`: verbs understood by the the game;
+        * `command_templates`: templates for commands understood by the the game;
+        * `admissible_commands`: all commands relevant to the current state;
+
+        In addition to the standard information, game specific information
+        can be requested by appending corresponding strings to the `extras`
+        attribute. For this competition, the possible extras are:
+
+        * `'recipe'`: description of the cookbook;
+        * `'walkthrough'`: one possible solution to the game (not guaranteed to be optimal);
+
+        Example:
+            Here is an example of how to request information and retrieve it.
+
+            >>> from textworld import EnvInfos
+            >>> request_infos = EnvInfos(description=True, inventory=True, extras=["recipe"])
+            ...
+            >>> env = gym.make(env_id)
+            >>> ob, infos = env.reset()
+            >>> print(infos["description"])
+            >>> print(infos["inventory"])
+            >>> print(infos["extra.recipe"])
+
+        Notes:
+            The following information *won't* be available at test time:
+
+            * 'walkthrough'
+
+            Requesting additional infos comes with some penalty (called handicap).
+            The exact penalty values will be defined in function of the average
+            scores achieved by agents using the same handicap.
+
+            Handicap is defined as follows
+                max_score, has_won, has_lost,               # Handicap 0
+                description, inventory, verbs, objective,   # Handicap 1
+                command_templates,                          # Handicap 2
+                entities,                                   # Handicap 3
+                extras=["recipe"],                          # Handicap 4
+                admissible_commands,                        # Handicap 5
+        """
+        return EnvInfos()
+
+    def _init(self) -> None:
+        """ Initialize the agent. """
+        self._initialized = True
+
+        # [You can insert code here.]
+
+    def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
+        """
+        Prepare the agent for the upcoming episode.
+
+        Arguments:
+            obs: Initial feedback for each game.
+            infos: Additional information for each game.
+        """
+        if not self._initialized:
+            self._init()
+
+        self._episode_has_started = True
+
+        # [You can insert code here.]
+
+    def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
+        """
+        Tell the agent the episode has terminated.
+
+        Arguments:
+            obs: Previous command's feedback for each game.
+            score: The score obtained so far for each game.
+            infos: Additional information for each game.
+        """
+        self._episode_has_started = False
+
+        # [You can insert code here.]
+
+    def act(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> Optional[List[str]]:
+        """
+        Acts upon the current list of observations.
+
+        One text command must be returned for each observation.
+
+        Arguments:
+            obs: Previous command's feedback for each game.
+            scores: The score obtained so far for each game.
+            dones: Whether a game is finished.
+            infos: Additional information for each game.
+
+        Returns:
+            Text commands to be performed (one per observation).
+            If episode had ended (e.g. `all(dones)`), the returned
+            value is ignored.
+
+        Notes:
+            Commands returned for games marked as `done` have no effect.
+            The states for finished games are simply copy over until all
+            games are done.
+        """
+        if all(dones):
+            self._end_episode(obs, scores, infos)
+            return  # Nothing to return.
+
+        if not self._episode_has_started:
+            self._start_episode(obs, infos)
+
+        # [Insert your code here to obtain the commands.]
+        return ["wait"] * len(obs)  # No-op
+
+
+class AgentDQN(CustomAgent):
+    def __init__(self, cfg, vocab):
+        super().__init__()
+
         self._config = cfg
         self.vocab = vocab
+
+        # training
         self.batch_size = cfg.training.batch_size
         self.max_nb_steps_per_episode = cfg.training.max_nb_steps_per_episode
         self.nb_epochs = cfg.training.nb_epochs
-        self._debug_quit = False
-        self.game_ids = []
-        self.agents = []
 
         # Set the random seed manually for reproducibility.
         seedval = cfg.general.random_seed
@@ -493,10 +536,10 @@ class CustomAgent:
         else:
             self.use_cuda = False
 
-        self.agentNN = AgentDQN(cfg, self.vocab, self.use_cuda)
-
         self.save_frequency = cfg.checkpoint.save_frequency
 
+        self.discount_gamma = cfg.general.discount_gamma
+        self.replay_batch_size = cfg.general.replay_batch_size
 
         # epsilon greedy
         self.epsilon_anneal_episodes = cfg.general.epsilon_anneal_episodes
@@ -513,20 +556,125 @@ class CustomAgent:
         self.history_avg_scores = HistoryScoreCache(capacity=1000)
         self.best_avg_score_so_far = 0.0
 
+        self.experiment_tag = cfg.checkpoint.experiment_tag
+        self.model_checkpoint_path = cfg.checkpoint.model_checkpoint_path
+
+        self.clip_grad_norm = cfg.training.optimizer.clip_grad_norm
+
+        self.model = LSTM_DQN(model_config=cfg.model,
+                              word_vocab=self.vocab.word_vocab,
+                              enable_cuda=self.use_cuda)
+        if cfg.checkpoint.load_pretrained:
+            self.load_pretrained_model(
+                self.model_checkpoint_path + '/' + cfg.checkpoint.pretrained_experiment_tag + '.pt')
+        if self.use_cuda:
+            self.model.cuda()
+
+        self.replay_memory = PrioritizedReplayMemory(
+                                cfg.general.replay_memory_capacity,
+                                priority_fraction=cfg.general.replay_memory_priority_fraction)
+        # optimizer
+        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
+        self.optimizer = torch.optim.Adam(parameters, lr=cfg.training.optimizer.learning_rate)
+
     def train(self):
         """
         Tell the agent that it's training phase.
         """
-        self.mode = "train"
-        self.agentNN.model.train()
-
+        self.model.train()
+        super().train()
 
     def eval(self):
         """
         Tell the agent that it's evaluation phase.
         """
-        self.mode = "eval"
-        self.agentNN.model.eval()
+        self.model.eval()
+        super().eval()
+
+    def save_checkpoint(self, episode_num):
+        save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
+        if not os.path.isdir(self.model_checkpoint_path):
+            os.mkdir(self.model_checkpoint_path)
+        torch.save(self.model.state_dict(), save_to)
+        print("========= saved checkpoint =========")
+
+    def load_pretrained_model(self, load_from):
+        """
+        Load pretrained checkpoint from file.
+
+        Arguments:
+            load_from: File name of the pretrained model checkpoint.
+        """
+        # print("loading model from %s\n" % (load_from))
+        try:
+            if self.use_cuda:
+                state_dict = torch.load(load_from)
+            else:
+                state_dict = torch.load(load_from, map_location='cpu')
+            self.model.load_state_dict(state_dict)
+        except:
+            print("Failed to load checkpoint...")
+
+    def update(self):
+        """
+        Update neural model in agent. In this example we follow algorithm
+        of updating model in dqn with replay memory.
+
+        """
+        if len(self.replay_memory) < self.replay_batch_size:
+            return None
+        transitions = self.replay_memory.sample(self.replay_batch_size)
+        batch = Transition(*zip(*transitions))
+
+        observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
+        input_observation = to_pt(observation_id_list, self.use_cuda)
+        next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
+        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
+        chosen_indices = list(list(zip(*batch.word_indices)))
+        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
+
+        word_ranks = self.model.infer_word_ranks(input_observation)  # list of batch x vocab, len=5 (one per potential output word)
+        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
+        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
+
+        next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
+        next_word_masks = list(list(zip(*batch.next_word_masks)))
+        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
+        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
+        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
+        next_q_value = next_q_value.detach()
+
+        rewards = torch.stack(batch.reward)  # batch
+        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
+        not_done = to_pt(not_done, self.use_cuda, type='float')
+        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
+        mask = torch.stack(batch.mask)  # batch
+        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
+        return loss
+
+    def backpropagate(self, loss):
+        self.optimizer.zero_grad()
+        loss.backward(retain_graph=True)
+        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+        self.optimizer.step()  # apply gradients
+
+
+class FtwcAgent(AgentDQN):
+    def __init__(self,
+                 cfg: Dict[str, Any],
+                 vocab: WordVocab,):
+        """
+        Arguments:
+            vocab: List of words supported.
+        """
+        super().__init__(cfg, vocab)
+
+        # with open("conf/ftwc.yaml") as reader:
+        #     self.config = yaml.safe_load(reader)
+        self._debug_quit = False
+        self.game_ids = []
+        self.agents = []
 
     def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
         """
@@ -539,29 +687,7 @@ class CustomAgent:
         _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
         self.init_with_infos(obs, infos)
-        self._episode_has_started = True
-
-    def _get_gameid(self, idx):
-        if len(self.game_ids) > idx:
-            gameid = self.game_ids[idx]
-        else:
-            gameid = str(idx)
-        return gameid
-
-    def set_game_id(self, game_id, idx):
-        if idx < len(self.game_ids):
-            if game_id != self.game_ids[idx]:
-                print(f"[{idx}] {game_id} != {self.game_ids[idx]} NEED TO RESET KG")
-                self.game_ids[idx] = game_id
-                return True
-            else:
-                print(f"[{idx}] {game_id} == {self.game_ids[idx]} DON'T RESET KG")
-                return False
-        else:
-            print(f"[{idx}] {game_id} ** NEW AGENT, DON'T RESET: {self.game_ids}")
-            assert idx == len(self.game_ids)
-            self.game_ids.append(game_id)
-            return False
+        super()._start_episode(obs, infos)
 
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
         """
@@ -576,7 +702,7 @@ class CustomAgent:
             [":{}: [{}]".format(self._get_gameid(idx), actiontxt) for idx, actiontxt in enumerate(self.prev_actions)])
         print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
         self.finish()
-        self._episode_has_started = False
+        super()._end_episode(obs, scores, infos)
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -628,10 +754,32 @@ class CustomAgent:
             location=True,
             entities=True,
             verbs=True,
-            facts=True,
+            facts=True,   # use ground truth facts about the world (since this is a training oracle)
             extras=_REQUESTED_EXTRAS
         )
         return request_infos
+
+    def _get_gameid(self, idx):
+        if len(self.game_ids) > idx:
+            gameid = self.game_ids[idx]
+        else:
+            gameid = str(idx)
+        return gameid
+
+    def set_game_id(self, game_id, idx):
+        if idx < len(self.game_ids):
+            if game_id != self.game_ids[idx]:
+                print(f"[{idx}] {game_id} != {self.game_ids[idx]} NEED TO RESET KG")
+                self.game_ids[idx] = game_id
+                return True
+            else:
+                print(f"[{idx}] {game_id} == {self.game_ids[idx]} DON'T RESET KG")
+                return False
+        else:
+            print(f"[{idx}] {game_id} ** NEW AGENT, DON'T RESET: {self.game_ids}")
+            assert idx == len(self.game_ids)
+            self.game_ids.append(game_id)
+            return False
 
     def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
@@ -678,12 +826,11 @@ class CustomAgent:
                         self.agents[idx].setup_logging(game_id, idx)
                     self.agents[idx].reset(forget_everything=need_to_forget)
 
-        self.vocab.init_with_infos(infos)
+        self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         self.prev_obs = obs
         self.cache_description_id_list = None   # similar to .prev_obs
         self.cache_chosen_indices = None        # similar to .prev_actions
         self.current_step = 0
-
 
     def get_game_step_info(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
@@ -694,17 +841,17 @@ class CustomAgent:
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
-        word2id = self.vocab.word2id
-        inventory_id_list = get_token_ids_for_items(infos["inventory"], word2id, tokenizer=self.nlp)
+        # word2id = self.vocab.word2id
+        inventory_id_list = self.vocab.get_token_ids_for_items(infos["inventory"], tokenizer=self.nlp)
 
-        feedback_id_list = get_token_ids_for_items(obs, word2id, tokenizer=self.nlp)
+        feedback_id_list = self.vocab.get_token_ids_for_items(obs, tokenizer=self.nlp)
 
-        quest_id_list = get_token_ids_for_items(infos["extra.recipe"], word2id, tokenizer=self.nlp)
+        quest_id_list = self.vocab.get_token_ids_for_items(infos["extra.recipe"], tokenizer=self.nlp)
 
-        prev_action_id_list = get_token_ids_for_items(self.prev_actions, word2id, tokenizer=self.nlp)
+        prev_action_id_list = self.vocab.get_token_ids_for_items(self.prev_actions, tokenizer=self.nlp)
 
-        description_id_list = get_token_ids_for_items(infos["description"],
-                                                      word2id, tokenizer=self.nlp, subst_if_empty=['end'])
+        description_id_list = self.vocab.get_token_ids_for_items(infos["description"],
+                                                      tokenizer=self.nlp, subst_if_empty=['end'])
 
         description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
                                                                                         inventory_id_list,
@@ -820,7 +967,7 @@ class CustomAgent:
                 chosen_strings.append(actiontxt)
         else:
             input_description, _ = self.get_game_step_info(obs, infos)
-            word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
+            word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
             _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
             chosen_indices = [item.detach() for item in word_indices_maxq]
             chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
@@ -873,7 +1020,7 @@ class CustomAgent:
         input_description, description_id_list = self.get_game_step_info(obs, infos)
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
-        word_ranks = self.agentNN.infer_word_ranks(input_description)  # list of batch x vocab
+        word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
         assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
 
         _, chosen_indices = choose_command(word_ranks,
@@ -904,7 +1051,7 @@ class CustomAgent:
                                             description_id_list[b],
                                             [word_mask[b] for word_mask in self.vocab.word_masks_np])
 
-                    self.agentNN.replay_memory.push(is_prior=is_prior, transition=transition)
+                    self.replay_memory.push(is_prior=is_prior, transition=transition)
 
             # cache new info in current game step into caches
             self.cache_description_id_list = description_id_list
@@ -912,10 +1059,10 @@ class CustomAgent:
 
             # update neural model by replaying snapshots in replay memory
             if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-                loss = self.agentNN.update()
+                loss = self.update()
                 if loss is not None:
                     # Backpropagate
-                    self.agentNN.backpropagate(loss)
+                    self.backpropagate(loss)
 
         self.current_step += 1
 
@@ -951,10 +1098,8 @@ class CustomAgent:
         """
         All games in the batch are finished. One can choose to save checkpoints,
         evaluate on validation set, or do parameter annealing here.
-
         """
         # Game has finished (either win, lose, or exhausted all the given steps).
-        self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
         dones = []
         for d in self.dones:
             d = np.array([float(dd) for dd in d], dtype='float32')
@@ -963,14 +1108,18 @@ class CustomAgent:
         step_used = 1.0 - dones
         self.step_used_before_done = np.sum(step_used, 0)  # batch
 
-        self.history_avg_scores.push(np.mean(self.final_rewards))
+        if len(self.scores):
+            self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
+            self.history_avg_scores.push(np.mean(self.final_rewards))
+        else:
+            print(f"!!! WARNING: finish() called but self.scores={self.scores}")
         # save checkpoint
         if self.mode == "train" and self.current_episode % self.save_frequency == 0:
             avg_score = self.history_avg_scores.get_avg()
             if avg_score > self.best_avg_score_so_far:
                 self.best_avg_score_so_far = avg_score
 
-                self.agentNN.save_checkpoint(self.current_episode)
+                self.save_checkpoint(self.current_episode)
 
         self.current_episode += 1
         # annealing

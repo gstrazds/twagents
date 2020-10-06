@@ -22,16 +22,6 @@ def to_pt(np_matrix, enable_cuda=False, type='long'):
             return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.FloatTensor))
 
 
-def _words_to_ids(words, word2id):
-    ids = []
-    for word in words:
-        try:
-            ids.append(word2id[word])
-        except KeyError:
-            ids.append(1)
-    return ids
-
-
 def preproc(s, str_type='None', tokenizer=None, lower_case=True):
     if s is None:
         return ["nothing"]
@@ -93,12 +83,3 @@ def pad_sequences(sequences, maxlen=None, dtype='int32', value=0.):
         x[idx, :len(trunc)] = trunc
     return x
 
-
-def get_token_ids_for_items(item_list, word2id, tokenizer=None, subst_if_empty=None):
-    token_list = [preproc(item, tokenizer=tokenizer) for item in item_list]
-    if subst_if_empty:
-        for i, d in enumerate(token_list):
-            if len(d) == 0:
-                token_list[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
-    id_list = [_words_to_ids(tokens, word2id) for tokens in token_list]
-    return id_list

@@ -80,3 +80,15 @@ class LSTM_DQN(torch.nn.Module):
         for i in range(len(self.action_scorers)):
             action_ranks.append(self.action_scorers[i].forward(hidden))  # batch x n_vocab
         return action_ranks
+
+    def infer_word_ranks(self, input_description):
+        """
+        Given input description tensor, call model forward, to get Q values of words.
+
+        Arguments:
+            input_description: Input tensors, which include all the information chosen in
+            select_additional_infos() concatenated together.
+        """
+        state_representation = self.representation_generator(input_description)
+        word_ranks = self.action_scorer(state_representation)  # each element in list has batch x n_vocab size
+        return word_ranks
