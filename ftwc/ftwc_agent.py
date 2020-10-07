@@ -2,13 +2,19 @@ import os
 import random
 import yaml
 import copy
-from typing import List, Dict, Any, Optional
-from collections import namedtuple
+from typing import List, Dict, Tuple, Any, Optional
+from collections import namedtuple, OrderedDict
 
 import numpy as np
 
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
+from torch.optim.optimizer import Optimizer
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import IterableDataset
+
+import pytorch_lightning as pl
 
 from textworld import EnvInfos
 
@@ -373,7 +379,10 @@ class WordVocab:
 class CustomAgent:
     """ Template agent for the TextWorld competition. """
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
+        print(f"CustomAgent.__init__ {kwargs}")
+        # super().__init__(**kwargs)  # don't do this unless inheriting from another class
+
         self._initialized = False
         self._episode_has_started = False
         self.mode = "train"
@@ -509,9 +518,12 @@ class CustomAgent:
         return ["wait"] * len(obs)  # No-op
 
 
-class AgentDQN(CustomAgent):
-    def __init__(self, cfg, vocab):
-        super().__init__()
+class AgentDQN(pl.LightningModule, CustomAgent):
+    def __init__(self, cfg, vocab, **kwargs):
+        print(f"AgentDQN.__init__ {cfg} {vocab} {kwargs}")
+        CustomAgent.__init__(self)
+        # pl.LightningModule.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
         self._config = cfg
         self.vocab = vocab
@@ -574,8 +586,8 @@ class AgentDQN(CustomAgent):
                                 cfg.general.replay_memory_capacity,
                                 priority_fraction=cfg.general.replay_memory_priority_fraction)
         # optimizer
-        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
-        self.optimizer = torch.optim.Adam(parameters, lr=cfg.training.optimizer.learning_rate)
+        self.learning_rate = cfg.training.optimizer.learning_rate
+        self.optimizer = self.configure_optimizers()[0]
 
     def train(self):
         """
@@ -659,19 +671,84 @@ class AgentDQN(CustomAgent):
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
         self.optimizer.step()  # apply gradients
 
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> Dict[str, Any]:
+        """
+        Carries out a single step through the environment to update the replay buffer.
+        Then calculates loss based on the minibatch received
+
+        Args:
+            batch: current mini batch of replay data
+            nb_batch: batch number
+
+        Returns:
+            Training loss and log metrics
+        """
+        # device = self.get_device(batch)
+        # epsilon = max(self.eps_end, self.eps_start -
+        #               self.global_step + 1 / self.eps_last_frame)
+        #
+        # # step through environment with agent
+        # reward, done = self.agent.play_step(self.net, epsilon, device)
+        # self.episode_reward += reward
+        #
+        # # calculates training loss
+        # loss = self.dqn_mse_loss(batch)
+        #
+        # if done:
+        #     self.total_reward = self.episode_reward
+        #     self.episode_reward = 0.0
+        #
+        # # Soft update of target network
+        # if self.global_step % self.sync_rate == 0:
+        #     self.target_net.load_state_dict(self.net.state_dict())
+        #
+        # # log = {'total_reward': torch.tensor(self.total_reward).to(device),
+        # #        'reward': torch.tensor(reward).to(device),
+        # #        'steps': torch.tensor(self.global_step).to(device)}
+        # self.log('reward', torch.tensor(reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        # self.log('total_reward', torch.tensor(self.total_reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        # self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
+        # self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        loss = 6543.21
+        return OrderedDict({'loss': loss, 'misc_other_stuff': 12345})   # loss is a torch.Tensor
+
+    def configure_optimizers(self) -> List[Optimizer]:
+        """Initialize Adam optimizer"""
+        # optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
+        optimizer = torch.optim.Adam(parameters, lr=self.learning_rate)
+        return [optimizer]
+
+    # def __dataloader(self) -> DataLoader:
+    #     """Initialize the Replay Buffer dataset used for retrieving experiences"""
+    #     dataset = RLDataset(self.buffer, self.episode_length)
+    #     dataloader = DataLoader(
+    #         dataset=dataset,
+    #         batch_size=self.batch_size,
+    #         sampler=None,
+    #     )
+    #     return dataloader
+    #
+    # def train_dataloader(self) -> DataLoader:
+    #     """Get train loader"""
+    #     return self.__dataloader()
+
+    def get_device(self, batch) -> str:
+        """Retrieve device currently being used by minibatch"""
+        return batch[0].device.index if self.on_gpu else 'cpu'
+
 
 class FtwcAgent(AgentDQN):
     def __init__(self,
                  cfg: Dict[str, Any],
-                 vocab: WordVocab,):
+                 vocab: WordVocab,
+                 **kwargs):
         """
         Arguments:
-            vocab: List of words supported.
+            vocab: words supported.
         """
-        super().__init__(cfg, vocab)
+        super().__init__(cfg, vocab, **kwargs)
 
-        # with open("conf/ftwc.yaml") as reader:
-        #     self.config = yaml.safe_load(reader)
         self._debug_quit = False
         self.game_ids = []
         self.agents = []
@@ -684,6 +761,7 @@ class FtwcAgent(AgentDQN):
             obs: Initial feedback for each game.
             infos: Additional information for each game.
         """
+
         _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
         self.init_with_infos(obs, infos)
