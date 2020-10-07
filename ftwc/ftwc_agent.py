@@ -378,22 +378,33 @@ class WordVocab:
 
 class CustomAgent:
     """ Template agent for the TextWorld competition. """
+    MODE_TRAIN = 'train'
+    MODE_EVAL = 'eval'
 
     def __init__(self, **kwargs) -> None:
         print(f"CustomAgent.__init__ {kwargs}")
         # super().__init__(**kwargs)  # don't do this unless inheriting from another class
-
         self._initialized = False
         self._episode_has_started = False
-        self.mode = "train"
+        self.mode = CustomAgent.MODE_TRAIN
+
+    def set_mode(self, mode):
+        assert mode == CustomAgent.MODE_TRAIN or mode == CustomAgent.MODE_EVAL, str(mode)
+        self.mode = mode
 
     def train(self) -> None:
         """ Tell the agent it is in training mode. """
-        self.mode = 'train'  # [You can insert code here.]
+        self.set_mode(CustomAgent.MODE_TRAIN)
+        # [You can insert code here.]
 
     def eval(self) -> None:
         """ Tell the agent it is in evaluation mode. """
-        self.mode = 'eval'  # [You can insert code here.]
+        self.set_mode(CustomAgent.MODE_EVAL)
+        # [You can insert code here.]
+
+    def is_eval_mode(self) -> bool:
+        assert self.mode == CustomAgent.MODE_TRAIN or self.mode == CustomAgent.MODE_EVAL, self.mode
+        return self.mode == CustomAgent.MODE_EVAL
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -671,14 +682,14 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
         self.optimizer.step()  # apply gradients
 
-    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], nb_batch) -> Dict[str, Any]:
+    def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx) -> Dict[str, Any]:
         """
         Carries out a single step through the environment to update the replay buffer.
         Then calculates loss based on the minibatch received
 
         Args:
             batch: current mini batch of replay data
-            nb_batch: batch number
+            batch_idx: batch number
 
         Returns:
             Training loss and log metrics
@@ -1078,18 +1089,18 @@ class FtwcAgent(AgentDQN):
         if not self._episode_has_started:
             self._start_episode(obs, infos)
 
-        if True or self.mode == "eval":
+        if True or self.is_eval_mode():
             return self.act_eval(obs, scores, dones, infos)
 
         if self.current_step > 0:
             # append scores / dones from previous step into memory
             self.scores.append(scores)
             self.dones.append(dones)
-            if self.mode == "eval":
+            if self.is_eval_mode():
                 if all(dones):
                     self._end_episode(obs, scores, infos)
                     return  # Nothing to return.
-            elif self.mode == "train":
+            elif self.mode == CustomAgent.MODE_TRAIN:
                 # compute previous step's rewards and masks
                 rewards_np, mask_np = self.compute_reward()
                 mask_pt = to_pt(mask_np, self.use_cuda, type='float')
@@ -1104,11 +1115,11 @@ class FtwcAgent(AgentDQN):
         _, chosen_indices = choose_command(word_ranks,
                                            self.vocab.word_masks_np,
                                            self.use_cuda,
-                                           epsilon=(0.0 if self.mode == "eval" else self.epsilon))
+                                           epsilon=(0.0 if self.is_eval_mode() else self.epsilon))
         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
-        if self.mode == "train":
+        if self.mode == CustomAgent.MODE_TRAIN:
             # push info from previous game step into replay memory
             if self.current_step > 0:
                 for b in range(len(obs)):
@@ -1192,7 +1203,7 @@ class FtwcAgent(AgentDQN):
         else:
             print(f"!!! WARNING: finish() called but self.scores={self.scores}")
         # save checkpoint
-        if self.mode == "train" and self.current_episode % self.save_frequency == 0:
+        if self.mode == CustomAgent.MODE_TRAIN and self.current_episode % self.save_frequency == 0:
             avg_score = self.history_avg_scores.get_avg()
             if avg_score > self.best_avg_score_so_far:
                 self.best_avg_score_so_far = avg_score
