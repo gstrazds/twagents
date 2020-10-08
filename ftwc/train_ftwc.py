@@ -8,13 +8,15 @@ import datetime
 import hydra
 from omegaconf import OmegaConf, DictConfig
 
+
+from pytorch_lightning import Trainer, seed_everything
+
 from tqdm import tqdm
 
-import gym
-import textworld.gym
 from textworld import EnvInfos
 
 from ftwc_agent import FtwcAgent, WordVocab
+from ftwc_data import GamefileDataModule
 
 # List of additional information available during evaluation.
 AVAILABLE_INFORMATION = EnvInfos(
@@ -45,14 +47,13 @@ def _validate_requested_infos(infos: EnvInfos):
             # raise ValueError(msg.format(key))
 
 
-def train(cfg, game_files):
+def train(cfg, dataloader):
     vocab = WordVocab(vocab_file=cfg.general.vocab_words)
     agent = FtwcAgent(cfg, vocab=vocab)
-    requested_infos = agent.select_additional_infos()
-    _validate_requested_infos(requested_infos)
-    # requested_infos.facts = True  # use ground truth facts about the world (this is a training oracle)
+    # requested_infos = agent.select_additional_infos()
+    # _validate_requested_infos(requested_infos)
 
-    for epoch_no in range(1, agent.nb_epochs + 1):
+    for epoch_no in range(1, cfg.training.nb_epochs + 1):
         # # start fresh for each epoch
         # # (GVS Oct-05-2020: this was a hack to work around bugs in resetting kg to initial state)
         # if epoch_no > 1:
@@ -61,46 +62,24 @@ def train(cfg, game_files):
             "scores": [],
             "steps": [],
         }
-        for game_no in tqdm(range(len(game_files))):
-            agent.train()  # agent in training mode
-            gamefile = game_files[game_no]
-            scores, dones = run_episode(agent, gamefile, requested_infos)
-            stats["scores"].extend(scores)
-            stats["steps"].extend(steps)
+        # for game_no in tqdm(range(len(game_files))):
+        #     agent.train()  # agent in training mode
+        #     gamefile = game_files[game_no]
+        for batch in dataloader:
+            for gamefile in batch:
+                print(f"gamefile = {gamefile}")
+                scores, steps = agent.run_episode(gamefile)
+                stats["scores"].extend(scores)
+                stats["steps"].extend(steps)
 
         score = sum(stats["scores"]) / agent.batch_size
         steps = sum(stats["steps"]) / agent.batch_size
         print("Epoch: {:3d} | {:2.1f} pts | {:4.1f} steps".format(epoch_no, score, steps))
 
 
-def run_episode(agent, gamefile, requested_infos) -> Tuple[List[int], List[int]]:
-    env_id = textworld.gym.register_games([gamefile],
-                                          requested_infos,
-                                          max_episode_steps=agent.max_nb_steps_per_episode,
-                                          batch_size=agent.batch_size,
-                                          asynchronous=True,
-                                          # auto_reset=auto_reset,
-                                          # action_space=action_space,
-                                          # observation_space=observation_space,
-                                          name=agent.mode)
-    # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
-    env = gym.make(env_id)
-    obs, infos = env.reset()
-    scores = [0] * len(obs)
-    dones = [False] * len(obs)
-    steps = [0] * len(obs)
-    while not all(dones):
-        # Increase step counts.
-        steps = [step + int(not done) for step, done in zip(steps, dones)]
-        commands = agent.act(obs, scores, dones, infos)
-        obs, scores, dones, infos = env.step(commands)
-    # Let the agent knows the game is done.
-    agent.act(obs, scores, dones, infos)
-    return scores, steps
-
-
 @hydra.main(config_path="conf", config_name="ftwc")
 def main(cfg: DictConfig) -> None:
+    seed_everything(cfg.general.random_seed)
     cfg.cwd_path = hydra.utils.to_absolute_path(cfg.cwd_path)
     print(OmegaConf.to_yaml(cfg, resolve=True))
     print("cwd_path = ", cfg.cwd_path)
@@ -118,7 +97,10 @@ def main(cfg: DictConfig) -> None:
 
     print("{} games found for training.".format(len(games)))
     # print(games)
-    train(cfg, games)
+    trainer = Trainer(deterministic=True)
+    data = GamefileDataModule(gamefiles=games, testfiles=games)
+    data.setup()
+    train(cfg, data.test_dataloader())
 
     # model = DQNLightning(**cfg)
     #

@@ -5,6 +5,7 @@ foo
 out/
 results/
 console_out/
+tmp_out.txt
 
 # trained models
 saved_models/

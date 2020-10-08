@@ -16,7 +16,9 @@ from torch.utils.data.dataset import IterableDataset
 
 import pytorch_lightning as pl
 
+import gym
 from textworld import EnvInfos
+import textworld.gym
 
 from model import LSTM_DQN
 from generic import to_np, to_pt, preproc, pad_sequences, max_len
@@ -520,7 +522,7 @@ class CustomAgent:
         """
         if all(dones):
             self._end_episode(obs, scores, infos)
-            return  # Nothing to return.
+            return None  # Nothing to return.
 
         if not self._episode_has_started:
             self._start_episode(obs, infos)
@@ -536,16 +538,17 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         # pl.LightningModule.__init__(self, **kwargs)
         super().__init__(**kwargs)
 
-        self._config = cfg
+        self.hparams = cfg   # will be saved in checkpoints by PyTorchLightning
         self.vocab = vocab
 
         # training
         self.batch_size = cfg.training.batch_size
         self.max_nb_steps_per_episode = cfg.training.max_nb_steps_per_episode
-        self.nb_epochs = cfg.training.nb_epochs
+        # self.nb_epochs = cfg.training.nb_epochs
 
         # Set the random seed manually for reproducibility.
         seedval = cfg.general.random_seed
+        self._random_seed = seedval   #TODO: mignt not need to save this here
         np.random.seed(seedval)
         torch.manual_seed(seedval)
         if torch.cuda.is_available():
@@ -613,6 +616,31 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         """
         self.model.eval()
         super().eval()
+
+    def run_episode(self, gamefile) -> Tuple[List[int], List[int]]:
+        env_id = textworld.gym.register_games([gamefile],
+                                              self.requested_infos,
+                                              max_episode_steps=self.max_nb_steps_per_episode,
+                                              batch_size=self.batch_size,
+                                              asynchronous=False,
+                                              # auto_reset=auto_reset,
+                                              # action_space=action_space,
+                                              # observation_space=observation_space,
+                                              name=f"tw_{'eval' if self.is_eval_mode() else 'train'}-v0")
+        # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
+        env = gym.make(env_id)
+        obs, infos = env.reset()
+        scores = [0] * len(obs)
+        dones = [False] * len(obs)
+        steps = [0] * len(obs)
+        while not all(dones):
+            # Increase step counts.
+            steps = [step + int(not done) for step, done in zip(steps, dones)]
+            commands = self.act(obs, scores, dones, infos)
+            obs, scores, dones, infos = env.step(commands)
+        # Let the agent know the game is done and see the final observation
+        self.act(obs, scores, dones, infos)
+        return scores, steps
 
     def save_checkpoint(self, episode_num):
         save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
@@ -760,6 +788,7 @@ class FtwcAgent(AgentDQN):
         """
         super().__init__(cfg, vocab, **kwargs)
 
+        self.requested_infos = self.select_additional_infos()
         self._debug_quit = False
         self.game_ids = []
         self.agents = []
@@ -775,7 +804,7 @@ class FtwcAgent(AgentDQN):
 
         _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
-        self.init_with_infos(obs, infos)
+        self.start_episode_infos(obs, infos)
         super()._start_episode(obs, infos)
 
     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
@@ -790,7 +819,7 @@ class FtwcAgent(AgentDQN):
         all_endactions = " ".join(
             [":{}: [{}]".format(self._get_gameid(idx), actiontxt) for idx, actiontxt in enumerate(self.prev_actions)])
         print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
-        self.finish()
+        self.on_episode_end()
         super()._end_episode(obs, scores, infos)
 
     def select_additional_infos(self) -> EnvInfos:
@@ -870,7 +899,7 @@ class FtwcAgent(AgentDQN):
             self.game_ids.append(game_id)
             return False
 
-    def init_with_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
+    def start_episode_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
         Prepare the agent for the upcoming games.
 
@@ -894,7 +923,7 @@ class FtwcAgent(AgentDQN):
 
             if idx == len(self.agents):
                 tw_game_agent = TextGameAgent(
-                        self._config['general']['random_seed'],  #seed
+                        self._random_seed,  #seed
                         "TW",     # rom_name
                         game_id,  # env_name
                         idx=idx,
@@ -1100,7 +1129,8 @@ class FtwcAgent(AgentDQN):
                 if all(dones):
                     self._end_episode(obs, scores, infos)
                     return  # Nothing to return.
-            elif self.mode == CustomAgent.MODE_TRAIN:
+            else:
+                assert self.mode == CustomAgent.MODE_TRAIN
                 # compute previous step's rewards and masks
                 rewards_np, mask_np = self.compute_reward()
                 mask_pt = to_pt(mask_np, self.use_cuda, type='float')
@@ -1183,7 +1213,7 @@ class FtwcAgent(AgentDQN):
             rewards = rewards - prev_rewards
         return rewards, mask
 
-    def finish(self) -> None:
+    def on_episode_end(self) -> None:
         """
         All games in the batch are finished. One can choose to save checkpoints,
         evaluate on validation set, or do parameter annealing here.
@@ -1203,7 +1233,7 @@ class FtwcAgent(AgentDQN):
         else:
             print(f"!!! WARNING: finish() called but self.scores={self.scores}")
         # save checkpoint
-        if self.mode == CustomAgent.MODE_TRAIN and self.current_episode % self.save_frequency == 0:
+        if not self.is_eval_mode() and self.current_episode % self.save_frequency == 0:
             avg_score = self.history_avg_scores.get_avg()
             if avg_score > self.best_avg_score_so_far:
                 self.best_avg_score_so_far = avg_score
@@ -1214,3 +1244,17 @@ class FtwcAgent(AgentDQN):
         # annealing
         if self.current_episode < self.epsilon_anneal_episodes:
             self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
+
+    def validation_step(self, batch, batch_idx):
+        self._shared_eval(batch, batch_idx, 'val')
+
+    def test_step(self, batch, batch_idx):
+        self._shared_eval(batch, batch_idx, 'test')
+
+    def _shared_eval(self, batch, batch_idx, prefix):
+        # x, _ = batch
+        # representation = self.encoder(x)
+        # x_hat = self.decoder(representation)
+        #
+        # loss = self.metric(x, x_hat)
+        self.log(f'{prefix}_score', self.scores[-1])
