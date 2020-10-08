@@ -394,15 +394,15 @@ class CustomAgent:
         assert mode == CustomAgent.MODE_TRAIN or mode == CustomAgent.MODE_EVAL, str(mode)
         self.mode = mode
 
-    def train(self) -> None:
-        """ Tell the agent it is in training mode. """
-        self.set_mode(CustomAgent.MODE_TRAIN)
-        # [You can insert code here.]
-
-    def eval(self) -> None:
-        """ Tell the agent it is in evaluation mode. """
-        self.set_mode(CustomAgent.MODE_EVAL)
-        # [You can insert code here.]
+    # def train(self) -> None:
+    #     """ Tell the agent it is in training mode. """
+    #     self.set_mode(CustomAgent.MODE_TRAIN)
+    #     # [You can insert code here.]
+    #
+    # def eval(self) -> None:
+    #     """ Tell the agent it is in evaluation mode. """
+    #     self.set_mode(CustomAgent.MODE_EVAL)
+    #     # [You can insert code here.]
 
     def is_eval_mode(self) -> bool:
         assert self.mode == CustomAgent.MODE_TRAIN or self.mode == CustomAgent.MODE_EVAL, self.mode
@@ -603,21 +603,24 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         self.learning_rate = cfg.training.optimizer.learning_rate
         self.optimizer = self.configure_optimizers()[0]
 
-    def train(self):
+    def train(self, mode=True):
         """
         Tell the agent that it's training phase.
         """
-        self.model.train()
-        super().train()
+        self.model.train(mode)
+        CustomAgent.set_mode(self, CustomAgent.MODE_TRAIN)
+        super().train(mode)
 
     def eval(self):
         """
         Tell the agent that it's evaluation phase.
         """
         self.model.eval()
+        CustomAgent.set_mode(self, CustomAgent.MODE_EVAL)
         super().eval()
 
     def run_episode(self, gamefile) -> Tuple[List[int], List[int]]:
+        """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
         env_id = textworld.gym.register_games([gamefile],
                                               self.requested_infos,
                                               max_episode_steps=self.max_nb_steps_per_episode,
@@ -749,6 +752,7 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         # self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
         # self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         loss = 6543.21
+        assert False
         return OrderedDict({'loss': loss, 'misc_other_stuff': 12345})   # loss is a torch.Tensor
 
     def configure_optimizers(self) -> List[Optimizer]:
@@ -1128,7 +1132,7 @@ class FtwcAgent(AgentDQN):
             if self.is_eval_mode():
                 if all(dones):
                     self._end_episode(obs, scores, infos)
-                    return  # Nothing to return.
+                    return None # Nothing to return.
             else:
                 assert self.mode == CustomAgent.MODE_TRAIN
                 # compute previous step's rewards and masks
@@ -1149,7 +1153,7 @@ class FtwcAgent(AgentDQN):
         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
-        if self.mode == CustomAgent.MODE_TRAIN:
+        if not self.is_eval_mode():  # if self.mode == self.TRAINING_MODE
             # push info from previous game step into replay memory
             if self.current_step > 0:
                 for b in range(len(obs)):
@@ -1187,7 +1191,7 @@ class FtwcAgent(AgentDQN):
 
         if all(dones):
             self._end_episode(obs, scores, infos)
-            return  # Nothing to return.
+            return None  # Nothing to return.
         return chosen_strings
 
     def compute_reward(self):
@@ -1205,8 +1209,9 @@ class FtwcAgent(AgentDQN):
             mask = [1.0 if not self.dones[-2][i] else 0.0 for i in range(len(self.dones[-1]))]
         mask = np.array(mask, dtype='float32')
         # rewards returned by game engine are always accumulated value the
-        # agent have recieved. so the reward it gets in the current game step
-        # is the new value minus values at previous step.
+        # agent has received. so the reward it gets in the current game step
+        # is the new value minus value at previous step.
+        # is the new value minus value at previous step.
         rewards = np.array(self.scores[-1], dtype='float32')  # batch
         if len(self.scores) > 1:
             prev_rewards = np.array(self.scores[-2], dtype='float32')
@@ -1246,15 +1251,20 @@ class FtwcAgent(AgentDQN):
             self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
 
     def validation_step(self, batch, batch_idx):
-        self._shared_eval(batch, batch_idx, 'val')
+        print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")
+        return self._shared_eval(batch, batch_idx, 'val')
 
     def test_step(self, batch, batch_idx):
-        self._shared_eval(batch, batch_idx, 'test')
+        print(f"\n=========== TEST_STEP [{batch_idx}] {batch}\n")
+        return self._shared_eval(batch, batch_idx, 'test')
 
     def _shared_eval(self, batch, batch_idx, prefix):
+        score, num_steps = self.run_episode(batch[0])   # TOOD: for now, hardcoded for batch_size=1
         # x, _ = batch
         # representation = self.encoder(x)
         # x_hat = self.decoder(representation)
         #
         # loss = self.metric(x, x_hat)
-        self.log(f'{prefix}_score', self.scores[-1])
+        self.log(f"{prefix}_total_steps", torch.tensor(num_steps, dtype=torch.int16), on_step=True, on_epoch=True)
+        self.log(f"{prefix}_total_score", torch.tensor(score, dtype=torch.float16), on_step=True, on_epoch=True)
+        return None

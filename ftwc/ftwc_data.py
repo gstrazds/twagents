@@ -58,15 +58,18 @@ class GamefileDataModule(pl.LightningDataModule):
                 self.test_ds = GamefileDataset(self._testing_list)
                 # self.dims = getattr(self, 'dims', self.mnist_test[0][0].shape)
 
-    train_params = {'batch_size': 1,
-                  'shuffle': True,
-                  'num_workers': 1}
-    val_params = {'batch_size': 1,
-                  'shuffle': False,
-                  'num_workers': 1}
-    test_params = {'batch_size': 1,
-                  'shuffle': False,
-                  'num_workers': 1}
+    train_params = { #'shuffle': True
+       'batch_size': 1,
+        'num_workers': 1,
+    }
+    val_params = { #'shuffle': False,
+        'batch_size': 1,
+        'num_workers': 1,
+    }
+    test_params = { #'shuffle': False,
+        'batch_size': 1,
+        'num_workers': 1,
+    }
 
     def train_dataloader(self):
         return DataLoader(self.train_ds, **self.train_params)    # Parameters

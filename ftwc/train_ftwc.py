@@ -95,23 +95,35 @@ def main(cfg: DictConfig) -> None:
         else:
             games.append(game)
 
+    test_games = []
+    for game in cfg.test.games:
+        game = os.path.expanduser(game)
+        if os.path.isdir(game):
+            test_games += glob.glob(os.path.join(game, "*.ulx"))
+        else:
+            test_games.append(game)
+
     print("{} games found for training.".format(len(games)))
     # print(games)
-    trainer = Trainer(deterministic=True)
-    data = GamefileDataModule(gamefiles=games, testfiles=games)
-    data.setup()
-    train(cfg, data.test_dataloader())
+    data = GamefileDataModule(gamefiles=games, testfiles=test_games)
+    # data.setup()
+    # train(cfg, data.test_dataloader())
 
-    # model = DQNLightning(**cfg)
-    #
-    # trainer = pl.Trainer(
-    #     gpus=1,
-    #     distributed_backend='dp',
-    #     early_stop_callback=False,
-    #     val_check_interval=100
-    # )
-    #
-    # trainer.fit(model)
+    vocab = WordVocab(vocab_file=cfg.general.vocab_words)
+    agent = FtwcAgent(cfg, vocab=vocab)
+    trainer = Trainer(
+        gpus=1,
+        deterministic=True,
+        early_stop_callback=False,
+        # distributed_backend='dp',
+        # val_check_interval=100,
+        max_epochs=0,  # does not call training_step() at all
+        limit_val_batches=0,  # prevent validation_step() from getting called
+        limit_test_batches=cfg.test.limit_test_batches  #speed things up for debugging
+    )
+    trainer.fit(agent, data)
+    trainer.test(datamodule=data)
+    # trainer.fit(agent, data)
     finish_time = datetime.datetime.now()
     print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
 
