@@ -66,11 +66,11 @@ def train(cfg, dataloader):
         #     agent.train()  # agent in training mode
         #     gamefile = game_files[game_no]
         for batch in dataloader:
-            for gamefile in batch:
-                print(f"gamefile = {gamefile}")
-                scores, steps = agent.run_episode(gamefile)
-                stats["scores"].extend(scores)
-                stats["steps"].extend(steps)
+            # for gamefile in batch:
+            print(f"batch gamefiles = {batch}")
+            scores, steps = agent.run_episode(batch)
+            stats["scores"].extend(scores)
+            stats["steps"].extend(steps)
 
         score = sum(stats["scores"]) / agent.batch_size
         steps = sum(stats["steps"]) / agent.batch_size
@@ -106,24 +106,26 @@ def main(cfg: DictConfig) -> None:
     print("{} games found for training.".format(len(games)))
     # print(games)
     data = GamefileDataModule(gamefiles=games, testfiles=test_games)
-    # data.setup()
+    data.setup()
     # train(cfg, data.test_dataloader())
 
     vocab = WordVocab(vocab_file=cfg.general.vocab_words)
     agent = FtwcAgent(cfg, vocab=vocab)
+    n_eval_subset = 1.0  # eval the full test set
+    n_eval_subset = int(cfg.test.num_test_episodes/data.test_dataloader().batch_size)
     trainer = Trainer(
         gpus=1,
         deterministic=True,
         early_stop_callback=False,
-        # distributed_backend='dp',
+        distributed_backend='dp',
         # val_check_interval=100,
         max_epochs=0,  # does not call training_step() at all
         limit_val_batches=0,  # prevent validation_step() from getting called
-        limit_test_batches=cfg.test.limit_test_batches  #speed things up for debugging
+        limit_test_batches=n_eval_subset  # eval a subset of test_set to speed things up while debugging
     )
+    # os.mkdir("lightning_logs")
     trainer.fit(agent, data)
     trainer.test(datamodule=data)
-    # trainer.fit(agent, data)
     finish_time = datetime.datetime.now()
     print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
 

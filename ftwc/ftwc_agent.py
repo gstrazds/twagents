@@ -542,7 +542,7 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         self.vocab = vocab
 
         # training
-        self.batch_size = cfg.training.batch_size
+        # self.batch_size = cfg.training.batch_size
         self.max_nb_steps_per_episode = cfg.training.max_nb_steps_per_episode
         # self.nb_epochs = cfg.training.nb_epochs
 
@@ -619,12 +619,15 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         CustomAgent.set_mode(self, CustomAgent.MODE_EVAL)
         super().eval()
 
-    def run_episode(self, gamefile) -> Tuple[List[int], List[int]]:
+    def run_episode(self, gamefiles:List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
-        env_id = textworld.gym.register_games([gamefile],
+        # batch_size = self.batch_size
+        # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
+        batch_size = len(gamefiles)
+        env_id = textworld.gym.register_games(gamefiles,
                                               self.requested_infos,
                                               max_episode_steps=self.max_nb_steps_per_episode,
-                                              batch_size=self.batch_size,
+                                              batch_size=batch_size,
                                               asynchronous=False,
                                               # auto_reset=auto_reset,
                                               # action_space=action_space,
@@ -1259,12 +1262,15 @@ class FtwcAgent(AgentDQN):
         return self._shared_eval(batch, batch_idx, 'test')
 
     def _shared_eval(self, batch, batch_idx, prefix):
-        score, num_steps = self.run_episode(batch[0])   # TOOD: for now, hardcoded for batch_size=1
+        scores, num_steps = self.run_episode(batch)
         # x, _ = batch
         # representation = self.encoder(x)
         # x_hat = self.decoder(representation)
         #
         # loss = self.metric(x, x_hat)
-        self.log(f"{prefix}_total_steps", torch.tensor(num_steps, dtype=torch.int16), on_step=True, on_epoch=True)
-        self.log(f"{prefix}_total_score", torch.tensor(score, dtype=torch.float16), on_step=True, on_epoch=True)
+        print("EVAL step results:", scores, num_steps)
+        for score in scores:
+            self.log(f"{prefix}_score", torch.tensor(score, dtype=torch.float16), on_step=True, on_epoch=True)
+        for nsteps in num_steps:
+            self.log(f"{prefix}_nsteps", torch.tensor(nsteps, dtype=torch.int16), on_step=True, on_epoch=True)
         return None

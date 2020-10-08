@@ -40,7 +40,8 @@ test:
   games:   # a list of game files or directories containing game files
   -  ~/work/0_magd3/cog2019_ftwp/games/valid
   batch_size: 1   # 16
-  limit_test_batches: 5  #speed up debugging cycle by only evaluating a subset of test set
+  #limit_test_batches: 5  #speed up debugging cycle by only evaluating a subset of test set
+  num_test_episodes: 10
 
 model:
   embedding_size: 64
