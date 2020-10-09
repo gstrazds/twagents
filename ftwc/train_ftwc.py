@@ -116,7 +116,6 @@ def main(cfg: DictConfig) -> None:
     trainer = Trainer(
         gpus=1,
         deterministic=True,
-        early_stop_callback=False,
         distributed_backend='dp',
         # val_check_interval=100,
         max_epochs=0,  # does not call training_step() at all
@@ -125,7 +124,7 @@ def main(cfg: DictConfig) -> None:
     )
     # os.mkdir("lightning_logs")
     trainer.fit(agent, data)
-    trainer.test(datamodule=data)
+    trainer.test(agent, datamodule=data)
     finish_time = datetime.datetime.now()
     print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
 
