@@ -146,7 +146,7 @@ class PrioritizedReplayMemory(object):
         return len(self.alpha_memory) + len(self.beta_memory)
 
 
-def _choose_random_command(word_ranks, word_masks_np, use_cuda):
+def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
     """
     Generate a command randomly, for epsilon greedy.
 
@@ -154,32 +154,35 @@ def _choose_random_command(word_ranks, word_masks_np, use_cuda):
         word_ranks: Q values for each word by model.action_scorer.
         word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun, adj2, noun2).
     """
+    # assert len(word_ranks) == len(word_masks_np)
 
-    batch_size = word_ranks[0].size(0)
+    # word_ranks_np = [to_np(item) for item in word_ranks]  # list of (batch x n_vocab) arrays, len=5 (5 word output phrases)
+    # # GVS QUESTION? why is this next line commented out here? ( compare _choose_maxQ_command() )
+    # # word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
+    # # GVS ANSWER: because the values in word_ranks_np are never actually used
+    # word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+
+    # batch_size = word_ranks[0].size(0)
     # print("batch_size=", batch_size, len(word_masks_np))
-    assert len(word_ranks) == len(word_masks_np)
-
-    word_ranks_np = [to_np(item) for item in word_ranks]  # list of (batch x n_vocab) arrays, len=5 (5 word output phrases)
-    # word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
-    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
-
     word_indices = []
-    for i in range(len(word_ranks_np)):  # len=5 (verb, adj1, noun1, adj2, noun2)
+    for i in range(len(word_masks_np)):  # len=5 (verb, adj1, noun1, adj2, noun2)
         indices = []
-        for j in range(batch_size):
-            msk = word_masks_np[i][j]  # msk is of len = vocab, j is index into batch
+        # for j in range(batch_size):
+        #     msk = word_masks_np[i][j]  # msk is of len = vocab, j is index into batch
+        for msk in word_masks_np[i]:
             indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))  # choose from non-zero entries of msk
         word_indices.append(np.array(indices))
     # word_indices: list of batch
 
-    word_qvalues = [[] for _ in word_masks_np]
-    for i in range(batch_size):
-        for j in range(len(word_qvalues)):
-            word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
-    word_qvalues = [torch.stack(item) for item in word_qvalues]
+    # word_qvalues = [[] for _ in word_masks_np]
+    # for i in range(batch_size):
+    #     for j in range(len(word_qvalues)):
+    #         word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
+    # word_qvalues = [torch.stack(item) for item in word_qvalues]
     word_indices = [to_pt(item, use_cuda) for item in word_indices]
-    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
-    return word_qvalues, word_indices
+    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of 5 tensors, each w size: batch x 1
+    # return word_qvalues, word_indices
+    return word_indices
 
 
 def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
@@ -190,43 +193,67 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
         word_ranks: Q values for each word by model.action_scorer.
         word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
     """
-    batch_size = word_ranks[0].size(0)
     word_ranks_np = [to_np(item) for item in word_ranks]  # list of arrays, batch_len x n_vocab
     word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
     word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
 
-    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of arrays of len = batch
+    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of 5 arrays, each w len = batch
 
-    word_qvalues = [[] for _ in word_masks_np]
-    # print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=[16 or 24], len(word_qvalues)=5.
-    for i in range(batch_size):
-        for j in range(len(word_qvalues)):
-            word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
-    word_qvalues = [torch.stack(item) for item in word_qvalues]
-    word_indices = [to_pt(item, use_cuda) for item in word_indices]
-    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of batch x 1
-    return word_qvalues, word_indices
+    # word_qvalues = [[] for _ in word_masks_np]
+    # batch_size = word_ranks[0].size(0)
+    # # print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=[16 or 24], len(word_qvalues)=5.
+    # for i in range(batch_size):
+    #     for j in range(len(word_qvalues)):
+    #         word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
+    # word_qvalues = [torch.stack(item) for item in word_qvalues]
+    word_indices = [to_pt(item, use_cuda) for item in word_indices]  # convert np.arrays to torch.tensors
+    word_indices = [item.unsqueeze(-1) for item in word_indices]     # list of 5 tensors, each w size (batch,1)
+    # return word_qvalues, word_indices
+    return word_indices
 
+def tally_word_qvalues(word_ranks, word_masks_np):
+    """
+    Arguments:
+        word_ranks: Q values for each word by model.action_scorer.
+        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
+    """
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list (len n_words) of arrays (batch_len x n_vocab)
+    word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
+    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list (len n_words) of (batch x n_vocab)
 
-def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
+    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list (len=n_words) of arrays (len=batch)
+    # word_indices[w][b] -> index into vocab for output word position w of batch entry b
+
+    word_qvalues = [[] for _ in word_masks_np]  # list of lists (one per output word position, each will be w/len=batch)
+
     batch_size = word_ranks[0].size(0)
-    word_qvalues, word_indices_maxq = _choose_maxQ_command(word_ranks, word_masks_np, use_cuda)
-    if epsilon > 0.0:
-        _, word_indices_random = _choose_random_command(word_ranks, word_masks_np, use_cuda)
-        # random number for epsilon greedy
-        rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size, 1))
-        less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
-        greater_than_epsilon = 1.0 - less_than_epsilon
-        less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
-        greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
-        less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
-        chosen_indices = [
-            less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in
-            zip(word_indices_random, word_indices_maxq)]
-    else:
-        chosen_indices = word_indices_maxq
-    chosen_indices = [item.detach() for item in chosen_indices]
-    return word_qvalues, chosen_indices
+    # print("batch_size=", batch_size, "len(word_qvalues)=", len(word_qvalues)) #batch_size=[16 or 24], len(word_qvalues)=5.
+    for b in range(batch_size):
+        for w in range(len(word_qvalues)):  # for each output word position
+            word_qvalues[w].append(word_ranks[w][b][word_indices[w][b]])   # put the word rank for the chosen (maxQ) word
+    word_qvalues = [torch.stack(item) for item in word_qvalues]     # apply torch.stack to each entry (each is a scalar tensor)
+    return word_qvalues  # list (len=n_words) of tensors w size=(batch)  # 1 dim, since stack([s1,s2,s3])->>tensor([1,2,3])
+
+
+# def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
+#     batch_size = word_ranks[0].size(0)
+#     word_qvalues, word_indices_maxq = _choose_maxQ_command(word_ranks, word_masks_np, use_cuda)
+#     if epsilon > 0.0:
+#         _, word_indices_random = _choose_random_command(word_ranks, word_masks_np, use_cuda)
+#         # random number for epsilon greedy
+#         rand_num = np.random.uniform(low=0.0, high=1.0, size=(batch_size, 1))
+#         less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
+#         greater_than_epsilon = 1.0 - less_than_epsilon
+#         less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
+#         greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
+#         less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+#         chosen_indices = [
+#             less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq for idx_random, idx_maxq in
+#             zip(word_indices_random, word_indices_maxq)]
+#     else:
+#         chosen_indices = word_indices_maxq
+#     chosen_indices = [item.detach() for item in chosen_indices]
+#     return word_qvalues, chosen_indices
 
 
 class WordVocab:
@@ -619,7 +646,7 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         CustomAgent.set_mode(self, CustomAgent.MODE_EVAL)
         super().eval()
 
-    def run_episode(self, gamefiles:List[str]) -> Tuple[List[int], List[int]]:
+    def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
         # batch_size = self.batch_size
         # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
@@ -697,14 +724,16 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
         next_word_masks = list(list(zip(*batch.next_word_masks)))
         next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_qvalues, _ = _choose_maxQ_command(next_word_ranks, next_word_masks, self.use_cuda)
-        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
-        next_q_value = next_q_value.detach()
+        next_word_q_values = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
+        next_word_qvalue = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
+
+        next_word_qvalue = next_word_qvalue.detach()  # make a copy, detatched from autograd graph (don't backprop)
 
         rewards = torch.stack(batch.reward)  # batch
         not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
         not_done = to_pt(not_done, self.use_cuda, type='float')
-        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
+        rewards = rewards + not_done * next_word_qvalue * self.discount_gamma  # batch
+
         mask = torch.stack(batch.mask)  # batch
         loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
         return loss
@@ -1093,7 +1122,7 @@ class FtwcAgent(AgentDQN):
         else:
             input_description, _ = self.get_game_step_info(obs, infos)
             word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
-            _, word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+            word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
             chosen_indices = [item.detach() for item in word_indices_maxq]
             chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
@@ -1149,10 +1178,30 @@ class FtwcAgent(AgentDQN):
         word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
         assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
 
-        _, chosen_indices = choose_command(word_ranks,
-                                           self.vocab.word_masks_np,
-                                           self.use_cuda,
-                                           epsilon=(0.0 if self.is_eval_mode() else self.epsilon))
+        # _, chosen_indices = choose_command(word_ranks,
+        #                                    self.vocab.word_masks_np,
+        #                                    self.use_cuda,
+        #                                    epsilon=(0.0 if self.is_eval_mode() else self.epsilon))
+
+        word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+        if self.is_eval_mode() or self.epsilon == 0.0:
+            chosen_indices = word_indices_maxq
+        else:  # if not self.is_eval_mode() and self.epsilon > 0.0:
+            word_indices_random = _choose_random_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+            # random number for epsilon greedy
+            _batch_size = word_ranks[0].size(0)
+            rand_num = np.random.uniform(low=0.0, high=1.0, size=(_batch_size, 1))
+            less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
+            greater_than_epsilon = 1.0 - less_than_epsilon
+            less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='float')
+            greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='float')
+            less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+            chosen_indices = [
+                less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq
+                   for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)
+            ]
+
+        chosen_indices = [item.detach() for item in chosen_indices]
         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
