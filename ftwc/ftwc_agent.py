@@ -217,11 +217,16 @@ def tally_word_qvalues(word_ranks, word_masks_np):
         word_ranks: Q values for each word by model.action_scorer.
         word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
     """
+    # NOTE: compare simpler? impl when word_indices=chosen_indices are known (from replay buffer)
+    #         chosen_indices = list(list(zip(*batch.word_indices)))
+    #         chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list (len n_words) of tensors size =(batch x 1)
+    #   word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
+    #
     word_ranks_np = [to_np(item) for item in word_ranks]  # list (len n_words) of arrays (batch_len x n_vocab)
     word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
     word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list (len n_words) of (batch x n_vocab)
 
-    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list (len=n_words) of arrays (len=batch)
+    word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list (len=n_words) of np. (len=batch)
     # word_indices[w][b] -> index into vocab for output word position w of batch entry b
 
     word_qvalues = [[] for _ in word_masks_np]  # list of lists (one per output word position, each will be w/len=batch)
@@ -231,7 +236,7 @@ def tally_word_qvalues(word_ranks, word_masks_np):
     for b in range(batch_size):
         for w in range(len(word_qvalues)):  # for each output word position
             word_qvalues[w].append(word_ranks[w][b][word_indices[w][b]])   # put the word rank for the chosen (maxQ) word
-    word_qvalues = [torch.stack(item) for item in word_qvalues]     # apply torch.stack to each entry (each is a scalar tensor)
+    word_qvalues = [torch.stack(item) for item in word_qvalues]     # apply torch.stack to each entry (each is a list of scalar tensors)
     return word_qvalues  # list (len=n_words) of tensors w size=(batch)  # 1 dim, since stack([s1,s2,s3])->>tensor([1,2,3])
 
 
@@ -301,6 +306,7 @@ class WordVocab:
 
     def init_from_infos_lists(self, verbs_word_lists, entities_word_lists):
         # get word masks
+        # initialized at the start of each episode: verb_mask, noun_mask, adj_mask - specific to each game in the batch
         batch_size = len(verbs_word_lists)
         assert len(entities_word_lists) == batch_size, f"{batch_size} {len(entities_word_lists)}"
         mask_shape = (batch_size, len(self.word_vocab))
@@ -715,13 +721,13 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
         next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
         chosen_indices = list(list(zip(*batch.word_indices)))
-        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list of batch x 1
+        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list (len n_words) of tensors size =(batch x 1)
 
-        word_ranks = self.model.infer_word_ranks(input_observation)  # list of batch x vocab, len=5 (one per potential output word)
+        word_ranks = self.model.infer_word_ranks(input_observation)  # list (len = n_words) of (batch x vocab) (one row per potential output word)
         word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
         q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
 
-        next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
+        next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batch x n_second_noun
         next_word_masks = list(list(zip(*batch.next_word_masks)))
         next_word_masks = [np.stack(item, 0) for item in next_word_masks]
         next_word_qvalues = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
