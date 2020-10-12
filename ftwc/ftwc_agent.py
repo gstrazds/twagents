@@ -622,6 +622,8 @@ class AgentDQN(pl.LightningModule, CustomAgent):
 
         self.model = LSTM_DQN(model_config=cfg.model,
                               word_vocab=self.vocab.word_vocab,
+                              # DEFAULT: generate_length=5,  # how many output words to generate
+                              # generate_length=len(self.vocab.word_masks_np), # but vocab.word_masks_np get initialized later
                               enable_cuda=self.use_cuda)
         if cfg.checkpoint.load_pretrained:
             self.load_pretrained_model(
@@ -987,6 +989,9 @@ class FtwcAgent(AgentDQN):
                     self.agents[idx].reset(forget_everything=need_to_forget)
 
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
+        assert len(self.vocab.word_masks_np) == self.model.generate_length,\
+            f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"   # == 5
+
         self.prev_obs = obs
         self.cache_description_id_list = None   # similar to .prev_obs
         self.cache_chosen_indices = None        # similar to .prev_actions
