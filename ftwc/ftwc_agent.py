@@ -724,15 +724,15 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batchx n_second_noun
         next_word_masks = list(list(zip(*batch.next_word_masks)))
         next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_q_values = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
-        next_word_qvalue = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
+        next_word_qvalues = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
 
-        next_word_qvalue = next_word_qvalue.detach()  # make a copy, detatched from autograd graph (don't backprop)
+        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
+        next_q_value = next_q_value.detach()  # make a copy, detatched from autograd graph (don't backprop)
 
         rewards = torch.stack(batch.reward)  # batch
         not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
         not_done = to_pt(not_done, self.use_cuda, type='float')
-        rewards = rewards + not_done * next_word_qvalue * self.discount_gamma  # batch
+        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
 
         mask = torch.stack(batch.mask)  # batch
         loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
