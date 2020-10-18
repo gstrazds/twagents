@@ -6,17 +6,16 @@ import pytorch_lightning as pl
 
 
 class GamefileDataset(torch.utils.data.Dataset):
-  'PyTorch dataset of First TextWorld Challenge (cooking) games'
-  def __init__(self, games_list: List[str]):
-        'Initialization'
+    """PyTorch dataset of First TextWorld Challenge (cooking) games"""
+
+    def __init__(self, games_list: List[str]):
         self.gamefiles = games_list
 
-  def __len__(self):
-        'Denotes the total number of samples'
+    def __len__(self):
         return len(self.gamefiles)
 
-  def __getitem__(self, idx):
-        'Generates one sample of data'
+    def __getitem__(self, idx):
+        """Generates one sample of data"""
         # Select sample
         gamefile = self.gamefiles[idx]
         return gamefile

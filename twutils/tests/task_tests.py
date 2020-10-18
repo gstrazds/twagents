@@ -48,7 +48,7 @@ def _generate_next_action(action_generator, module, gi, observation):
     return next_action
 
 
-class TestTask(unittest.TestCase):
+class TaskTests(unittest.TestCase):
     def test_list_int(self):
         """
         Test that it can sum a list of integers
