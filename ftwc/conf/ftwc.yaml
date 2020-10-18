@@ -1,5 +1,5 @@
 # @package _global_
-cwd_path: "."   # NOTE: we explicitly expand cfg.cwd_path to an absolute path to original working directory
+cwd_path: "."   # gets expanded to an absolute path to the original current directory (not the Hydra/runtime working dir)
 
 general:
   vocab_words: ${cwd_path}/vocab.txt

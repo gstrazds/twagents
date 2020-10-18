@@ -565,14 +565,14 @@ class CustomAgent:
 
 
 class AgentDQN(pl.LightningModule, CustomAgent):
-    def __init__(self, cfg, vocab, **kwargs):
-        print(f"AgentDQN.__init__ {cfg} {vocab} {kwargs}")
+    def __init__(self, cfg, **kwargs):
+        print(f"AgentDQN.__init__ {cfg} {kwargs}")
         CustomAgent.__init__(self)
         # pl.LightningModule.__init__(self, **kwargs)
         super().__init__(**kwargs)
 
         self.hparams = cfg   # will be saved in checkpoints by PyTorchLightning
-        self.vocab = vocab
+        self.vocab = WordVocab(vocab_file=cfg.general.vocab_words)
 
         # training
         # self.batch_size = cfg.training.batch_size
@@ -823,14 +823,12 @@ class AgentDQN(pl.LightningModule, CustomAgent):
 
 class FtwcAgent(AgentDQN):
     def __init__(self,
-                 cfg: Dict[str, Any],
-                 vocab: WordVocab,
-                 **kwargs):
+                 cfg: Dict[str, Any], **kwargs):
         """
         Arguments:
             vocab: words supported.
         """
-        super().__init__(cfg, vocab, **kwargs)
+        super().__init__(cfg, **kwargs)
 
         self.requested_infos = self.select_additional_infos()
         self._debug_quit = False

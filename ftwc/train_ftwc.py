@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from textworld import EnvInfos
 
-from ftwc_agent import FtwcAgent, WordVocab
+from ftwc_agent import FtwcAgent
 from ftwc_data import GamefileDataModule
 
 # List of additional information available during evaluation.
@@ -48,8 +48,8 @@ def _validate_requested_infos(infos: EnvInfos):
 
 
 def train(cfg, dataloader):
-    vocab = WordVocab(vocab_file=cfg.general.vocab_words)
-    agent = FtwcAgent(cfg, vocab=vocab)
+    # vocab = WordVocab(vocab_file=cfg.general.vocab_words)
+    agent = FtwcAgent(cfg)
     # requested_infos = agent.select_additional_infos()
     # _validate_requested_infos(requested_infos)
 
@@ -109,8 +109,7 @@ def main(cfg: DictConfig) -> None:
     data.setup()
     # train(cfg, data.test_dataloader())
 
-    vocab = WordVocab(vocab_file=cfg.general.vocab_words)
-    agent = FtwcAgent(cfg, vocab=vocab)
+    agent = FtwcAgent(cfg)
     n_eval_subset = 1.0  # eval the full test set
     n_eval_subset = int(cfg.test.num_test_episodes/data.test_dataloader().batch_size)
     trainer = Trainer(
