@@ -2,7 +2,7 @@
 cwd_path: "."   # gets expanded to an absolute path to the original current directory (not the Hydra/runtime working dir)
 
 general:
-  vocab_words: ${cwd_path}/vocab.txt
+  vocab_words: ${cwd_path}/conf/vocab.txt
   discount_gamma: 0.5
   random_seed: 42
   use_cuda: True  # disable this when running on machine without cuda

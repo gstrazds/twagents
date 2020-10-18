@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 from textworld import EnvInfos
 
-from ftwc_agent import FtwcAgent
-from ftwc_data import GamefileDataModule
+from ftwc import FtwcAgent
+from ftwc import GamefileDataModule
 
 # List of additional information available during evaluation.
 AVAILABLE_INFORMATION = EnvInfos(

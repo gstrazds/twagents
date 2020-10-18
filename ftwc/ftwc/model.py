@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from layers import Embedding, masked_mean, FastUniLSTM
+from .layers import Embedding, masked_mean, FastUniLSTM
 
 logger = logging.getLogger(__name__)
 

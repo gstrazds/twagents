@@ -20,8 +20,8 @@ import gym
 from textworld import EnvInfos
 import textworld.gym
 
-from model import LSTM_DQN
-from generic import to_np, to_pt, preproc, pad_sequences, max_len
+from .model import LSTM_DQN
+from .generic import to_np, to_pt, preproc, pad_sequences, max_len
 
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
