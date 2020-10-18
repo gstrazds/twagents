@@ -21,8 +21,9 @@ def get_door_if_closed(connection):
 
 
 class ExploreHereTask(Task):
-    def __init__(self, description='', use_groundtruth=False):
+    def __init__(self, description='', use_groundtruth=False, look_first=False):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self.look_first = look_first
         # self._path_task = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
         # self._children.append(self._path_task)
         # self.prereq.add_required_task(self._path_task)
@@ -41,8 +42,9 @@ class ExploreHereTask(Task):
         """
         here = kg.player_location
         ignored = yield   # required handshake
-        # response = yield Look
-        # self.check_result(response, kg)
+        if self.look_first:
+            response = yield Look  #GVS NOTE: for TW envs, we request description infos, so Look is redundant
+            self.check_result(response, kg)
         for entity in list(here.entities):
             # print(f"ExploreHereTask -- {here} {entity} is_container:{entity.is_container}")
             if entity.is_container and entity.state.openable:
