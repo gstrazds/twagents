@@ -1,9 +1,6 @@
 import os
-import random
-import yaml
-import copy
 from typing import List, Dict, Tuple, Any, Optional
-from collections import namedtuple, OrderedDict
+from collections import OrderedDict
 
 import numpy as np
 
@@ -11,8 +8,6 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.optim.optimizer import Optimizer
-from torch.utils.data import DataLoader
-from torch.utils.data.dataset import IterableDataset
 
 import pytorch_lightning as pl
 
@@ -20,16 +15,17 @@ import gym
 from textworld import EnvInfos
 import textworld.gym
 
-from .model import LSTM_DQN
-from .generic import to_np, to_pt, preproc, pad_sequences, max_len
-
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
 from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
-# from symbolic.gv import dbg
+
+from .model import LSTM_DQN
+from .generic import to_np, to_pt, pad_sequences, max_len
+from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
+from .vocab import WordVocab
 
 
 def get_game_id_from_infos(infos, idx):
@@ -72,78 +68,6 @@ def parse_gameid(game_id: str) -> str:
     else:
         shortcode = game_id
     return shortcode
-
-
-# a snapshot of state to be stored in replay memory
-Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
-                                       'reward', 'mask', 'done',
-                                       'next_observation_id_list',
-                                       'next_word_masks'))
-
-
-class HistoryScoreCache(object):
-
-    def __init__(self, capacity=1):
-        self.capacity = capacity
-        self.reset()
-
-    def push(self, stuff):
-        """stuff is float."""
-        if len(self.memory) < self.capacity:
-            self.memory.append(stuff)
-        else:
-            self.memory = self.memory[1:] + [stuff]
-
-    def get_avg(self):
-        return np.mean(np.array(self.memory))
-
-    def reset(self):
-        self.memory = []
-
-    def __len__(self):
-        return len(self.memory)
-
-
-class PrioritizedReplayMemory(object):
-
-    def __init__(self, capacity=100000, priority_fraction=0.0):
-        # prioritized replay memory
-        self.priority_fraction = priority_fraction
-        self.alpha_capacity = int(capacity * priority_fraction)
-        self.beta_capacity = capacity - self.alpha_capacity
-        self.alpha_memory, self.beta_memory = [], []
-        self.alpha_position, self.beta_position = 0, 0
-
-    def push(self, is_prior=False, transition:Transition=None):
-        """Saves a transition."""
-        assert transition is not None
-
-        if self.priority_fraction == 0.0:
-            is_prior = False
-        if is_prior:
-            if len(self.alpha_memory) < self.alpha_capacity:
-                self.alpha_memory.append(None)
-            self.alpha_memory[self.alpha_position] = transition #Transition(*args)
-            self.alpha_position = (self.alpha_position + 1) % self.alpha_capacity
-        else:
-            if len(self.beta_memory) < self.beta_capacity:
-                self.beta_memory.append(None)
-            self.beta_memory[self.beta_position] = transition
-            self.beta_position = (self.beta_position + 1) % self.beta_capacity
-
-    def sample(self, batch_size):
-        if self.priority_fraction == 0.0:
-            from_beta = min(batch_size, len(self.beta_memory))
-            res = random.sample(self.beta_memory, from_beta)
-        else:
-            from_alpha = min(int(self.priority_fraction * batch_size), len(self.alpha_memory))
-            from_beta = min(batch_size - int(self.priority_fraction * batch_size), len(self.beta_memory))
-            res = random.sample(self.alpha_memory, from_alpha) + random.sample(self.beta_memory, from_beta)
-        random.shuffle(res)
-        return res
-
-    def __len__(self):
-        return len(self.alpha_memory) + len(self.beta_memory)
 
 
 def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
@@ -259,157 +183,6 @@ def tally_word_qvalues(word_ranks, word_masks_np):
 #         chosen_indices = word_indices_maxq
 #     chosen_indices = [item.detach() for item in chosen_indices]
 #     return word_qvalues, chosen_indices
-
-
-class WordVocab:
-    def __init__(self, vocab_file="./vocab.txt"):
-        with open(vocab_file) as f:
-            self.word_vocab = f.read().split("\n")
-        self.word2id = {}
-        for i, w in enumerate(self.word_vocab):
-            self.word2id[w] = i
-        self.EOS_id = self.word2id["</S>"]
-        self.single_word_verbs = set(["inventory", "look"])
-        self.preposition_map = {"take": "from",
-                                "chop": "with",
-                                "slice": "with",
-                                "dice": "with",
-                                "cook": "with",
-                                "insert": "into",
-                                "put": "on"}
-        # FROM extras.command_templates:
-        #   'inventory',
-        #   'look',
-        #   'prepare meal',
-        #   'go east', 'go north', 'go south', 'go west',
-        #   'cook {f} with {oven}',
-        #   'cook {f} with {stove}',
-        #   'cook {f} with {toaster}',
-        #   'chop {f} with {o}',
-        #   'dice {f} with {o}',
-        #   'slice {f} with {o}',
-        #   'lock {c|d} with {k}',
-        #   'unlock {c|d} with {k}',
-        #   'close {c|d}',
-        #   'open {c|d}',
-        #   'take {o} from {c|s}',
-        #   'insert {o} into {c}',
-        #   'put {o} on {s}',
-        #   'drop {o}',
-        #   'take {o}',
-        #   'drink {f}',
-        #   'eat {f}',
-        #   'examine {o|t}',
-
-        # self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
-        self.word_masks_np = []  # will be a list of np.array (x5), one for each potential output word
-
-    def init_from_infos_lists(self, verbs_word_lists, entities_word_lists):
-        # get word masks
-        # initialized at the start of each episode: verb_mask, noun_mask, adj_mask - specific to each game in the batch
-        batch_size = len(verbs_word_lists)
-        assert len(entities_word_lists) == batch_size, f"{batch_size} {len(entities_word_lists)}"
-        mask_shape = (batch_size, len(self.word_vocab))
-        verb_mask = np.zeros(mask_shape, dtype="float32")
-        noun_mask = np.zeros(mask_shape, dtype="float32")
-        adj_mask = np.zeros(mask_shape, dtype="float32")
-
-        # print("batch_size=", batch_size)
-        # print('verbs_word_list:', verbs_word_list)
-        noun_word_lists, adj_word_lists = [], []
-        for entities in entities_word_lists:
-            tmp_nouns, tmp_adjs = [], []
-            for name in entities:
-                split = name.split()
-                tmp_nouns.append(split[-1])
-                if len(split) > 1:
-                    tmp_adjs += split[:-1]
-            noun_word_lists.append(list(set(tmp_nouns)))
-            adj_word_lists.append(list(set(tmp_adjs)))
-
-        for i in range(batch_size):
-            for w in verbs_word_lists[i]:
-                if w in self.word2id:
-                    verb_mask[i][self.word2id[w]] = 1.0
-            for w in noun_word_lists[i]:
-                if w in self.word2id:
-                    noun_mask[i][self.word2id[w]] = 1.0
-            for w in adj_word_lists[i]:
-                if w in self.word2id:
-                    adj_mask[i][self.word2id[w]] = 1.0
-        second_noun_mask = copy.copy(noun_mask)
-        second_adj_mask = copy.copy(adj_mask)
-        second_noun_mask[:, self.EOS_id] = 1.0
-        adj_mask[:, self.EOS_id] = 1.0
-        second_adj_mask[:, self.EOS_id] = 1.0
-        self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
-
-    def _word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
-        """
-        Turn the 5 indices into actual command strings.
-
-        Arguments:
-            verb: Index of the guessing verb in vocabulary
-            adj: Index of the guessing adjective in vocabulary
-            noun: Index of the guessing noun in vocabulary
-            adj_2: Index of the second guessing adjective in vocabulary
-            noun_2: Index of the second guessing noun in vocabulary
-        """
-        # turns 5 indices into actual command strings
-        if self.word_vocab[verb] in self.single_word_verbs:
-            return self.word_vocab[verb]
-        if adj == self.EOS_id:
-            res = self.word_vocab[verb] + " " + self.word_vocab[noun]
-        else:
-            res = self.word_vocab[verb] + " " + self.word_vocab[adj] + " " + self.word_vocab[noun]
-        if self.word_vocab[verb] not in self.preposition_map:
-            return res
-        if noun_2 == self.EOS_id:
-            return res
-        prep = self.preposition_map[self.word_vocab[verb]]
-        if adj_2 == self.EOS_id:
-            res = res + " " + prep + " " + self.word_vocab[noun_2]
-        else:
-            res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
-        return res
-
-    def get_chosen_strings(self, chosen_indices):
-        """
-        Turns list of word indices into actual command strings.
-
-        Arguments:
-            chosen_indices: Word indices chosen by model.
-        """
-        chosen_indices_np = [to_np(item)[:, 0] for item in chosen_indices]
-        res_str = []
-        batch_size = chosen_indices_np[0].shape[0]
-        for i in range(batch_size):
-            verb, adj, noun, adj_2, noun_2 = chosen_indices_np[0][i],\
-                                             chosen_indices_np[1][i],\
-                                             chosen_indices_np[2][i],\
-                                             chosen_indices_np[3][i],\
-                                             chosen_indices_np[4][i]
-            res_str.append(self._word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
-        return res_str
-
-    def _words_to_ids(self, words):
-        ids = []
-        for word in words:
-            try:
-                ids.append(self.word2id[word])
-            except KeyError:
-                ids.append(1)
-        return ids
-
-    def get_token_ids_for_items(self, item_list, tokenizer=None, subst_if_empty=None):
-        token_list = [preproc(item, tokenizer=tokenizer) for item in item_list]
-        if subst_if_empty:
-            for i, d in enumerate(token_list):
-                if len(d) == 0:
-                    token_list[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
-        id_list = [self._words_to_ids(tokens) for tokens in token_list]
-        return id_list
-
 
 class CustomAgent:
     """ Template agent for the TextWorld competition. """
@@ -607,8 +380,6 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         self.epsilon = self.epsilon_anneal_from
         self.update_per_k_game_steps = cfg.general.update_per_k_game_steps
 
-        # self.nlp = spacy.load('en_core_web_lg', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
-        self.nlp = None
         self.current_episode = 0
         self.current_step = 0
         self._episode_has_started = False
@@ -1005,16 +776,15 @@ class FtwcAgent(AgentDQN):
             infos: Additional information for each game.
         """
         # word2id = self.vocab.word2id
-        inventory_id_list = self.vocab.get_token_ids_for_items(infos["inventory"], tokenizer=self.nlp)
+        inventory_id_list = self.vocab.get_token_ids_for_items(infos["inventory"])
 
-        feedback_id_list = self.vocab.get_token_ids_for_items(obs, tokenizer=self.nlp)
+        feedback_id_list = self.vocab.get_token_ids_for_items(obs)
 
-        quest_id_list = self.vocab.get_token_ids_for_items(infos["extra.recipe"], tokenizer=self.nlp)
+        quest_id_list = self.vocab.get_token_ids_for_items(infos["extra.recipe"])
 
-        prev_action_id_list = self.vocab.get_token_ids_for_items(self.prev_actions, tokenizer=self.nlp)
+        prev_action_id_list = self.vocab.get_token_ids_for_items(self.prev_actions)
 
-        description_id_list = self.vocab.get_token_ids_for_items(infos["description"],
-                                                      tokenizer=self.nlp, subst_if_empty=['end'])
+        description_id_list = self.vocab.get_token_ids_for_items(infos["description"], subst_if_empty=['end'])
 
         description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
                                                                                         inventory_id_list,

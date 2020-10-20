@@ -4,7 +4,7 @@ from pytorch_lightning import Trainer, seed_everything
 from ftwc.ftwc_agent import FtwcAgent
 from ftwc.ftwc_data import GamefileDataModule
 
-
+# an integration test, not part of unittest TestCase. Run separately
 def test_lit_classifier():
     seed_everything(1234)
 
