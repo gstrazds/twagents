@@ -593,8 +593,7 @@ class AgentDQN(pl.LightningModule, CustomAgent):
 
 
 class FtwcAgent(AgentDQN):
-    def __init__(self,
-                 cfg: Dict[str, Any], **kwargs):
+    def __init__(self, cfg: Dict[str, Any], **kwargs):
         """
         Arguments:
             vocab: words supported.

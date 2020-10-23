@@ -47,34 +47,34 @@ def _validate_requested_infos(infos: EnvInfos):
             # raise ValueError(msg.format(key))
 
 
-def train(cfg, dataloader):
-    # vocab = WordVocab(vocab_file=cfg.general.vocab_words)
-    agent = FtwcAgent(cfg)
-    # requested_infos = agent.select_additional_infos()
-    # _validate_requested_infos(requested_infos)
-
-    for epoch_no in range(1, cfg.training.nb_epochs + 1):
-        # # start fresh for each epoch
-        # # (GVS Oct-05-2020: this was a hack to work around bugs in resetting kg to initial state)
-        # if epoch_no > 1:
-        #     agent = CustomAgent()
-        stats = {
-            "scores": [],
-            "steps": [],
-        }
-        # for game_no in tqdm(range(len(game_files))):
-        #     agent.train()  # agent in training mode
-        #     gamefile = game_files[game_no]
-        for batch in dataloader:
-            # for gamefile in batch:
-            print(f"batch gamefiles = {batch}")
-            scores, steps = agent.run_episode(batch)
-            stats["scores"].extend(scores)
-            stats["steps"].extend(steps)
-
-        score = sum(stats["scores"]) / agent.batch_size
-        steps = sum(stats["steps"]) / agent.batch_size
-        print("Epoch: {:3d} | {:2.1f} pts | {:4.1f} steps".format(epoch_no, score, steps))
+# def train(cfg, dataloader):
+#     # vocab = WordVocab(vocab_file=cfg.general.vocab_words)
+#     agent = FtwcAgent(cfg)
+#     # requested_infos = agent.select_additional_infos()
+#     # _validate_requested_infos(requested_infos)
+#
+#     for epoch_no in range(1, cfg.training.nb_epochs + 1):
+#         # # start fresh for each epoch
+#         # # (GVS Oct-05-2020: this was a hack to work around bugs in resetting kg to initial state)
+#         # if epoch_no > 1:
+#         #     agent = CustomAgent()
+#         stats = {
+#             "scores": [],
+#             "steps": [],
+#         }
+#         # for game_no in tqdm(range(len(game_files))):
+#         #     agent.train()  # agent in training mode
+#         #     gamefile = game_files[game_no]
+#         for batch in dataloader:
+#             # for gamefile in batch:
+#             print(f"batch gamefiles = {batch}")
+#             scores, steps = agent.run_episode(batch)
+#             stats["scores"].extend(scores)
+#             stats["steps"].extend(steps)
+#
+#         score = sum(stats["scores"]) / agent.batch_size
+#         steps = sum(stats["steps"]) / agent.batch_size
+#         print("Epoch: {:3d} | {:2.1f} pts | {:4.1f} steps".format(epoch_no, score, steps))
 
 
 @hydra.main(config_path="conf", config_name="ftwc")
@@ -123,6 +123,12 @@ def main(cfg: DictConfig) -> None:
     )
     # os.mkdir("lightning_logs")
     trainer.fit(agent, data)
+    # TODO: add callback to achieve:
+    #     for epoch_no in range(1, cfg.training.nb_epochs + 1):
+    #         ... from original train() method ...
+    #         scores, steps = agent.run_episode(batch)
+    #         print("Epoch: {:3d} | {:2.1f} pts | {:4.1f} steps".format(epoch_no, score, steps))
+
     trainer.test(agent, datamodule=data)
     finish_time = datetime.datetime.now()
     print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")

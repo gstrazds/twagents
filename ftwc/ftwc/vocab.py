@@ -4,12 +4,11 @@ import spacy
 from .generic import preproc, to_np
 
 
-_global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger']) #spacy used only for tokenization
+_global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
 
 
 class WordVocab:
     def __init__(self, vocab_file="./vocab.txt"):
-        self.nlp = None
         with open(vocab_file) as f:
             self.word_vocab = f.read().split("\n")
         self.word2id = {}
