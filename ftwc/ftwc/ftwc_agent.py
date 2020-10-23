@@ -601,9 +601,8 @@ class FtwcAgent(AgentDQN):
         super().__init__(cfg, **kwargs)
 
         self.requested_infos = self.select_additional_infos()
-        self._debug_quit = False
         self.game_ids = []
-        self.agents = []
+        self.tw_oracles = []
 
     def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
         """
@@ -733,28 +732,28 @@ class FtwcAgent(AgentDQN):
                 if idx == len(self.game_ids):
                     self.game_ids.append(game_id)
 
-            if idx == len(self.agents):
-                tw_game_agent = TextGameAgent(
+            if idx == len(self.tw_oracles):
+                tw_game_oracle = TextGameAgent(
                         self._random_seed,  #seed
                         "TW",     # rom_name
                         game_id,  # env_name
                         idx=idx,
                         game=None  #TODO: infos['game'][idx]  # for better logging
                 )
-                self.agents.append(tw_game_agent)
+                self.tw_oracles.append(tw_game_oracle)
                 # FIXME: initialization HACK for MEAL
-                kg = tw_game_agent.gi.kg
+                kg = tw_game_oracle.gi.kg
                 meal = kg.create_new_object('meal', MEAL)
                 meal.location = kg._nowhere  # the meal doesn't yet exist in the world
-                gt = tw_game_agent.gi.gt
+                gt = tw_game_oracle.gi.gt
                 meal = gt.create_new_object('meal', MEAL)
                 meal.location = gt._nowhere  # the meal doesn't yet exist in the world
             else:
-                assert idx < len(self.agents)
+                assert idx < len(self.tw_oracles)
                 if self.current_episode > 0:
                     if need_to_forget:
-                        self.agents[idx].setup_logging(game_id, idx)
-                    self.agents[idx].reset(forget_everything=need_to_forget)
+                        self.tw_oracles[idx].setup_logging(game_id, idx)
+                    self.tw_oracles[idx].reset(forget_everything=need_to_forget)
 
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         assert len(self.vocab.word_masks_np) == self.model.generate_length,\
@@ -817,13 +816,13 @@ class FtwcAgent(AgentDQN):
             games are done, in which case `CustomAgent.finish()` is called
             instead.
         """
-        use_nail_agent = True
+        use_oracle = True
 
         if self.current_step > 0:
             # append scores / dones from previous step into memory
             # Update the agent.
-            if use_nail_agent:
-                for idx, agent in enumerate(self.agents):
+            if use_oracle:
+                for idx, agent in enumerate(self.tw_oracles):
                     agent.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
                     # Output this step.
                     use_groundtruth_player_loc = False
@@ -842,10 +841,10 @@ class FtwcAgent(AgentDQN):
             self._end_episode(obs, scores, infos)
             return  # Nothing to return.
 
-        if use_nail_agent:
+        if use_oracle:
             chosen_strings = []
             game_id = None
-            for idx, (obstxt, agent) in enumerate(zip(obs, self.agents)):
+            for idx, (obstxt, agent) in enumerate(zip(obs, self.tw_oracles)):
                 # simplify the observation text if it includes notification about incremented score
                 if "Your score has just" in obstxt:
                     obstxt2 = '\n'.join(
@@ -861,10 +860,6 @@ class FtwcAgent(AgentDQN):
                     #CHEAT on one specific game (to debug some new code)
                 # if self.current_step == 0:
                 #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
-
-                if self._debug_quit and self._debug_quit == self.current_step:
-                    agent.dbg("[{}] DEBUG QUIT! step={}".format(idx, self.current_step))
-                    # exit(0)
 
                 if 'facts' in infos:
                     verbose = (self.current_step == 0)
