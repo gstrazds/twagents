@@ -15,59 +15,11 @@ import gym
 from textworld import EnvInfos
 import textworld.gym
 
-from symbolic.game_agent import TextGameAgent
-from symbolic.task_modules import RecipeReaderTask
-from symbolic.task_modules.navigation_task import ExploreHereTask
-from twutils.twlogic import filter_observables
-from symbolic.entity import MEAL
-# from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
-
 from .model import LSTM_DQN
 from .generic import to_np, to_pt, pad_sequences, max_len
 from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
 from .vocab import WordVocab
-
-
-def get_game_id_from_infos(infos, idx):
-    if 'game_id' in infos:
-        game_id = parse_gameid(infos['game_id'][idx])
-    elif 'extra.uuid' in infos:
-        game_id = infos['extra.uuid'][idx]
-    else:
-        print(f"WARNING: couldn't determine game_id for slot {idx} {len(infos)} {infos.keys()}")
-        game_id = None
-    return game_id
-
-
-def parse_gameid(game_id: str) -> str:
-    segments = game_id.split('-')
-    if len(segments) >= 4:
-        code, guid = segments[2:4]
-        guid = guid.split('.')[0]
-        guid = "{}..{}".format(guid[0:4],guid[-4:])
-        segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
-        for seg in segments:
-            if seg.startswith('recipe'):
-                r = seg[len('recipe'):]
-            elif seg.startswith('go'):
-                g = seg[len('go'):]
-            elif seg.startswith('take'):
-                t = seg[len('take'):]
-            elif seg == 'cook':
-                k = 'k'
-            elif seg == 'cut':
-                c = 'c'
-            elif seg == 'open':
-                o = 'o'
-            elif seg == 'drop':
-                d = 'd'
-            else:
-                assert False, "unparsable game_id: {}".format(game_id)
-        shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
-    else:
-        shortcode = game_id
-    return shortcode
+from .gym_wrapper import QaitGym
 
 
 def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
@@ -186,33 +138,22 @@ def tally_word_qvalues(word_ranks, word_masks_np):
 
 class CustomAgent:
     """ Template agent for the TextWorld competition. """
-    MODE_TRAIN = 'train'
-    MODE_EVAL = 'eval'
 
+    # NOTE: MODIFIED to debug multiple inheritance
+    # def __init__(self) -> None:
     def __init__(self, **kwargs) -> None:
         print(f"CustomAgent.__init__ {kwargs}")
-        # super().__init__(**kwargs)  # don't do this unless inheriting from another class
+        # super().__init__(**kwargs)
         self._initialized = False
         self._episode_has_started = False
-        self.mode = CustomAgent.MODE_TRAIN
 
-    def set_mode(self, mode):
-        assert mode == CustomAgent.MODE_TRAIN or mode == CustomAgent.MODE_EVAL, str(mode)
-        self.mode = mode
+    def train(self) -> None:
+        """ Tell the agent it is in training mode. """
+        pass  # [You can insert code here.]
 
-    # def train(self) -> None:
-    #     """ Tell the agent it is in training mode. """
-    #     self.set_mode(CustomAgent.MODE_TRAIN)
-    #     # [You can insert code here.]
-    #
-    # def eval(self) -> None:
-    #     """ Tell the agent it is in evaluation mode. """
-    #     self.set_mode(CustomAgent.MODE_EVAL)
-    #     # [You can insert code here.]
-
-    def is_eval_mode(self) -> bool:
-        assert self.mode == CustomAgent.MODE_TRAIN or self.mode == CustomAgent.MODE_EVAL, self.mode
-        return self.mode == CustomAgent.MODE_EVAL
+    def eval(self) -> None:
+        """ Tell the agent it is in evaluation mode. """
+        pass  # [You can insert code here.]
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -328,19 +269,25 @@ class CustomAgent:
         """
         if all(dones):
             self._end_episode(obs, scores, infos)
-            return None  # Nothing to return.
-
-        if not self._episode_has_started:
+            return  # Nothing to return.
+        elif not self._episode_has_started:
             self._start_episode(obs, infos)
 
         # [Insert your code here to obtain the commands.]
         return ["wait"] * len(obs)  # No-op
 
 
-class AgentDQN(pl.LightningModule, CustomAgent):
+class AgentDQN(pl.LightningModule):
+    MODE_TRAIN = 'train'
+    MODE_EVAL = 'eval'
+
     def __init__(self, cfg, **kwargs):
         print(f"AgentDQN.__init__ {cfg} {kwargs}")
-        CustomAgent.__init__(self)
+        # CustomAgent.__init__(self)
+        self.qgym = QaitGym()
+        self.gym_env = None
+        self.mode = self.MODE_TRAIN
+
         # pl.LightningModule.__init__(self, **kwargs)
         super().__init__(**kwargs)
 
@@ -382,7 +329,6 @@ class AgentDQN(pl.LightningModule, CustomAgent):
 
         self.current_episode = 0
         self.current_step = 0
-        self._episode_has_started = False
         self.history_avg_scores = HistoryScoreCache(capacity=1000)
         self.best_avg_score_so_far = 0.0
 
@@ -409,12 +355,23 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         self.learning_rate = cfg.training.optimizer.learning_rate
         self.optimizer = self.configure_optimizers()[0]
 
+    def set_mode(self, mode):
+        assert mode == self.MODE_TRAIN or mode == self.MODE_EVAL, str(mode)
+        self.mode = mode
+
+    def is_eval_mode(self) -> bool:
+        assert self.mode == self.MODE_TRAIN or self.mode == self.MODE_EVAL, self.mode
+        return self.mode == self.MODE_EVAL
+
     def train(self, mode=True):
         """
         Tell the agent that it's training phase.
         """
         self.model.train(mode)
-        CustomAgent.set_mode(self, CustomAgent.MODE_TRAIN)
+        if mode:
+            self.set_mode(self.MODE_TRAIN)
+        else:
+            self.set_mode(self.MODE_EVAL)
         super().train(mode)
 
     def eval(self):
@@ -422,36 +379,51 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         Tell the agent that it's evaluation phase.
         """
         self.model.eval()
-        CustomAgent.set_mode(self, CustomAgent.MODE_EVAL)
+        self.set_mode(self.MODE_EVAL)
         super().eval()
+
+    def step_env(self, commands: List[str]):  #-> List[str], List[int], List[bool], List[Map]
+            obs, scores, dones, infos = self.gym_env.step(commands)
+            return obs, scores, dones, infos
 
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
         # batch_size = self.batch_size
         # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
         batch_size = len(gamefiles)
-        env_id = textworld.gym.register_games(gamefiles,
-                                              self.requested_infos,
-                                              max_episode_steps=self.max_nb_steps_per_episode,
-                                              batch_size=batch_size,
-                                              asynchronous=False,
-                                              # auto_reset=auto_reset,
-                                              # action_space=action_space,
-                                              # observation_space=observation_space,
-                                              name=f"tw_{'eval' if self.is_eval_mode() else 'train'}-v0")
-        # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
-        env = gym.make(env_id)
-        obs, infos = env.reset()
+
+        # env_id = textworld.gym.register_games(gamefiles,
+        #                                       self.requested_infos,
+        #                                       max_episode_steps=self.max_nb_steps_per_episode,
+        #                                       batch_size=batch_size,
+        #                                       asynchronous=False,
+        #                                       # auto_reset=auto_reset,
+        #                                       # action_space=action_space,
+        #                                       # observation_space=observation_space,
+        #                                       name=f"tw_{'eval' if self.is_eval_mode() else 'train'}-v0")
+        # # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
+        # env = gym.make(env_id)
+        self.gym_env = self.qgym.make_batch_env(gamefiles, self.requested_infos, batch_size=batch_size)  #self.cfg.training.batch_size)
+        obs, infos = self.gym_env.reset()
+
+        self.start_episode_infos(obs, infos)
+
         scores = [0] * len(obs)
         dones = [False] * len(obs)
-        steps = [0] * len(obs)
+        steps = [0] * len(obs)   # step counts, local var (not really used, except for logging/print out at end)
         while not all(dones):
-            # Increase step counts.
-            steps = [step + int(not done) for step, done in zip(steps, dones)]
+            steps = [step + int(not done) for step, done in zip(steps, dones)]   # Increase step counts.
+
             commands = self.act(obs, scores, dones, infos)
-            obs, scores, dones, infos = env.step(commands)
+
+            obs, scores, dones, infos = self.step_env(commands)
+
         # Let the agent know the game is done and see the final observation
         self.act(obs, scores, dones, infos)
+        self._compute_episode_rewards()
+        self._maybe_save_checkpoint()
+        self.current_episode += 1
+        self._anneal_epsilon()
         return scores, steps
 
     def save_checkpoint(self, episode_num):
@@ -523,6 +495,36 @@ class AgentDQN(pl.LightningModule, CustomAgent):
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
         self.optimizer.step()  # apply gradients
+
+    def _compute_episode_rewards(self):
+        dones = []
+        for d in self.dones:
+            d = np.array([float(dd) for dd in d], dtype='float32')
+            dones.append(d)
+        dones = np.array(dones)
+        step_used = 1.0 - dones
+        self.step_used_before_done = np.sum(step_used, 0)  # batch
+
+        if len(self.scores):
+            self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
+            self.history_avg_scores.push(np.mean(self.final_rewards))
+        else:
+            print(f"!!! WARNING: finish() called but self.scores={self.scores}")
+
+    def _maybe_save_checkpoint(self):
+        # save checkpoint
+        if not self.is_eval_mode() and self.current_episode % self.save_frequency == 0:
+            avg_score = self.history_avg_scores.get_avg()
+            if avg_score > self.best_avg_score_so_far:
+                self.best_avg_score_so_far = avg_score
+
+                self.save_checkpoint(self.current_episode)
+
+    def _anneal_epsilon(self):
+        # self.current_episode += 1
+        # annealing
+        if self.current_episode < self.epsilon_anneal_episodes:
+            self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
 
     def training_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx) -> Dict[str, Any]:
         """
@@ -599,39 +601,31 @@ class FtwcAgent(AgentDQN):
             vocab: words supported.
         """
         super().__init__(cfg, **kwargs)
-
+        # self._episode_initialized = False
         self.requested_infos = self.select_additional_infos()
-        self.game_ids = []
-        self.tw_oracles = []
 
-    def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
-        """
-        Prepare the agent for the upcoming episode.
 
-        Arguments:
-            obs: Initial feedback for each game.
-            infos: Additional information for each game.
-        """
+    # def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
+    #     """
+    #     Prepare the agent for the upcoming episode.
+    #
+    #     Arguments:
+    #         obs: Initial feedback for each game.
+    #         infos: Additional information for each game.
+    #     """
+    #     self.start_episode_infos(obs, infos)
 
-        _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
-        print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
-        self.start_episode_infos(obs, infos)
-        super()._start_episode(obs, infos)
-
-    def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
-        """
-        Tell the agent the episode has terminated.
-
-        Arguments:
-            obs: Previous command's feedback for each game.
-            score: The score obtained so far for each game.
-            infos: Additional information for each game.
-        """
-        all_endactions = " ".join(
-            [":{}: [{}]".format(self._get_gameid(idx), actiontxt) for idx, actiontxt in enumerate(self.prev_actions)])
-        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
-        self.on_episode_end()
-        super()._end_episode(obs, scores, infos)
+    # def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
+    #     """
+    #     Tell the agent the episode has terminated.
+    #
+    #     Arguments:
+    #         obs: Previous command's feedback for each game.
+    #         score: The score obtained so far for each game.
+    #         infos: Additional information for each game.
+    #     """
+    #     self.on_episode_end()
+    #     self._episode_initialized = False
 
     def select_additional_infos(self) -> EnvInfos:
         """
@@ -688,27 +682,6 @@ class FtwcAgent(AgentDQN):
         )
         return request_infos
 
-    def _get_gameid(self, idx):
-        if len(self.game_ids) > idx:
-            gameid = self.game_ids[idx]
-        else:
-            gameid = str(idx)
-        return gameid
-
-    def set_game_id(self, game_id, idx):
-        if idx < len(self.game_ids):
-            if game_id != self.game_ids[idx]:
-                print(f"[{idx}] {game_id} != {self.game_ids[idx]} NEED TO RESET KG")
-                self.game_ids[idx] = game_id
-                return True
-            else:
-                print(f"[{idx}] {game_id} == {self.game_ids[idx]} DON'T RESET KG")
-                return False
-        else:
-            print(f"[{idx}] {game_id} ** NEW AGENT, DON'T RESET: {self.game_ids}")
-            assert idx == len(self.game_ids)
-            self.game_ids.append(game_id)
-            return False
 
     def start_episode_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
@@ -721,43 +694,16 @@ class FtwcAgent(AgentDQN):
         # reset agent, get vocabulary masks for verbs / adjectives / nouns
         self.scores = []
         self.dones = []
-        self.prev_actions = ['' for _ in range(len(obs))]
-        for idx in range(len(obs)):
-            need_to_forget = True
-            game_id = get_game_id_from_infos(infos, idx)
-            if game_id:
-                need_to_forget = self.set_game_id(game_id, idx)   # if the same game again, remember initial layout
-            else:
-                game_id = str(idx)
-                if idx == len(self.game_ids):
-                    self.game_ids.append(game_id)
+        batch_size = len(obs)
+        self.prev_actions = ['' for _ in range(batch_size)]
 
-            if idx == len(self.tw_oracles):
-                tw_game_oracle = TextGameAgent(
-                        self._random_seed,  #seed
-                        "TW",     # rom_name
-                        game_id,  # env_name
-                        idx=idx,
-                        game=None  #TODO: infos['game'][idx]  # for better logging
-                )
-                self.tw_oracles.append(tw_game_oracle)
-                # FIXME: initialization HACK for MEAL
-                kg = tw_game_oracle.gi.kg
-                meal = kg.create_new_object('meal', MEAL)
-                meal.location = kg._nowhere  # the meal doesn't yet exist in the world
-                gt = tw_game_oracle.gi.gt
-                meal = gt.create_new_object('meal', MEAL)
-                meal.location = gt._nowhere  # the meal doesn't yet exist in the world
-            else:
-                assert idx < len(self.tw_oracles)
-                if self.current_episode > 0:
-                    if need_to_forget:
-                        self.tw_oracles[idx].setup_logging(game_id, idx)
-                    self.tw_oracles[idx].reset(forget_everything=need_to_forget)
+        self.qgym.on_start_episode(obs, infos)
 
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         assert len(self.vocab.word_masks_np) == self.model.generate_length,\
             f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"   # == 5
+
+        self._episode_initialized = True
 
         self.prev_obs = obs
         self.cache_description_id_list = None   # similar to .prev_obs
@@ -820,17 +766,18 @@ class FtwcAgent(AgentDQN):
 
         if self.current_step > 0:
             # append scores / dones from previous step into memory
+            # append scores / dones from previous step into memory
             # Update the agent.
             if use_oracle:
-                for idx, agent in enumerate(self.tw_oracles):
-                    agent.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
-                    # Output this step.
+                for idx, oracle in enumerate(self.tw_oracles):
+                    oracle.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
+                    # Print out this step.
                     use_groundtruth_player_loc = False
-                    kg = agent.gi.gt if use_groundtruth_player_loc else agent.gi.kg
+                    kg = oracle.gi.gt if use_groundtruth_player_loc else oracle.gi.kg
                     player_location = kg.player_location
                     print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
                         self.current_step,
-                        idx, agent.env_name if hasattr(agent, 'env_name') else '',
+                        idx, oracle.env_name if hasattr(oracle, 'env_name') else '',
                         player_location, self.prev_actions[idx], scores[idx],)) # obs[idx]))
 
             self.prev_obs = obs  # save for constructing transition during next step
@@ -877,10 +824,7 @@ class FtwcAgent(AgentDQN):
                     observable_facts = None
 
                 if self.current_step == 0:
-                    # set nav destination (using Ground Truth knowledge)
-                    # agent.gi.event_stream.push(NeedToGoTo('kitchen', groundtruth=agent.gt_nav.use_groundtruth))
                     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
-
                     # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
                     use_groundtruth = False
                     task_list = [ExploreHereTask(use_groundtruth=use_groundtruth),
@@ -934,16 +878,11 @@ class FtwcAgent(AgentDQN):
             # append scores / dones from previous step into memory
             self.scores.append(scores)
             self.dones.append(dones)
-            if self.is_eval_mode():
-                if all(dones):
-                    self._end_episode(obs, scores, infos)
-                    return None # Nothing to return.
-            else:
-                assert self.mode == CustomAgent.MODE_TRAIN
-                # compute previous step's rewards and masks
-                rewards_np, mask_np = self.compute_reward()
-                mask_pt = to_pt(mask_np, self.use_cuda, type='float')
-                rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+            # assert self.mode == MODE_TRAIN
+            # compute previous step's rewards and masks
+            rewards_np, mask_np = self.compute_reward()
+            mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+            rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
 
         input_description, description_id_list = self.get_game_step_info(obs, infos)
         # generate commands for one game step, epsilon greedy is applied, i.e.,
@@ -985,19 +924,16 @@ class FtwcAgent(AgentDQN):
                     if mask_np[b] == 0:
                         continue
                     is_prior = rewards_np[b] > 0.0
-                    # Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
-                    #                                        'reward', 'mask', 'done',
-                    #                                        'next_observation_id_list',
-                    #                                        'next_word_masks'))
 
                     transition = Transition(
-                                            self.cache_description_id_list[b],
-                                            [item[b] for item in self.cache_chosen_indices],
-                                            rewards_pt[b],
-                                            mask_pt[b],
-                                            dones[b],
-                                            description_id_list[b],
-                                            [word_mask[b] for word_mask in self.vocab.word_masks_np])
+                            observation_id_list=self.cache_description_id_list[b],
+                            word_indices=[item[b] for item in self.cache_chosen_indices],
+                            reward=rewards_pt[b],
+                            mask=mask_pt[b],
+                            done=dones[b],
+                            next_observation_id_list=description_id_list[b],
+                            next_word_masks=[word_mask[b]
+                                             for word_mask in self.vocab.word_masks_np])
 
                     self.replay_memory.push(is_prior=is_prior, transition=transition)
 
@@ -1015,9 +951,9 @@ class FtwcAgent(AgentDQN):
         self.current_step += 1
 
         if all(dones):
-            self._end_episode(obs, scores, infos)
+            self._on_episode_end()  # log/display some stats
             return None  # Nothing to return.
-        return chosen_strings
+        return self.prev_actions
 
     def compute_reward(self):
         """
@@ -1043,37 +979,13 @@ class FtwcAgent(AgentDQN):
             rewards = rewards - prev_rewards
         return rewards, mask
 
-    def on_episode_end(self) -> None:
-        """
-        All games in the batch are finished. One can choose to save checkpoints,
-        evaluate on validation set, or do parameter annealing here.
-        """
+    def _on_episode_end(self) -> None: # NOTE: this is *not* a PL callback
         # Game has finished (either win, lose, or exhausted all the given steps).
-        dones = []
-        for d in self.dones:
-            d = np.array([float(dd) for dd in d], dtype='float32')
-            dones.append(d)
-        dones = np.array(dones)
-        step_used = 1.0 - dones
-        self.step_used_before_done = np.sum(step_used, 0)  # batch
+        all_endactions = " ".join(
+            [":{}: [{}]".format(gameid, actiontxt) for idx, (gameid, actiontxt) in
+             enumerate(zip(self.qgym.game_ids, self.prev_actions))])
+        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
 
-        if len(self.scores):
-            self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
-            self.history_avg_scores.push(np.mean(self.final_rewards))
-        else:
-            print(f"!!! WARNING: finish() called but self.scores={self.scores}")
-        # save checkpoint
-        if not self.is_eval_mode() and self.current_episode % self.save_frequency == 0:
-            avg_score = self.history_avg_scores.get_avg()
-            if avg_score > self.best_avg_score_so_far:
-                self.best_avg_score_so_far = avg_score
-
-                self.save_checkpoint(self.current_episode)
-
-        self.current_episode += 1
-        # annealing
-        if self.current_episode < self.epsilon_anneal_episodes:
-            self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
 
     def validation_step(self, batch, batch_idx):
         print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")
