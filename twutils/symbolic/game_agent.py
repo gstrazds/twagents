@@ -22,6 +22,7 @@ class TextGameAgent:
 
     """
     def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.'):
+        self._idx = idx
         self.setup_logging(env_name, idx, output_subdir)
         if game:
             self._game = game  # if provided, can do nicer logging
@@ -220,16 +221,31 @@ class TextGameAgent:
         self.step_num += 1
         return next_action.text()
 
-    def observe(self, prev_obs, prev_action, score, new_obs, terminal):
+    def observe(self, prev_action, score, new_obs, done, idx=None):
         """ Observe could be used for learning from rewards. """
+#GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
 #        self.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 
         # NewTransitionEvent unused by current code
         # self.gi.event_stream.push(NewTransitionEvent(prev_obs, prev_action, score, new_obs, terminal))
+        if idx is not None:
+            assert idx == self._idx
+        else:
+            idx = self._idx
+        if prev_action is None:
+            if self._last_action:
+                prev_action = self._last_action.text()
+
         if prev_action and self._last_action:
             assert prev_action == self._last_action.text()
-        self.gi.action_recognized(prev_action, new_obs)  # Update the unrecognized words
+            self.gi.action_recognized(self._last_action, new_obs)
+        elif prev_action:
+            self.gi.action_recognized(prev_action, new_obs)  # Updates the unrecognized words
+        # Print out this step.
+        player_location = self.gi.kg.player_location
+        _env_name = self.env_name if hasattr(self, 'env_name') else ''
+        print(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Score: {score}")
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:
