@@ -219,8 +219,9 @@ def parse_gameid(game_id: str) -> str:
 
 
 class QaitGym:
-    def __init__(self, **kwargs):
+    def __init__(self, random_seed=42, **kwargs):
         super().__init__(**kwargs)
+        self.random_seed = random_seed
         self.game_ids = []
         self.tw_oracles = []
 
@@ -294,7 +295,15 @@ class QaitGym:
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
 
-    def on_start_episode(self, obs: List[str], infos: Dict[str, List[Any]]):
+    def step_env(self, gym_env, commands: List[str]):
+        obs, scores, dones, infos = gym_env.step(commands)
+        if self.tw_oracles:
+            assert len(self.tw_oracles) == len(obs)
+            for idx, oracle in enumerate(self.tw_oracles):
+                oracle.observe(commands[idx], scores[idx], obs[idx], dones[idx], idx=idx)
+        return obs, scores, dones, infos
+
+    def on_start_episode(self, obs: List[str], infos: Dict[str, List[Any]], episode_no=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         # print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
 
@@ -311,7 +320,7 @@ class QaitGym:
 
             if idx == len(self.tw_oracles):
                 tw_game_oracle = TextGameAgent(
-                        self._random_seed,  #seed
+                        self.random_seed + idx,  #seed
                         "TW",     # rom_name
                         game_id,  # env_name
                         idx=idx,
@@ -327,10 +336,61 @@ class QaitGym:
                 meal.location = gt._nowhere  # the meal doesn't yet exist in the world
             else:
                 assert idx < len(self.tw_oracles)
-                if self.current_episode > 0:
+                if episode_no > 0:
                     if need_to_forget:
                         self.tw_oracles[idx].setup_logging(game_id, idx)
                     self.tw_oracles[idx].reset(forget_everything=need_to_forget)
+            tw_o = self.tw_oracles[idx]
+            assert tw_o.step_num == 0
+            _use_groundtruth = False
+            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
+                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
+            for task in task_list:
+                tw_o.task_exec.queue_task(task)
+
+    def invoke_oracle(self, idx, obstxt, infos, verbose=False) -> str:
+        assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
+        tw_oracle = self.tw_oracles[idx]
+        # simplify the observation text if it includes notification about incremented score
+        if "Your score has just" in obstxt:
+            obstxt2 = '\n'.join(
+                [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
+            ).strip()
+        else:
+            obstxt2 = obstxt.strip()
+        print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(
+            tw_oracle.step_num, idx, obstxt2))
+        if 'inventory' in infos:
+            print("\tINVENTORY:", infos['inventory'][idx])
+        if 'game_id' in infos:
+            print("infos[game_id]=", infos['game_id'][idx])
+        if 'facts' in infos:
+
+            world_facts = infos['facts'][idx]
+
+            # TODO: remove ground_truth -- no longer needed
+            tw_oracle.set_ground_truth(world_facts)
+
+            observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
+            print("FACTS IN SCOPE:")
+            for fact in observable_facts:
+                print('\t', fact)
+                # print_fact(game, fact)
+        else:
+            observable_facts = None
+
+        # if step == 0:    # moved to on_start_episode()
+        #     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
+        #     # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
+        #     use_groundtruth = False
+        #     task_list = [ExploreHereTask(use_groundtruth=use_groundtruth),
+        #                  RecipeReaderTask(use_groundtruth=use_groundtruth)]
+        #     for task in task_list:
+        #         tw_oracle.task_exec.queue_task(task)
+
+        actiontxt = tw_oracle.choose_next_action(obstxt2, observable_facts=observable_facts)
+        print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))
+        return actiontxt
 
     def ensure_gameinfo_file(self, gamefile, env_seed=42, save_to_file=True):
         # NOTE: individual gamefiles have already been registered

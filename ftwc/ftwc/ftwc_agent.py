@@ -87,6 +87,29 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     # return word_qvalues, word_indices
     return word_indices
 
+# epsilon greedy choice: per-batch
+# select either the specified maxq command phrase vs the specified random command phrase
+# inputs: lists of tensors, one per word-position in output phrase, w/size(batch_len, 1)
+# returns: list of tensors, one per word-position in output phrase, w/size(batch_len, 1)
+def choose_epsilon_greedy(word_indices_maxq, word_indices_random, epsilon, use_cuda=True):
+    # random number for epsilon greedy
+    assert len(word_indices_maxq) == len(word_indices_random)  # lists (len = n_words) of (batch_size, 1)
+    _batch_size = word_indices_maxq[0].size(0)
+    rand_num = np.random.uniform(low=0.0, high=1.0, size=(_batch_size, 1)) # independtly random for each batch
+    less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
+    # note: one random number controls all n_words (=5) words in the p
+    greater_than_epsilon = 1.0 - less_than_epsilon
+    less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
+    greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
+    less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+    # choose a word for each position in the output phrase
+    chosen_indices = [  # per batch: choose either all 5 maxq words or all 5 random words
+        less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq
+        for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)
+    ]
+    return chosen_indices
+
+
 def tally_word_qvalues(word_ranks, word_masks_np):
     """
     Arguments:
@@ -115,6 +138,32 @@ def tally_word_qvalues(word_ranks, word_masks_np):
     word_qvalues = [torch.stack(item) for item in word_qvalues]     # apply torch.stack to each entry (each is a list of scalar tensors)
     return word_qvalues  # list (len=n_words) of tensors w size=(batch)  # 1 dim, since stack([s1,s2,s3])->>tensor([1,2,3])
 
+def compute_per_step_rewards(scores, dones):
+    """
+    Compute rewards by agent. Note this is different from what the training/evaluation
+    scripts do. Agent keeps track of scores and other game information for training purpose.
+
+    """
+    # mask = 1 if game is not finished or just finished at current step
+    if not dones or len(dones) == 1:
+        # it's not possible to finish a game at 0th step
+        mask = [1.0 for _ in dones[-1]]
+    else:
+        assert len(dones) > 1
+        mask = [1.0 if not dones[-2][i] else 0.0 for i in range(len(dones[-1]))]
+    mask_np = np.array(mask, dtype='float32')
+    # rewards returned by game engine are always accumulated value the
+    # agent has received. so the reward it gets in the current game step
+    # is the new value minus value at previous step.
+    # is the new value minus value at previous step.
+    assert scores
+    assert len(scores)
+    rewards_np = np.array(scores[-1], dtype='float32')  # batch
+    if len(scores) > 1:
+        prev_rewards = np.array(scores[-2], dtype='float32')
+        rewards_np = rewards_np - prev_rewards
+    return rewards_np, mask_np
+
 
 # def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
 #     batch_size = word_ranks[0].size(0)
@@ -136,145 +185,145 @@ def tally_word_qvalues(word_ranks, word_masks_np):
 #     chosen_indices = [item.detach() for item in chosen_indices]
 #     return word_qvalues, chosen_indices
 
-class CustomAgent:
-    """ Template agent for the TextWorld competition. """
-
-    # NOTE: MODIFIED to debug multiple inheritance
-    # def __init__(self) -> None:
-    def __init__(self, **kwargs) -> None:
-        print(f"CustomAgent.__init__ {kwargs}")
-        # super().__init__(**kwargs)
-        self._initialized = False
-        self._episode_has_started = False
-
-    def train(self) -> None:
-        """ Tell the agent it is in training mode. """
-        pass  # [You can insert code here.]
-
-    def eval(self) -> None:
-        """ Tell the agent it is in evaluation mode. """
-        pass  # [You can insert code here.]
-
-    def select_additional_infos(self) -> EnvInfos:
-        """
-        Returns what additional information should be made available at each game step.
-
-        Requested information will be included within the `infos` dictionary
-        passed to `CustomAgent.act()`. To request specific information, create a
-        :py:class:`textworld.EnvInfos <textworld.envs.wrappers.filter.EnvInfos>`
-        and set the appropriate attributes to `True`. The possible choices are:
-
-        * `description`: text description of the current room, i.e. output of the `look` command;
-        * `inventory`: text listing of the player's inventory, i.e. output of the `inventory` command;
-        * `max_score`: maximum reachable score of the game;
-        * `objective`: objective of the game described in text;
-        * `entities`: names of all entities in the game;
-        * `verbs`: verbs understood by the the game;
-        * `command_templates`: templates for commands understood by the the game;
-        * `admissible_commands`: all commands relevant to the current state;
-
-        In addition to the standard information, game specific information
-        can be requested by appending corresponding strings to the `extras`
-        attribute. For this competition, the possible extras are:
-
-        * `'recipe'`: description of the cookbook;
-        * `'walkthrough'`: one possible solution to the game (not guaranteed to be optimal);
-
-        Example:
-            Here is an example of how to request information and retrieve it.
-
-            >>> from textworld import EnvInfos
-            >>> request_infos = EnvInfos(description=True, inventory=True, extras=["recipe"])
-            ...
-            >>> env = gym.make(env_id)
-            >>> ob, infos = env.reset()
-            >>> print(infos["description"])
-            >>> print(infos["inventory"])
-            >>> print(infos["extra.recipe"])
-
-        Notes:
-            The following information *won't* be available at test time:
-
-            * 'walkthrough'
-
-            Requesting additional infos comes with some penalty (called handicap).
-            The exact penalty values will be defined in function of the average
-            scores achieved by agents using the same handicap.
-
-            Handicap is defined as follows
-                max_score, has_won, has_lost,               # Handicap 0
-                description, inventory, verbs, objective,   # Handicap 1
-                command_templates,                          # Handicap 2
-                entities,                                   # Handicap 3
-                extras=["recipe"],                          # Handicap 4
-                admissible_commands,                        # Handicap 5
-        """
-        return EnvInfos()
-
-    def _init(self) -> None:
-        """ Initialize the agent. """
-        self._initialized = True
-
-        # [You can insert code here.]
-
-    def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
-        """
-        Prepare the agent for the upcoming episode.
-
-        Arguments:
-            obs: Initial feedback for each game.
-            infos: Additional information for each game.
-        """
-        if not self._initialized:
-            self._init()
-
-        self._episode_has_started = True
-
-        # [You can insert code here.]
-
-    def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
-        """
-        Tell the agent the episode has terminated.
-
-        Arguments:
-            obs: Previous command's feedback for each game.
-            score: The score obtained so far for each game.
-            infos: Additional information for each game.
-        """
-        self._episode_has_started = False
-
-        # [You can insert code here.]
-
-    def act(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> Optional[List[str]]:
-        """
-        Acts upon the current list of observations.
-
-        One text command must be returned for each observation.
-
-        Arguments:
-            obs: Previous command's feedback for each game.
-            scores: The score obtained so far for each game.
-            dones: Whether a game is finished.
-            infos: Additional information for each game.
-
-        Returns:
-            Text commands to be performed (one per observation).
-            If episode had ended (e.g. `all(dones)`), the returned
-            value is ignored.
-
-        Notes:
-            Commands returned for games marked as `done` have no effect.
-            The states for finished games are simply copy over until all
-            games are done.
-        """
-        if all(dones):
-            self._end_episode(obs, scores, infos)
-            return  # Nothing to return.
-        elif not self._episode_has_started:
-            self._start_episode(obs, infos)
-
-        # [Insert your code here to obtain the commands.]
-        return ["wait"] * len(obs)  # No-op
+# class CustomAgent:
+#     """ Template agent for the TextWorld competition. """
+#
+#     # NOTE: MODIFIED to debug multiple inheritance
+#     # def __init__(self) -> None:
+#     def __init__(self, **kwargs) -> None:
+#         print(f"CustomAgent.__init__ {kwargs}")
+#         # super().__init__(**kwargs)
+#         self._initialized = False
+#         self._episode_has_started = False
+#
+#     def train(self) -> None:
+#         """ Tell the agent it is in training mode. """
+#         pass  # [You can insert code here.]
+#
+#     def eval(self) -> None:
+#         """ Tell the agent it is in evaluation mode. """
+#         pass  # [You can insert code here.]
+#
+#     def select_additional_infos(self) -> EnvInfos:
+#         """
+#         Returns what additional information should be made available at each game step.
+#
+#         Requested information will be included within the `infos` dictionary
+#         passed to `CustomAgent.act()`. To request specific information, create a
+#         :py:class:`textworld.EnvInfos <textworld.envs.wrappers.filter.EnvInfos>`
+#         and set the appropriate attributes to `True`. The possible choices are:
+#
+#         * `description`: text description of the current room, i.e. output of the `look` command;
+#         * `inventory`: text listing of the player's inventory, i.e. output of the `inventory` command;
+#         * `max_score`: maximum reachable score of the game;
+#         * `objective`: objective of the game described in text;
+#         * `entities`: names of all entities in the game;
+#         * `verbs`: verbs understood by the the game;
+#         * `command_templates`: templates for commands understood by the the game;
+#         * `admissible_commands`: all commands relevant to the current state;
+#
+#         In addition to the standard information, game specific information
+#         can be requested by appending corresponding strings to the `extras`
+#         attribute. For this competition, the possible extras are:
+#
+#         * `'recipe'`: description of the cookbook;
+#         * `'walkthrough'`: one possible solution to the game (not guaranteed to be optimal);
+#
+#         Example:
+#             Here is an example of how to request information and retrieve it.
+#
+#             >>> from textworld import EnvInfos
+#             >>> request_infos = EnvInfos(description=True, inventory=True, extras=["recipe"])
+#             ...
+#             >>> env = gym.make(env_id)
+#             >>> ob, infos = env.reset()
+#             >>> print(infos["description"])
+#             >>> print(infos["inventory"])
+#             >>> print(infos["extra.recipe"])
+#
+#         Notes:
+#             The following information *won't* be available at test time:
+#
+#             * 'walkthrough'
+#
+#             Requesting additional infos comes with some penalty (called handicap).
+#             The exact penalty values will be defined in function of the average
+#             scores achieved by agents using the same handicap.
+#
+#             Handicap is defined as follows
+#                 max_score, has_won, has_lost,               # Handicap 0
+#                 description, inventory, verbs, objective,   # Handicap 1
+#                 command_templates,                          # Handicap 2
+#                 entities,                                   # Handicap 3
+#                 extras=["recipe"],                          # Handicap 4
+#                 admissible_commands,                        # Handicap 5
+#         """
+#         return EnvInfos()
+#
+#     def _init(self) -> None:
+#         """ Initialize the agent. """
+#         self._initialized = True
+#
+#         # [You can insert code here.]
+#
+#     def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
+#         """
+#         Prepare the agent for the upcoming episode.
+#
+#         Arguments:
+#             obs: Initial feedback for each game.
+#             infos: Additional information for each game.
+#         """
+#         if not self._initialized:
+#             self._init()
+#
+#         self._episode_has_started = True
+#
+#         # [You can insert code here.]
+#
+#     def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
+#         """
+#         Tell the agent the episode has terminated.
+#
+#         Arguments:
+#             obs: Previous command's feedback for each game.
+#             score: The score obtained so far for each game.
+#             infos: Additional information for each game.
+#         """
+#         self._episode_has_started = False
+#
+#         # [You can insert code here.]
+#
+#     def act(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> Optional[List[str]]:
+#         """
+#         Acts upon the current list of observations.
+#
+#         One text command must be returned for each observation.
+#
+#         Arguments:
+#             obs: Previous command's feedback for each game.
+#             scores: The score obtained so far for each game.
+#             dones: Whether a game is finished.
+#             infos: Additional information for each game.
+#
+#         Returns:
+#             Text commands to be performed (one per observation).
+#             If episode had ended (e.g. `all(dones)`), the returned
+#             value is ignored.
+#
+#         Notes:
+#             Commands returned for games marked as `done` have no effect.
+#             The states for finished games are simply copy over until all
+#             games are done.
+#         """
+#         if all(dones):
+#             self._end_episode(obs, scores, infos)
+#             return  # Nothing to return.
+#         elif not self._episode_has_started:
+#             self._start_episode(obs, infos)
+#
+#         # [Insert your code here to obtain the commands.]
+#         return ["wait"] * len(obs)  # No-op
 
 
 class AgentDQN(pl.LightningModule):
@@ -284,7 +333,9 @@ class AgentDQN(pl.LightningModule):
     def __init__(self, cfg, **kwargs):
         print(f"AgentDQN.__init__ {cfg} {kwargs}")
         # CustomAgent.__init__(self)
-        self.qgym = QaitGym()
+        seedval = cfg.general.random_seed
+
+        self.qgym = QaitGym(random_seed=seedval)
         self.gym_env = None
         self.mode = self.MODE_TRAIN
 
@@ -300,8 +351,6 @@ class AgentDQN(pl.LightningModule):
         # self.nb_epochs = cfg.training.nb_epochs
 
         # Set the random seed manually for reproducibility.
-        seedval = cfg.general.random_seed
-        self._random_seed = seedval   #TODO: mignt not need to save this here
         np.random.seed(seedval)
         torch.manual_seed(seedval)
         if torch.cuda.is_available():
@@ -383,30 +432,58 @@ class AgentDQN(pl.LightningModule):
         super().eval()
 
     def step_env(self, commands: List[str]):  #-> List[str], List[int], List[bool], List[Map]
-            obs, scores, dones, infos = self.gym_env.step(commands)
+            obs, scores, dones, infos = self.qgym.step_env(self.gym_env, commands)
             return obs, scores, dones, infos
+
+    def save_transition_for_replay(self, rewards_np, mask_np, obs_idlist, act_idlist):
+        mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+        rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+        # push info from previous game step into replay memory
+        # if self.current_step > 0:
+        for b in range(len(mask_np)):
+            if mask_np[b] == 0:
+                continue
+            is_prior = rewards_np[b] > 0.0
+
+            transition = Transition(
+                observation_id_list=self.cache_description_id_list[b],
+                word_indices=[item[b] for item in self.cache_chosen_indices],
+                reward=rewards_pt[b],
+                mask=mask_pt[b],
+                done=self.dones[b],
+                next_observation_id_list=obs_idlist[b],
+                next_word_masks=[word_mask[b]
+                                 for word_mask in self.vocab.word_masks_np])
+
+            self.replay_memory.push(is_prior=is_prior, transition=transition)
+
+            # cache new info in current game step into caches
+            self.cache_description_id_list = obs_idlist  # token ids for prev obs
+            self.cache_chosen_indices = act_idlist  # token ids for prev action
+
+    def observe_action_results(self, scores, dones, obs, obs_idlist, act_idlist):
+        # append scores / dones from previous step into memory
+        self.scores.append(scores)
+        self.dones.append(dones)
+
+        rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
+
+        _prev_obs = self.prev_obs
+        self.prev_obs = obs  # save for constructing transition during next step
+        if not self.is_eval_mode():
+            self.save_transition_for_replay(rewards_np, mask_np, obs_idlist, act_idlist)
+
+        if all(dones):
+            self._on_episode_end()  # log/display some stats
+
 
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
         # batch_size = self.batch_size
         # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
-        batch_size = len(gamefiles)
 
-        # env_id = textworld.gym.register_games(gamefiles,
-        #                                       self.requested_infos,
-        #                                       max_episode_steps=self.max_nb_steps_per_episode,
-        #                                       batch_size=batch_size,
-        #                                       asynchronous=False,
-        #                                       # auto_reset=auto_reset,
-        #                                       # action_space=action_space,
-        #                                       # observation_space=observation_space,
-        #                                       name=f"tw_{'eval' if self.is_eval_mode() else 'train'}-v0")
-        # # env_id = textworld.gym.make_batch(env_id, batch_size=agent.batch_size, parallel=True)
-        # env = gym.make(env_id)
-        self.gym_env = self.qgym.make_batch_env(gamefiles, self.requested_infos, batch_size=batch_size)  #self.cfg.training.batch_size)
-        obs, infos = self.gym_env.reset()
-
-        self.start_episode_infos(obs, infos)
+        obs, infos = self.initialize_episode(gamefiles)
+        # self.initial_observation(obs, infos)
 
         scores = [0] * len(obs)
         dones = [False] * len(obs)
@@ -414,12 +491,21 @@ class AgentDQN(pl.LightningModule):
         while not all(dones):
             steps = [step + int(not done) for step, done in zip(steps, dones)]   # Increase step counts.
 
-            commands = self.act(obs, scores, dones, infos)
+            commands, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
 
             obs, scores, dones, infos = self.step_env(commands)
 
+            self.observe_action_results(scores, dones, obs, obs_idlist, act_idlist)
+
+            if not self.is_eval_mode():
+                if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
+                    loss = self.calculate_replay_loss()
+                    if loss is not None:
+                        # Backpropagate
+                        self.backpropagate(loss)
+
         # Let the agent know the game is done and see the final observation
-        self.act(obs, scores, dones, infos)
+        # self.select_next_action(obs, scores, dones, infos)
         self._compute_episode_rewards()
         self._maybe_save_checkpoint()
         self.current_episode += 1
@@ -450,7 +536,7 @@ class AgentDQN(pl.LightningModule):
         except:
             print("Failed to load checkpoint...")
 
-    def update(self):
+    def calculate_loss_from_replay(self):
         """
         Update neural model in agent. In this example we follow algorithm
         of updating model in dqn with replay memory.
@@ -683,7 +769,7 @@ class FtwcAgent(AgentDQN):
         return request_infos
 
 
-    def start_episode_infos(self, obs: List[str], infos: Dict[str, List[Any]]):
+    def initialize_episode(self, gamefiles):
         """
         Prepare the agent for the upcoming games.
 
@@ -691,24 +777,27 @@ class FtwcAgent(AgentDQN):
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
+        self.gym_env = self.qgym.make_batch_env(gamefiles, self.requested_infos, batch_size=len(gamefiles))  #self.cfg.training.batch_size)
+        obs, infos = self.gym_env.reset()
+        # self.start_episode_infos(obs, infos)
+
+        self.prev_obs = obs
+        self.cache_description_id_list = None   # similar to .prev_obs
+        self.cache_chosen_indices = None        # similar to .prev_actions
+        self.current_step = 0
         # reset agent, get vocabulary masks for verbs / adjectives / nouns
         self.scores = []
         self.dones = []
         batch_size = len(obs)
         self.prev_actions = ['' for _ in range(batch_size)]
 
-        self.qgym.on_start_episode(obs, infos)
+        self.qgym.on_start_episode(obs, infos, episode_no=self.current_episode)
 
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         assert len(self.vocab.word_masks_np) == self.model.generate_length,\
             f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"   # == 5
 
-        self._episode_initialized = True
-
-        self.prev_obs = obs
-        self.cache_description_id_list = None   # similar to .prev_obs
-        self.cache_chosen_indices = None        # similar to .prev_actions
-        self.current_step = 0
+        return obs, infos
 
     def get_game_step_info(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
@@ -741,113 +830,52 @@ class FtwcAgent(AgentDQN):
 
         return input_description, description_id_list
 
-    def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
-        """
-        Acts upon the current list of observations, during evaluation.
+    # def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
+    #     """
+    #     Acts upon the current list of observations, during evaluation.
+    #
+    #     One text command must be returned for each observation.
+    #
+    #     Arguments:
+    #         obs: Previous command's feedback for each game.
+    #         score: The score obtained so far for each game (at previous step).
+    #         done: Whether a game is finished (at previous step).
+    #         infos: Additional information for each game.
+    #
+    #     Returns:
+    #         Text commands to be performed (one per observation).
+    #
+    #     Notes:
+    #         Commands returned for games marked as `done` have no effect.
+    #         The states for finished games are simply copy over until all
+    #         games are done, in which case `CustomAgent.finish()` is called
+    #         instead.
+    #     """
+    #     use_oracle = True
+    #
+    #     if all(dones):
+    #         self._on_episode_end()  # log/display some stats
+    #         return  # Nothing to return.
+    #
+    #     if use_oracle:
+    #         chosen_strings = []
+    #         game_id = None
+    #         for idx, (obstxt, agent) in enumerate(zip(obs, self.tw_oracles)):
+    #             actiontxt = invoke_oracle(agent, obstxt, infos, idx=idx, step=self.current_step)
+    #             chosen_strings.append(actiontxt)
+    #     else:
+    #         input_description, _ = self.get_game_step_info(obs, infos)
+    #         word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
+    #         word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+    #
+    #         chosen_indices = [item.detach() for item in word_indices_maxq]
+    #         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
+    #     self.prev_actions = chosen_strings
+    #     self.current_step += 1
+    #
+    #     return self.prev_actions
 
-        One text command must be returned for each observation.
-
-        Arguments:
-            obs: Previous command's feedback for each game.
-            score: The score obtained so far for each game (at previous step).
-            done: Whether a game is finished (at previous step).
-            infos: Additional information for each game.
-
-        Returns:
-            Text commands to be performed (one per observation).
-
-        Notes:
-            Commands returned for games marked as `done` have no effect.
-            The states for finished games are simply copy over until all
-            games are done, in which case `CustomAgent.finish()` is called
-            instead.
-        """
-        use_oracle = True
-
-        if self.current_step > 0:
-            # append scores / dones from previous step into memory
-            # append scores / dones from previous step into memory
-            # Update the agent.
-            if use_oracle:
-                for idx, oracle in enumerate(self.tw_oracles):
-                    oracle.observe(self.prev_obs[idx], self.prev_actions[idx], scores[idx], obs[idx], dones[idx])
-                    # Print out this step.
-                    use_groundtruth_player_loc = False
-                    kg = oracle.gi.gt if use_groundtruth_player_loc else oracle.gi.kg
-                    player_location = kg.player_location
-                    print("<Step {}> [{}]{}  {}: [{}]   Score: {}\nobs::".format(
-                        self.current_step,
-                        idx, oracle.env_name if hasattr(oracle, 'env_name') else '',
-                        player_location, self.prev_actions[idx], scores[idx],)) # obs[idx]))
-
-            self.prev_obs = obs  # save for constructing transition during next step
-            self.scores.append(scores)
-            self.dones.append(dones)
-
-        if all(dones):
-            self._end_episode(obs, scores, infos)
-            return  # Nothing to return.
-
-        if use_oracle:
-            chosen_strings = []
-            game_id = None
-            for idx, (obstxt, agent) in enumerate(zip(obs, self.tw_oracles)):
-                # simplify the observation text if it includes notification about incremented score
-                if "Your score has just" in obstxt:
-                    obstxt2 = '\n'.join(
-                        [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
-                    ).strip()
-                else:
-                    obstxt2 = obstxt.strip()
-                print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(self.current_step, idx, obstxt2))
-                if 'inventory' in infos:
-                    print("\tINVENTORY:", infos['inventory'][idx])
-                if 'game_id' in infos:
-                    print("infos[game_id]=", infos['game_id'][idx])
-                    #CHEAT on one specific game (to debug some new code)
-                # if self.current_step == 0:
-                #     actiontxt = "enable print state option"  # this HACK works even without env.activate_state_tracking()
-
-                if 'facts' in infos:
-                    verbose = (self.current_step == 0)
-                    # if agent.gt_nav == agent.active_module and agent.gt_nav._path_idx == len(agent.gt_nav.path):
-                    #     verbose = True
-
-                    world_facts = infos['facts'][idx]
-                    agent.set_ground_truth(world_facts)
-                    observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
-                    print("FACTS IN SCOPE:")
-                    for fact in observable_facts:
-                        print('\t', fact)
-                        # print_fact(game, fact)
-                else:
-                    observable_facts = None
-
-                if self.current_step == 0:
-                    # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
-                    # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
-                    use_groundtruth = False
-                    task_list = [ExploreHereTask(use_groundtruth=use_groundtruth),
-                                 RecipeReaderTask(use_groundtruth=use_groundtruth)]
-                    for task in task_list:
-                        agent.task_exec.queue_task(task)
-
-                actiontxt = agent.choose_next_action(obstxt2, observable_facts=observable_facts, prev_action=self.prev_actions[idx])
-                print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))
-
-                chosen_strings.append(actiontxt)
-        else:
-            input_description, _ = self.get_game_step_info(obs, infos)
-            word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
-            word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-            chosen_indices = [item.detach() for item in word_indices_maxq]
-            chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
-        self.prev_actions = chosen_strings
-        self.current_step += 1
-
-        return chosen_strings
-
-    def act(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
+    def select_next_action(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
         """
         Acts upon the current list of observations.
 
@@ -868,116 +896,52 @@ class FtwcAgent(AgentDQN):
             games are done, in which case `CustomAgent.finish()` is called
             instead.
         """
-        if not self._episode_has_started:
-            self._start_episode(obs, infos)
+        # if not self._episode_has_started:
+        #     self._start_episode(obs, infos)
 
-        if True or self.is_eval_mode():
-            return self.act_eval(obs, scores, dones, infos)
-
-        if self.current_step > 0:
-            # append scores / dones from previous step into memory
-            self.scores.append(scores)
-            self.dones.append(dones)
-            # assert self.mode == MODE_TRAIN
-            # compute previous step's rewards and masks
-            rewards_np, mask_np = self.compute_reward()
-            mask_pt = to_pt(mask_np, self.use_cuda, type='float')
-            rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+        # if self.is_eval_mode():
+        #     return self.select_next_action_eval(obs, scores, dones, infos)
+        #
+        # if not self.is_eval_mode():
+        #     # assert self.mode == MODE_TRAIN
+        #     # compute previous step's rewards and masks
+        #     rewards_pt, mask_pt = self.compute_reward(self.scores, self.dones)
 
         input_description, description_id_list = self.get_game_step_info(obs, infos)
-        # generate commands for one game step, epsilon greedy is applied, i.e.,
-        # there is epsilon of chance to generate random commands
+
         word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
         assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
 
+        # generate commands for one game step, epsilon greedy is applied, i.e.,
+        # there is epsilon of chance to generate random commands
         # _, chosen_indices = choose_command(word_ranks,
         #                                    self.vocab.word_masks_np,
         #                                    self.use_cuda,
         #                                    epsilon=(0.0 if self.is_eval_mode() else self.epsilon))
 
         word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-        if self.is_eval_mode() or self.epsilon == 0.0:
+        if self.is_eval_mode() or self.epsilon <= 0.0:
             chosen_indices = word_indices_maxq
         else:  # if not self.is_eval_mode() and self.epsilon > 0.0:
             word_indices_random = _choose_random_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-            # random number for epsilon greedy
-            _batch_size = word_ranks[0].size(0)
-            rand_num = np.random.uniform(low=0.0, high=1.0, size=(_batch_size, 1))
-            less_than_epsilon = (rand_num < self.epsilon).astype("float32")  # batch
-            greater_than_epsilon = 1.0 - less_than_epsilon
-            less_than_epsilon = to_pt(less_than_epsilon, self.use_cuda, type='float')
-            greater_than_epsilon = to_pt(greater_than_epsilon, self.use_cuda, type='float')
-            less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
-            chosen_indices = [
-                less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq
-                   for idx_random, idx_maxq in zip(word_indices_random, word_indices_maxq)
-            ]
+            chosen_indices = choose_epsilon_greedy(word_indices_maxq, word_indices_random, self.epsilon)
 
         chosen_indices = [item.detach() for item in chosen_indices]
-        chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
+        if self.is_eval_mode():
+            use_oracle = True
+        if use_oracle:
+            chosen_strings = []
+            for idx, (obstxt, agent) in enumerate(zip(obs, self.qgym.tw_oracles)):
+                verbose = (self.current_step == 0)
+                actiontxt = self.qgym.invoke_oracle(idx, obstxt, infos, verbose=verbose)
+                chosen_strings.append(actiontxt)
+            #TODO: if not self.is_eval_mode() compute appropriate chosen_indices
+        else:
+            chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
-        if not self.is_eval_mode():  # if self.mode == self.TRAINING_MODE
-            # push info from previous game step into replay memory
-            if self.current_step > 0:
-                for b in range(len(obs)):
-                    if mask_np[b] == 0:
-                        continue
-                    is_prior = rewards_np[b] > 0.0
-
-                    transition = Transition(
-                            observation_id_list=self.cache_description_id_list[b],
-                            word_indices=[item[b] for item in self.cache_chosen_indices],
-                            reward=rewards_pt[b],
-                            mask=mask_pt[b],
-                            done=dones[b],
-                            next_observation_id_list=description_id_list[b],
-                            next_word_masks=[word_mask[b]
-                                             for word_mask in self.vocab.word_masks_np])
-
-                    self.replay_memory.push(is_prior=is_prior, transition=transition)
-
-            # cache new info in current game step into caches
-            self.cache_description_id_list = description_id_list
-            self.cache_chosen_indices = chosen_indices
-
-            # update neural model by replaying snapshots in replay memory
-            if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-                loss = self.update()
-                if loss is not None:
-                    # Backpropagate
-                    self.backpropagate(loss)
-
         self.current_step += 1
-
-        if all(dones):
-            self._on_episode_end()  # log/display some stats
-            return None  # Nothing to return.
-        return self.prev_actions
-
-    def compute_reward(self):
-        """
-        Compute rewards by agent. Note this is different from what the training/evaluation
-        scripts do. Agent keeps track of scores and other game information for training purpose.
-
-        """
-        # mask = 1 if game is not finished or just finished at current step
-        if len(self.dones) == 1:
-            # it's not possible to finish a game at 0th step
-            mask = [1.0 for _ in self.dones[-1]]
-        else:
-            assert len(self.dones) > 1
-            mask = [1.0 if not self.dones[-2][i] else 0.0 for i in range(len(self.dones[-1]))]
-        mask = np.array(mask, dtype='float32')
-        # rewards returned by game engine are always accumulated value the
-        # agent has received. so the reward it gets in the current game step
-        # is the new value minus value at previous step.
-        # is the new value minus value at previous step.
-        rewards = np.array(self.scores[-1], dtype='float32')  # batch
-        if len(self.scores) > 1:
-            prev_rewards = np.array(self.scores[-2], dtype='float32')
-            rewards = rewards - prev_rewards
-        return rewards, mask
+        return self.prev_actions, chosen_indices, description_id_list
 
     def _on_episode_end(self) -> None: # NOTE: this is *not* a PL callback
         # Game has finished (either win, lose, or exhausted all the given steps).
@@ -985,7 +949,6 @@ class FtwcAgent(AgentDQN):
             [":{}: [{}]".format(gameid, actiontxt) for idx, (gameid, actiontxt) in
              enumerate(zip(self.qgym.game_ids, self.prev_actions))])
         print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
-
 
     def validation_step(self, batch, batch_idx):
         print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")
