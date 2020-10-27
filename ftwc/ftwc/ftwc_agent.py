@@ -476,7 +476,6 @@ class AgentDQN(pl.LightningModule):
         if all(dones):
             self._on_episode_end()  # log/display some stats
 
-
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
         # batch_size = self.batch_size
@@ -791,7 +790,7 @@ class FtwcAgent(AgentDQN):
         batch_size = len(obs)
         self.prev_actions = ['' for _ in range(batch_size)]
 
-        self.qgym.on_start_episode(obs, infos, episode_no=self.current_episode)
+        obs, infos = self.qgym.on_start_episode(obs, infos, episode_no=self.current_episode)
 
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         assert len(self.vocab.word_masks_np) == self.model.generate_length,\
@@ -931,9 +930,11 @@ class FtwcAgent(AgentDQN):
             use_oracle = True
         if use_oracle:
             chosen_strings = []
-            for idx, (obstxt, agent) in enumerate(zip(obs, self.qgym.tw_oracles)):
-                verbose = (self.current_step == 0)
-                actiontxt = self.qgym.invoke_oracle(idx, obstxt, infos, verbose=verbose)
+            # for idx, (obstxt, agent) in enumerate(zip(obs, self.qgym.tw_oracles)):
+            for idx in range(len(obs)):
+                # verbose = (self.current_step == 0)
+                # actiontxt = self.qgym.invoke_oracle(idx, obstxt, infos, verbose=verbose)
+                actiontxt = infos['tw_o_step'][idx]
                 chosen_strings.append(actiontxt)
             #TODO: if not self.is_eval_mode() compute appropriate chosen_indices
         else:

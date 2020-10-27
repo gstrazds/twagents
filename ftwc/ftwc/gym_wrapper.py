@@ -301,7 +301,21 @@ class QaitGym:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
                 oracle.observe(commands[idx], scores[idx], obs[idx], dones[idx], idx=idx)
+                # populate oracle recommended action
+                infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
         return obs, scores, dones, infos
+
+    def _compute_oracle_action(self, idx, infos, obs, dones=None, verbose=False):
+        if 'tw_o_step' not in infos:
+            assert idx == 0, \
+                f"we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
+            infos['tw_o_step'] = ['action'] * len(self.tw_oracles)  # will be replaced before anyone sees these
+            if dones and dones[idx]:  # agent idx has already terminated, don't invoke it again
+                actiontxt = 'do nothing'
+            else:
+                actiontxt = self.invoke_oracle(idx, obs[idx], infos, verbose=verbose)
+        infos['tw_o_step'][idx] = actiontxt
+        return infos
 
     def on_start_episode(self, obs: List[str], infos: Dict[str, List[Any]], episode_no=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
@@ -348,6 +362,10 @@ class QaitGym:
             for task in task_list:
                 tw_o.task_exec.queue_task(task)
 
+            # populate oracle recommended action
+            infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
+        return obs, infos
+
     def invoke_oracle(self, idx, obstxt, infos, verbose=False) -> str:
         assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
         tw_oracle = self.tw_oracles[idx]
@@ -389,7 +407,7 @@ class QaitGym:
         #         tw_oracle.task_exec.queue_task(task)
 
         actiontxt = tw_oracle.choose_next_action(obstxt2, observable_facts=observable_facts)
-        print("NAIL[{}] choose_next_action -> {}".format(idx, actiontxt))
+        print("QGYM[{}] choose_next_action -> {}".format(idx, actiontxt))
         return actiontxt
 
     def ensure_gameinfo_file(self, gamefile, env_seed=42, save_to_file=True):
