@@ -22,26 +22,6 @@ def to_pt(np_matrix, enable_cuda=False, type='long'):
             return torch.autograd.Variable(torch.from_numpy(np_matrix).type(torch.FloatTensor))
 
 
-def preproc(s, str_type='None', tokenizer=None, lower_case=True):
-    if s is None:
-        return ["nothing"]
-    s = s.replace("\n", ' ')
-    if s.strip() == "":
-        return ["nothing"]
-    if str_type == 'feedback':
-        if "$$$$$$$" in s:
-            s = ""
-        if "-=" in s:
-            s = s.split("-=")[0]
-    s = s.strip()
-    if len(s) == 0:
-        return ["nothing"]
-    tokens = [t.text for t in tokenizer(s)]
-    if lower_case:
-        tokens = [t.lower() for t in tokens]
-    return tokens
-
-
 def max_len(list_of_list):
     return max(map(len, list_of_list))
 

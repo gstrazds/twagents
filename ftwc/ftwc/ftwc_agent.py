@@ -808,15 +808,15 @@ class FtwcAgent(AgentDQN):
             infos: Additional information for each game.
         """
         # word2id = self.vocab.word2id
-        inventory_id_list = self.vocab.get_token_ids_for_items(infos["inventory"])
+        inventory_id_list = self.vocab.token_id_lists_from_strings(infos["inventory"])
 
-        feedback_id_list = self.vocab.get_token_ids_for_items(obs)
+        feedback_id_list = self.vocab.token_id_lists_from_strings(obs, str_type="feedback")
 
-        quest_id_list = self.vocab.get_token_ids_for_items(infos["extra.recipe"])
+        quest_id_list = self.vocab.token_id_lists_from_strings(infos["extra.recipe"])
 
-        prev_action_id_list = self.vocab.get_token_ids_for_items(self.prev_actions)
+        prev_action_id_list = self.vocab.token_id_lists_from_strings(self.prev_actions)
 
-        description_id_list = self.vocab.get_token_ids_for_items(infos["description"], subst_if_empty=['end'])
+        description_id_list = self.vocab.token_id_lists_from_strings(infos["description"], subst_if_empty=['end'])
 
         description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
                                                                                         inventory_id_list,
@@ -936,7 +936,16 @@ class FtwcAgent(AgentDQN):
                 # actiontxt = self.qgym.invoke_oracle(idx, obstxt, infos, verbose=verbose)
                 actiontxt = infos['tw_o_step'][idx]
                 chosen_strings.append(actiontxt)
+
             #TODO: if not self.is_eval_mode() compute appropriate chosen_indices
+            oracle_indices = self.vocab.command_strings_to_np(chosen_strings)  # pad and convert to token ids
+            chosen_indices0 = chosen_indices
+            chosen_indices = [to_pt(item, self.use_cuda) for item in oracle_indices]
+            chosen_indices = [item.unsqueeze(-1) for item in chosen_indices]  # list of 5 tensors, each w size: batch x 1
+            # print(f'DEBUGGING use_oracle: len:{len(chosen_indices)}=={len(chosen_indices0)} shape: {chosen_indices[0].shape}=={chosen_indices0[0].shape} {chosen_indices} {chosen_indices0}')
+            assert len(chosen_indices) == len(chosen_indices0)
+            for _i in range(len(chosen_indices0)):
+                assert chosen_indices0[_i].shape == chosen_indices[_i].shape
         else:
             chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings

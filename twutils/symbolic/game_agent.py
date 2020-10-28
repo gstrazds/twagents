@@ -3,7 +3,7 @@ import logging
 # from symbolic.game import GameInstance
 # from symbolic import gv
 # from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import GTNavigator, GTRecipeReader, GTAcquire, TaskExecutor   # GTEnder
+from symbolic.decision_modules import TaskExecutor  #, GTNavigator, GTRecipeReader, GTAcquire,   # GTEnder
 from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 # from symbolic.entity import Entity
 from symbolic.entity import Location

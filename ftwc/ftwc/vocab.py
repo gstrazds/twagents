@@ -1,10 +1,40 @@
 import copy
+from typing import List
 import numpy as np
 import spacy
-from .generic import preproc, to_np
-
+from .generic import to_np
 
 _global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
+
+
+def preproc_tw_output(s, str_type='None', tokenizer=None, lower_case=True):
+    if s is None:
+        return ["nothing"]
+    s = s.replace("\n", ' ')
+    if s.strip() == "":
+        return ["nothing"]
+    if str_type == 'feedback':
+        if "$$$$$$$" in s:
+            s = ""
+        if "-=" in s:
+            s = s.split("-=")[0]
+    s = s.strip()
+    if len(s) == 0:
+        return ["nothing"]
+    tokens = [t.text for t in tokenizer(s)]
+    if lower_case:
+        tokens = [t.lower() for t in tokens]
+    return tokens
+
+
+
+def _ensure_padded_len(list_of_ids: List[int], pad_to_len: int, pad_value: int) -> List[int]:
+    delta_len = pad_to_len - len(list_of_ids)
+    if delta_len > 0:
+        return list_of_ids + [pad_value] * delta_len
+    elif delta_len < 0:
+        return list_of_ids[:pad_to_len]
+    return list_of_ids   # only get here if the list was already of the correct length
 
 
 class WordVocab:
@@ -12,9 +42,12 @@ class WordVocab:
         with open(vocab_file) as f:
             self.word_vocab = f.read().split("\n")
         self.word2id = {}
+        # self.id2word = []  # same as self.word_vocab
         for i, w in enumerate(self.word_vocab):
             self.word2id[w] = i
+            # self.id2word[i] = w  # same as self.word_vocab
         self.EOS_id = self.word2id["</S>"]
+        self.UNK_id = self.word2id.get("<UNK>", self.word2id.get("<unk>", 1))  # default: 1 if neither "<UNK>" or "<unk>"
         self.single_word_verbs = set(["inventory", "look"])
         self.preposition_map = {"take": "from",
                                 "chop": "with",
@@ -90,9 +123,9 @@ class WordVocab:
         second_adj_mask[:, self.EOS_id] = 1.0
         self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
 
-    def _word_ids_to_commands(self, verb, adj, noun, adj_2, noun_2):
+    def _word_ids_to_command_str(self, verb, adj, noun, adj_2, noun_2) -> str:
         """
-        Turn the 5 indices into actual command strings.
+        Turn the 5 model-generated indices into an actual command string.
 
         Arguments:
             verb: Index of the guessing verb in vocabulary
@@ -101,7 +134,7 @@ class WordVocab:
             adj_2: Index of the second guessing adjective in vocabulary
             noun_2: Index of the second guessing noun in vocabulary
         """
-        # turns 5 indices into actual command strings
+        # turns 5 indices into an actual command string
         if self.word_vocab[verb] in self.single_word_verbs:
             return self.word_vocab[verb]
         if adj == self.EOS_id:
@@ -135,26 +168,41 @@ class WordVocab:
                                              chosen_indices_np[2][i],\
                                              chosen_indices_np[3][i],\
                                              chosen_indices_np[4][i]
-            res_str.append(self._word_ids_to_commands(verb, adj, noun, adj_2, noun_2))
+            res_str.append(self._word_ids_to_command_str(verb, adj, noun, adj_2, noun_2))
         return res_str
 
-    def _words_to_ids(self, words):
-        ids = []
-        for word in words:
-            try:
-                ids.append(self.word2id[word])
-            except KeyError:
-                ids.append(1)
-        return ids
+    def _words_to_ids(self, words: List[str]) -> List[int]:
+        return [self.word2id.get(word, self.UNK_id) for word in words]
+        # ids = []
+        # for word in words:
+            # try:
+            #   ids.append(self.word2id.get(word, self.UNK_id))
+            # except KeyError:
+            #     ids.append(1)
+        # return ids
 
-    def get_token_ids_for_items(self, item_list, subst_if_empty=None):
-        token_list = [preproc(item, tokenizer=self.get_tokenizer()) for item in item_list]
+    def token_id_lists_from_strings(self, item_list: List[str], str_type=None, subst_if_empty=None):
+        token_lists = [preproc_tw_output(item, str_type=str_type, tokenizer=self.get_tokenizer())
+                      for item in item_list]
         if subst_if_empty:
-            for i, d in enumerate(token_list):
-                if len(d) == 0:
-                    token_list[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
-        id_list = [self._words_to_ids(tokens) for tokens in token_list]
-        return id_list
+            for i, d in enumerate(token_lists):
+                if not d:  #len(d) == 0:
+                    token_lists[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
+        id_lists = [self._words_to_ids(tokens) for tokens in token_lists]
+        return id_lists
+
+    def command_strings_to_np(self, command_strings, pad_to_len=5, pad=0):   # pad token id
+        # TODO: REWRITE THIS!
+        list_of_id_lists = self.token_id_lists_from_strings(command_strings)
+        # assert len(oracle_word_indices) == batch_size  # list (len=n_batch) of lists (token ids)
+        list_of_padded_idlists = [_ensure_padded_len(idlist, pad_to_len, pad) for idlist in list_of_id_lists]
+        return_list = [ [] for _ in range(pad_to_len)]
+        for idlist in list_of_padded_idlists:
+            for i in range(pad_to_len):
+                return_list[i].append(idlist[i])
+        for i in range(len(return_list)):
+            return_list[i] = np.array(return_list[i])
+        return return_list
 
     def get_tokenizer(self):
         # if not self.nlp:    #TODO: this should be a per-process singleton
