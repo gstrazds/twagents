@@ -335,7 +335,6 @@ class AgentDQN(pl.LightningModule):
         # CustomAgent.__init__(self)
         seedval = cfg.general.random_seed
 
-        self.qgym = QaitGym(random_seed=seedval)
         self.gym_env = None
         self.mode = self.MODE_TRAIN
 
@@ -344,6 +343,9 @@ class AgentDQN(pl.LightningModule):
 
         self.hparams = cfg   # will be saved in checkpoints by PyTorchLightning
         self.vocab = WordVocab(vocab_file=cfg.general.vocab_words)
+
+        # NOTE: base_vocab is an optimization hack that won't quite work with async parallel batches
+        self.qgym = QaitGym(random_seed=seedval, base_vocab=self.vocab)  # it also doesn't actually help speed things up
 
         # training
         # self.batch_size = cfg.training.batch_size
@@ -776,9 +778,13 @@ class FtwcAgent(AgentDQN):
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
-        self.gym_env = self.qgym.make_batch_env(gamefiles, self.requested_infos, batch_size=len(gamefiles))  #self.cfg.training.batch_size)
+        self.gym_env = self.qgym.make_batch_env(gamefiles, self.vocab,
+                                                request_infos=self.requested_infos,
+                                                batch_size=len(gamefiles))  #self.cfg.training.batch_size)
         obs, infos = self.gym_env.reset()
         # self.start_episode_infos(obs, infos)
+        assert len(self.vocab.word_masks_np) == self.model.generate_length, \
+                f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"  # == 5
 
         self.prev_obs = obs
         self.cache_description_id_list = None   # similar to .prev_obs
@@ -789,10 +795,6 @@ class FtwcAgent(AgentDQN):
         self.dones = []
         batch_size = len(obs)
         self.prev_actions = ['' for _ in range(batch_size)]
-
-        self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
-        assert len(self.vocab.word_masks_np) == self.model.generate_length,\
-            f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"   # == 5
 
         return obs, infos
 

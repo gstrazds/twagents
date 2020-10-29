@@ -16,6 +16,7 @@ from symbolic.task_modules.navigation_task import ExploreHereTask
 from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
+from .vocab import WordVocab
 
 # adapted from QAit (customized) version of textworld.generator.game.py
 def game_objects(game: Game) -> List[EntityInfo]:
@@ -220,9 +221,12 @@ def parse_gameid(game_id: str) -> str:
 
 
 class QaitEnvWrapper(gym.Wrapper):
-    def __init__(self, env, random_seed=42, **kwargs):
-        self.random_seed = random_seed
+    def __init__(self, env, vocab=None, random_seed=None, **kwargs):
         super().__init__(env, **kwargs)
+        if random_seed is None:
+            random_seed = 42
+        self.random_seed = random_seed
+        self.vocab = vocab
         self.game_ids = []
         self.tw_oracles = []
         self.episode_counter = -1
@@ -261,6 +265,7 @@ class QaitEnvWrapper(gym.Wrapper):
             self.episode_counter += 1
 
         obs, infos = self.env.reset()
+        self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
         return obs, infos
 
@@ -389,9 +394,13 @@ class QaitEnvWrapper(gym.Wrapper):
 
 
 class QaitGym:
-    def __init__(self, random_seed=42, **kwargs):
+    def __init__(self, base_vocab=None, random_seed=42, **kwargs):
         super().__init__(**kwargs)
+        self.base_vocab = base_vocab
         self.random_seed = random_seed
+        if base_vocab is not None:
+            self._action_space = Word(max_length=5, vocab=self.base_vocab.word_vocab)
+            self._obs_space = Word(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
 
     def _register_batch_games(self,
                     gamefiles: List[str],
@@ -419,19 +428,36 @@ class QaitGym:
             name=name,
             **kwargs)
 
-    def make_batch_env(self, gamefiles, request_infos: Optional[EnvInfos] = None, batch_size=None, **kwargs):
+    def make_batch_env(self, gamefiles, vocab, request_infos: Optional[EnvInfos] = None, batch_size=None, **kwargs):
+        if self.base_vocab:
+            print("REUSING SHARED WordSpaces")  # NOTE: this HACK doesn't actually speed things up! (unknown why)
+            _action_space = self._action_space
+            _obs_space = self._obs_space
+        else:
+            print("CREATING NEW WordSpaces")
+            _action_space = Word(max_length=5, vocab=vocab.word_vocab),
+            _obs_space = Word(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
+
         batch_env_id = self._register_batch_games(gamefiles=gamefiles,
-                                         request_infos=request_infos,
-                                         batch_size=batch_size,
-                                         asynchronous=False,
-                                         **kwargs)
+                                                  request_infos=request_infos,
+                                                  batch_size=batch_size,
+                                                  asynchronous=False,
+ # GVS NOTE: adding the following action_space and observation_space adds some noticeable overhead (close to +3 secs when running 20 eval episodes)
+ # TODO: could share across episodes most of the initialization overhead for these gym.Space classes
+ # ( especially if we know that wrapped envs will not be used asynchronously )
+ #                                                  action_space=Word(max_length=5, vocab=vocab.word_vocab),
+ #                                                  observation_space=Word(max_length=WordVocab.MAX_NUM_OBS_TOKENS,
+ #                                                                         vocab=vocab.word_vocab),
+                                                  action_space=_action_space,
+                                                  observation_space=_obs_space,
+                                                  **kwargs)
         print(f"Registered {len(gamefiles)} gamefiles as {batch_env_id}")
         for igf, gf in enumerate(gamefiles):
             print(f" *** make_batch_env registered [{igf}]: {gf}")
         #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
         # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
-        gym_env = QaitEnvWrapper(gym.make(batch_env_id), random_seed=self.random_seed)
+        gym_env = QaitEnvWrapper(gym.make(batch_env_id), vocab=vocab, random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
