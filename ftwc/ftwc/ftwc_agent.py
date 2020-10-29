@@ -432,7 +432,7 @@ class AgentDQN(pl.LightningModule):
         super().eval()
 
     def step_env(self, commands: List[str]):  #-> List[str], List[int], List[bool], List[Map]
-            obs, scores, dones, infos = self.qgym.step_env(self.gym_env, commands)
+            obs, scores, dones, infos = self.gym_env.step(commands)
             return obs, scores, dones, infos
 
     def save_transition_for_replay(self, rewards_np, mask_np, obs_idlist, act_idlist):
@@ -474,7 +474,7 @@ class AgentDQN(pl.LightningModule):
             self.save_transition_for_replay(rewards_np, mask_np, obs_idlist, act_idlist)
 
         if all(dones):
-            self._on_episode_end()  # log/display some stats
+            self.gym_env._on_episode_end()  # log/display some stats
 
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
@@ -790,8 +790,6 @@ class FtwcAgent(AgentDQN):
         batch_size = len(obs)
         self.prev_actions = ['' for _ in range(batch_size)]
 
-        obs, infos = self.qgym.on_start_episode(obs, infos, episode_no=self.current_episode)
-
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         assert len(self.vocab.word_masks_np) == self.model.generate_length,\
             f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"   # == 5
@@ -952,13 +950,6 @@ class FtwcAgent(AgentDQN):
 
         self.current_step += 1
         return self.prev_actions, chosen_indices, description_id_list
-
-    def _on_episode_end(self) -> None: # NOTE: this is *not* a PL callback
-        # Game has finished (either win, lose, or exhausted all the given steps).
-        all_endactions = " ".join(
-            [":{}: [{}]".format(gameid, actiontxt) for idx, (gameid, actiontxt) in
-             enumerate(zip(self.qgym.game_ids, self.prev_actions))])
-        print(f"_end_episode[{self.current_episode}] <Step {self.current_step}> {all_endactions}")
 
     def validation_step(self, batch, batch_idx):
         print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")

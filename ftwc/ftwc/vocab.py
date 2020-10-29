@@ -6,6 +6,10 @@ from .generic import to_np
 
 _global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
 
+# note: max words in a room description for ftwc training games is approx 243 (but not counting spaces or punct)
+# also inventory and other feedback can dynamically be added to the raw description
+MAX_NUM_OBS_TOKENS = 768
+MAX_NUM_CMD_TOKENS = 8
 
 def preproc_tw_output(s, str_type='None', tokenizer=None, lower_case=True):
     if s is None:

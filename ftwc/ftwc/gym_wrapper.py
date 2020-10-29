@@ -7,6 +7,7 @@ import textworld
 import textworld.gym
 from textworld import EnvInfos
 from textworld.generator.game import Game, EntityInfo
+from textworld.gym.spaces import Word, Char
 import rlpyt.envs.gym
 
 from symbolic.game_agent import TextGameAgent
@@ -218,19 +219,20 @@ def parse_gameid(game_id: str) -> str:
     return shortcode
 
 
-class QaitGym:
-    def __init__(self, random_seed=42, **kwargs):
-        super().__init__(**kwargs)
+class QaitEnvWrapper(gym.Wrapper):
+    def __init__(self, env, random_seed=42, **kwargs):
         self.random_seed = random_seed
+        super().__init__(env, **kwargs)
         self.game_ids = []
         self.tw_oracles = []
+        self.episode_counter = -1
 
-    def _get_gameid(self, idx):
-        if len(self.game_ids) > idx:
-            gameid = self.game_ids[idx]
-        else:
-            gameid = str(idx)
-        return gameid
+    # def _get_gameid(self, idx):
+    #     if len(self.game_ids) > idx:
+    #         gameid = self.game_ids[idx]
+    #     else:
+    #         gameid = str(idx)
+    #     return gameid
 
     def set_game_id(self, game_id, idx):
         if idx < len(self.game_ids):
@@ -252,51 +254,18 @@ class QaitGym:
     #         del gym.envs.registry.env_specs[env_id]
     #
 
-    def _make_batch2(self,
-                    gamefiles: List[str],
-                    request_infos: Optional[EnvInfos] = None,
-                    batch_size: Optional[int] = None,
-                    auto_reset: bool = False,
-                    max_episode_steps: int = 50,
-                    asynchronous: bool = False,
-                    action_space: Optional[gym.Space] = None,
-                    observation_space: Optional[gym.Space] = None,
-                    name: str = None,
-                    **kwargs) -> str:
+    def reset(self, episode_num: Optional[int] = None):
+        if episode_num is not None:
+            self.episode_counter = episode_num
+        else:
+            self.episode_counter += 1
 
-        if request_infos is None:
-            request_infos = request_step_infos
-        return textworld.gym.register_games(
-            gamefiles=gamefiles,
-            request_infos=request_infos,
-            batch_size=batch_size,
-            auto_reset=auto_reset,
-            max_episode_steps=max_episode_steps,
-            asynchronous=asynchronous,
-            action_space=action_space,
-            observation_space=observation_space,
-            name=name,
-            **kwargs)
+        obs, infos = self.env.reset()
+        obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
+        return obs, infos
 
-    def make_batch_env(self, gamefiles, request_infos: Optional[EnvInfos] = None, batch_size=None, **kwargs):
-        batch_env_id = self._make_batch2(gamefiles=gamefiles,
-                                         request_infos=request_infos,
-                                         batch_size=batch_size,
-                                         asynchronous=False,
-                                         **kwargs)
-        print(f"Registered {len(gamefiles)} gamefiles as {batch_env_id}")
-        for igf, gf in enumerate(gamefiles):
-            print(f" *** make_batch_env registered [{igf}]: {gf}")
-        #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
-        # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
-        ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
-        gym_env = gym.make(batch_env_id)
-        env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
-        # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
-        return gym_env  #, batch_env_id
-
-    def step_env(self, gym_env, commands: List[str]):
-        obs, scores, dones, infos = gym_env.step(commands)
+    def step(self, commands: List[str]):
+        obs, scores, dones, infos = self.env.step(commands)
         if self.tw_oracles:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
@@ -317,7 +286,7 @@ class QaitGym:
         infos['tw_o_step'][idx] = actiontxt
         return infos
 
-    def on_start_episode(self, obs: List[str], infos: Dict[str, List[Any]], episode_no=0):
+    def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         # print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
 
@@ -350,7 +319,7 @@ class QaitGym:
                 meal.location = gt._nowhere  # the meal doesn't yet exist in the world
             else:
                 assert idx < len(self.tw_oracles)
-                if episode_no > 0:
+                if episode_counter > 0:
                     if need_to_forget:
                         self.tw_oracles[idx].setup_logging(game_id, idx)
                     self.tw_oracles[idx].reset(forget_everything=need_to_forget)
@@ -365,6 +334,14 @@ class QaitGym:
             # populate oracle recommended action
             infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
         return obs, infos
+
+    def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback
+        # Game has finished (either win, lose, or exhausted all the given steps).
+        if self.tw_oracles:
+            all_endactions = " ".join(
+                [":{}: [{}]".format(gameid, tw_oracle.last_action) for idx, (gameid, tw_oracle) in
+                 enumerate(zip(self.game_ids, self.tw_oracles))])
+            print(f"_end_episode[{self.episode_counter}] <Step {self.tw_oracles[0].step_num}> {all_endactions}")
 
     def invoke_oracle(self, idx, obstxt, infos, verbose=False) -> str:
         assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
@@ -397,7 +374,7 @@ class QaitGym:
         else:
             observable_facts = None
 
-        # if step == 0:    # moved to on_start_episode()
+        # if step == 0:    # moved to on_episode_start()
         #     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
         #     # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
         #     use_groundtruth = False
@@ -409,6 +386,55 @@ class QaitGym:
         actiontxt = tw_oracle.choose_next_action(obstxt2, observable_facts=observable_facts)
         print("QGYM[{}] choose_next_action -> {}".format(idx, actiontxt))
         return actiontxt
+
+
+class QaitGym:
+    def __init__(self, random_seed=42, **kwargs):
+        super().__init__(**kwargs)
+        self.random_seed = random_seed
+
+    def _register_batch_games(self,
+                    gamefiles: List[str],
+                    request_infos: Optional[EnvInfos] = None,
+                    batch_size: Optional[int] = None,
+                    auto_reset: bool = False,
+                    max_episode_steps: int = 50,
+                    asynchronous: bool = False,
+                    action_space: Optional[gym.Space] = None,
+                    observation_space: Optional[gym.Space] = None,
+                    name: str = None,
+                    **kwargs) -> str:
+
+        if request_infos is None:
+            request_infos = request_step_infos
+        return textworld.gym.register_games(
+            gamefiles=gamefiles,
+            request_infos=request_infos,
+            batch_size=batch_size,
+            auto_reset=auto_reset,
+            max_episode_steps=max_episode_steps,
+            asynchronous=asynchronous,
+            action_space=action_space,
+            observation_space=observation_space,
+            name=name,
+            **kwargs)
+
+    def make_batch_env(self, gamefiles, request_infos: Optional[EnvInfos] = None, batch_size=None, **kwargs):
+        batch_env_id = self._register_batch_games(gamefiles=gamefiles,
+                                         request_infos=request_infos,
+                                         batch_size=batch_size,
+                                         asynchronous=False,
+                                         **kwargs)
+        print(f"Registered {len(gamefiles)} gamefiles as {batch_env_id}")
+        for igf, gf in enumerate(gamefiles):
+            print(f" *** make_batch_env registered [{igf}]: {gf}")
+        #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
+        # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
+        ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
+        gym_env = QaitEnvWrapper(gym.make(batch_env_id), random_seed=self.random_seed)
+        env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
+        # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
+        return gym_env  #, batch_env_id
 
     def ensure_gameinfo_file(self, gamefile, env_seed=42, save_to_file=True):
         # NOTE: individual gamefiles have already been registered

@@ -46,6 +46,10 @@ class TextGameAgent:
             # self.rom_name = rom_name
         self._init_modules()
 
+    @property
+    def last_action(self) -> str:
+        return self._last_action.text() if self._last_action else None
+
     def reset(self, forget_everything=False):
         groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())    # start fresh with empty graph
         if forget_everything:
