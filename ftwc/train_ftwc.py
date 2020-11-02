@@ -117,11 +117,18 @@ def main(cfg: DictConfig) -> None:
         deterministic=True,
         distributed_backend='dp',
         # val_check_interval=100,
-        max_epochs=0,  # does not call training_step() at all
+        max_epochs=1,
+        # max_epochs=0,  # does not call training_step() at all
         limit_val_batches=0,  # prevent validation_step() from getting called
         limit_test_batches=n_eval_subset  # eval a subset of test_set to speed things up while debugging
     )
     # os.mkdir("lightning_logs")
+# HACK! TEMPORARY: this should be part of train_dataloader
+    agent.initialize_episode([games[0]])
+
+    # UGLY HACK so we can construct a transition and compute a loss
+    agent.prepare_for_fake_replay()
+# END HACK
     trainer.fit(agent, data)
     # TODO: add callback to achieve:
     #     for epoch_no in range(1, cfg.training.nb_epochs + 1):

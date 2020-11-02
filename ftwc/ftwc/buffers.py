@@ -45,13 +45,13 @@ class PrioritizedReplayMemory(object):
         self.alpha_memory, self.beta_memory = [], []
         self.alpha_position, self.beta_position = 0, 0
 
-    def push(self, is_prior=False, transition: Transition = None):
+    def push(self, is_priority=False, transition: Transition = None):
         """Saves a transition."""
         assert transition is not None
 
         if self.priority_fraction == 0.0:
-            is_prior = False
-        if is_prior:
+            is_priority = False
+        if is_priority:
             if len(self.alpha_memory) < self.alpha_capacity:
                 self.alpha_memory.append(None)
             self.alpha_memory[self.alpha_position] = transition #Transition(*args)

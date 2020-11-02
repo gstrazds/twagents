@@ -242,7 +242,7 @@ class TextGameAgent:
                 prev_action = self._last_action.text()
 
         if prev_action and self._last_action:
-            assert prev_action == self._last_action.text()
+            assert prev_action == self._last_action.text(), f"{prev_action} should== {self._last_action}"
             self.gi.action_recognized(self._last_action, new_obs)
         elif prev_action:
             self.gi.action_recognized(prev_action, new_obs)  # Updates the unrecognized words

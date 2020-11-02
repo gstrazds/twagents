@@ -60,6 +60,20 @@ def training_batch_generator(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Te
             break
 
 
+class GameStepDataset(torch.utils.data.Dataset):
+    """PyTorch dataset of First TextWorld Challenge (cooking) games"""
+
+    def __init__(self, num_steps=2000):
+        self.num_steps = num_steps
+
+    def __len__(self):
+        return self.num_steps
+
+    def __getitem__(self, idx):
+        """Generates one sample of data"""
+        # Select sample
+        return idx
+
 class GamefileDataset(torch.utils.data.Dataset):
     """PyTorch dataset of First TextWorld Challenge (cooking) games"""
 
@@ -100,9 +114,10 @@ class GamefileDataModule(pl.LightningDataModule):
             if total > 1:
                 val_len = max(1, int(0.1 * total))
                 train_len = total - val_len
-                self.train_ds, self.val_ds = random_split(gamefiles_ds, [train_len, val_len])
+                _, self.val_ds = random_split(gamefiles_ds, [train_len, val_len])
+                self.train_ds = GameStepDataset()
             else:  # if we only have one training game, use it for both training and validation
-                self.train_ds = gamefiles_ds
+                self.train_ds = GameStepDataset()
                 self.val_ds = gamefiles_ds
             # self.dims = self.mnist_train[0][0].shape
 

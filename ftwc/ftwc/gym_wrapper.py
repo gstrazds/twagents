@@ -275,8 +275,11 @@ class QaitEnvWrapper(gym.Wrapper):
         if self.tw_oracles:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
-                oracle.observe(commands[idx], scores[idx], obs[idx], dones[idx], idx=idx)
-                # populate oracle recommended action
+                if commands and commands[idx] == 'do nothing':
+                    pass
+                else:
+                    oracle.observe(commands[idx], scores[idx], obs[idx], dones[idx], idx=idx)
+                    # populate oracle recommended action
                 infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
         return obs, scores, dones, infos
 
