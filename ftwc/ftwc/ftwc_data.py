@@ -1,8 +1,63 @@
-from typing import List, Optional, Any
-
+from typing import List, Optional, Tuple, Any
+import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
 import pytorch_lightning as pl
+
+from .buffers import Transition
+
+
+def training_batch_generator(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    logic for generating a new batch of data (from the replay buffer to be passed to the DataLoader
+
+    Returns:
+        yields a Experience tuple containing the state, action, reward, done and next_state.
+    """
+    episode_reward = 0
+    episode_steps = 0
+
+    while True:
+        self.total_steps += 1
+        episode_steps += 1
+        # choose next action: AgentDQN.select_next_action()
+        # action = self.agent(self.state, self.device)
+        # step environment and observe results: AgentDQN.training_step()
+        # next_state, r, is_done, _ = self.env.step(action[0])
+        # episode_reward += r
+        # add transition to replay buffer: AgentDQN.save_transition_for_replay()
+        # exp = Experience(state=self.state, action=action[0], reward=r, done=is_done, new_state=next_state)
+        # exp = Transition(observation_id_list=,
+        #                  word_indices=,
+        #                  reward=r,
+        #                  mask=,
+        #                  done=is_done,
+        #                  next_observation_id_list=,
+        #                  next_word_masks=)
+        #
+        # self.agent.update_epsilon(self.global_step)
+        # self.buffer.append(exp)
+        # self.state = next_state
+
+        if is_done:
+            self.done_episodes += 1
+            self.total_rewards.append(episode_reward)
+            self.total_episode_steps.append(episode_steps)
+            self.avg_rewards = float(
+                np.mean(self.total_rewards[-self.avg_reward_len:])
+            )
+            self.state = self.env.reset()
+            episode_steps = 0
+            episode_reward = 0
+
+        states, actions, rewards, dones, new_states = self.buffer.sample(self.batch_size)
+
+        for idx, _ in enumerate(dones):
+            yield states[idx], actions[idx], rewards[idx], dones[idx], new_states[idx]
+
+        # Simulates epochs
+        if self.total_steps % self.batches_per_epoch == 0:
+            break
 
 
 class GamefileDataset(torch.utils.data.Dataset):

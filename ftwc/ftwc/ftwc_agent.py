@@ -152,10 +152,8 @@ def compute_per_step_rewards(scores, dones):
         assert len(dones) > 1
         mask = [1.0 if not dones[-2][i] else 0.0 for i in range(len(dones[-1]))]
     mask_np = np.array(mask, dtype='float32')
-    # rewards returned by game engine are always accumulated value the
-    # agent has received. so the reward it gets in the current game step
-    # is the new value minus value at previous step.
-    # is the new value minus value at previous step.
+    # rewards returned by game engine are always the accumulated value received during the entire episode.
+    # so the reward it gets in the current game step is the new value minus value at previous step.
     assert scores
     assert len(scores)
     rewards_np = np.array(scores[-1], dtype='float32')  # batch
@@ -163,7 +161,6 @@ def compute_per_step_rewards(scores, dones):
         prev_rewards = np.array(scores[-2], dtype='float32')
         rewards_np = rewards_np - prev_rewards
     return rewards_np, mask_np
-
 
 # def choose_command(word_ranks, word_masks_np, use_cuda, epsilon=0.0):
 #     batch_size = word_ranks[0].size(0)
@@ -345,7 +342,7 @@ class AgentDQN(pl.LightningModule):
         self.vocab = WordVocab(vocab_file=cfg.general.vocab_words)
 
         # NOTE: base_vocab is an optimization hack that won't quite work with async parallel batches
-        self.qgym = QaitGym(random_seed=seedval, base_vocab=self.vocab)  # it also doesn't actually help speed things up
+        self.qgym = QaitGym(random_seed=seedval)  #, base_vocab=self.vocab)  # it also doesn't seem to actually speed things up
 
         # training
         # self.batch_size = cfg.training.batch_size
@@ -433,35 +430,39 @@ class AgentDQN(pl.LightningModule):
         self.set_mode(self.MODE_EVAL)
         super().eval()
 
-    def step_env(self, commands: List[str]):  #-> List[str], List[int], List[bool], List[Map]
+    def step_env(self, commands: List[str], dones: List[bool]):  #-> List[str], List[int], List[bool], List[Map]
+        # steps = [step + int(not done) for step, done in zip(steps, dones)]  # Increase step counts.
+        for idx, done in enumerate(dones):
+            if not done:
+                self.num_steps[idx] += 1
             obs, scores, dones, infos = self.gym_env.step(commands)
             return obs, scores, dones, infos
 
     def save_transition_for_replay(self, rewards_np, mask_np, obs_idlist, act_idlist):
-        mask_pt = to_pt(mask_np, self.use_cuda, type='float')
-        rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
-        # push info from previous game step into replay memory
-        # if self.current_step > 0:
-        for b in range(len(mask_np)):
-            if mask_np[b] == 0:
-                continue
-            is_prior = rewards_np[b] > 0.0
+        if self.cache_chosen_indices:  # skip if this is the first step (no transition is yet available
+            mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+            rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+            # push info from previous game step into replay memory
+            # if self.current_step > 0:
+            for b in range(len(mask_np)):   # for each in batch
+                if mask_np[b] == 0:
+                    continue
+                is_prior = rewards_np[b] > 0.0
 
-            transition = Transition(
-                observation_id_list=self.cache_description_id_list[b],
-                word_indices=[item[b] for item in self.cache_chosen_indices],
-                reward=rewards_pt[b],
-                mask=mask_pt[b],
-                done=self.dones[b],
-                next_observation_id_list=obs_idlist[b],
-                next_word_masks=[word_mask[b]
-                                 for word_mask in self.vocab.word_masks_np])
+                transition = Transition(
+                    observation_id_list=self.cache_description_id_list[b],
+                    word_indices=[item[b] for item in self.cache_chosen_indices],
+                    reward=rewards_pt[b],
+                    mask=mask_pt[b],
+                    done=self.dones[b],
+                    next_observation_id_list=obs_idlist[b],
+                    next_word_masks=[word_mask[b]
+                                     for word_mask in self.vocab.word_masks_np])
+                self.replay_memory.push(is_prior=is_prior, transition=transition)
 
-            self.replay_memory.push(is_prior=is_prior, transition=transition)
-
-            # cache new info in current game step into caches
-            self.cache_description_id_list = obs_idlist  # token ids for prev obs
-            self.cache_chosen_indices = act_idlist  # token ids for prev action
+        # cache new info in current game step into caches
+        self.cache_description_id_list = obs_idlist  # token ids for prev obs
+        self.cache_chosen_indices = act_idlist  # token ids for prev action
 
     def observe_action_results(self, scores, dones, obs, obs_idlist, act_idlist):
         # append scores / dones from previous step into memory
@@ -472,11 +473,12 @@ class AgentDQN(pl.LightningModule):
 
         _prev_obs = self.prev_obs
         self.prev_obs = obs  # save for constructing transition during next step
-        if not self.is_eval_mode():
+        if True or not self.is_eval_mode():
             self.save_transition_for_replay(rewards_np, mask_np, obs_idlist, act_idlist)
 
         if all(dones):
             self.gym_env._on_episode_end()  # log/display some stats
+        return
 
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
@@ -484,23 +486,19 @@ class AgentDQN(pl.LightningModule):
         # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
 
         obs, infos = self.initialize_episode(gamefiles)
+        # self.num_steps = [0] * len(obs)   # step counts, local var (not really used, except for logging/print out at end)
         # self.initial_observation(obs, infos)
 
         scores = [0] * len(obs)
         dones = [False] * len(obs)
-        steps = [0] * len(obs)   # step counts, local var (not really used, except for logging/print out at end)
         while not all(dones):
-            steps = [step + int(not done) for step, done in zip(steps, dones)]   # Increase step counts.
 
-            commands, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
+            obs, scores, dones, infos = self.env_experience(obs, scores, dones, infos)
 
-            obs, scores, dones, infos = self.step_env(commands)
-
-            self.observe_action_results(scores, dones, obs, obs_idlist, act_idlist)
-
-            if not self.is_eval_mode():
+            batch = self.get_next_training_batch()
+            if batch and not self.is_eval_mode():
                 if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-                    loss = self.calculate_replay_loss()
+                    loss = self.calculate_batch_loss(batch)
                     if loss is not None:
                         # Backpropagate
                         self.backpropagate(loss)
@@ -511,7 +509,15 @@ class AgentDQN(pl.LightningModule):
         self._maybe_save_checkpoint()
         self.current_episode += 1
         self._anneal_epsilon()
-        return scores, steps
+        return scores, self.num_steps   #, steps
+
+    def env_experience(self, obs, scores, dones, infos):
+        commands, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
+
+        obs, scores, dones, infos = self.step_env(commands, dones)
+
+        self.observe_action_results(scores, dones, obs, obs_idlist, act_idlist)
+        return obs, scores, dones, infos
 
     def save_checkpoint(self, episode_num):
         save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
@@ -537,7 +543,7 @@ class AgentDQN(pl.LightningModule):
         except:
             print("Failed to load checkpoint...")
 
-    def calculate_loss_from_replay(self):
+    def get_next_training_batch(self):
         """
         Update neural model in agent. In this example we follow algorithm
         of updating model in dqn with replay memory.
@@ -547,6 +553,9 @@ class AgentDQN(pl.LightningModule):
             return None
         transitions = self.replay_memory.sample(self.replay_batch_size)
         batch = Transition(*zip(*transitions))
+        return batch
+
+    def calculate_batch_loss(self, batch):
 
         observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
         input_observation = to_pt(observation_id_list, self.use_cuda)
@@ -786,15 +795,16 @@ class FtwcAgent(AgentDQN):
         assert len(self.vocab.word_masks_np) == self.model.generate_length, \
                 f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"  # == 5
 
+        batch_size = len(obs)
+        self.prev_actions = ['' for _ in range(batch_size)]
         self.prev_obs = obs
-        self.cache_description_id_list = None   # similar to .prev_obs
-        self.cache_chosen_indices = None        # similar to .prev_actions
+        self.cache_description_id_list = None   # numerical version of .prev_obs
+        self.cache_chosen_indices = None        # numerical version of .prev_actions
         self.current_step = 0
         # reset agent, get vocabulary masks for verbs / adjectives / nouns
         self.scores = []
+        self.num_steps = [0] * batch_size
         self.dones = []
-        batch_size = len(obs)
-        self.prev_actions = ['' for _ in range(batch_size)]
 
         return obs, infos
 
@@ -962,15 +972,15 @@ class FtwcAgent(AgentDQN):
         return self._shared_eval(batch, batch_idx, 'test')
 
     def _shared_eval(self, batch, batch_idx, prefix):
-        scores, num_steps = self.run_episode(batch)
+        scores, steps = self.run_episode(batch)
         # x, _ = batch
         # representation = self.encoder(x)
         # x_hat = self.decoder(representation)
         #
         # loss = self.metric(x, x_hat)
-        print("EVAL step results:", scores, num_steps)
+        print("EVAL results:", scores, steps)
         for score in scores:
             self.log(f"{prefix}_score", torch.tensor(score, dtype=torch.float16), on_step=True, on_epoch=True)
-        for nsteps in num_steps:
+        for nsteps in steps:  # total steps, per env in batch
             self.log(f"{prefix}_nsteps", torch.tensor(nsteps, dtype=torch.int16), on_step=True, on_epoch=True)
         return None

@@ -2,12 +2,12 @@ import os
 import json
 import gym
 from typing import List, Dict, Optional, Any
+import numpy as np
 
 import textworld
 import textworld.gym
 from textworld import EnvInfos
 from textworld.generator.game import Game, EntityInfo
-from textworld.gym.spaces import Word, Char
 import rlpyt.envs.gym
 
 from symbolic.game_agent import TextGameAgent
@@ -16,7 +16,7 @@ from symbolic.task_modules.navigation_task import ExploreHereTask
 from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
-from .vocab import WordVocab
+from .vocab import WordVocab, WordSpace
 
 # adapted from QAit (customized) version of textworld.generator.game.py
 def game_objects(game: Game) -> List[EntityInfo]:
@@ -220,6 +220,7 @@ def parse_gameid(game_id: str) -> str:
     return shortcode
 
 
+
 class QaitEnvWrapper(gym.Wrapper):
     def __init__(self, env, vocab=None, random_seed=None, **kwargs):
         super().__init__(env, **kwargs)
@@ -399,8 +400,8 @@ class QaitGym:
         self.base_vocab = base_vocab
         self.random_seed = random_seed
         if base_vocab is not None:
-            self._action_space = Word(max_length=5, vocab=self.base_vocab.word_vocab)
-            self._obs_space = Word(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
+            self._action_space = WordSpace(max_length=5, vocab=self.base_vocab.word_vocab)
+            self._obs_space = WordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
 
     def _register_batch_games(self,
                     gamefiles: List[str],
@@ -435,8 +436,8 @@ class QaitGym:
             _obs_space = self._obs_space
         else:
             print("CREATING NEW WordSpaces")
-            _action_space = Word(max_length=5, vocab=vocab.word_vocab),
-            _obs_space = Word(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
+            _action_space = WordSpace(max_length=5, vocab=vocab.word_vocab),
+            _obs_space = WordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
 
         batch_env_id = self._register_batch_games(gamefiles=gamefiles,
                                                   request_infos=request_infos,

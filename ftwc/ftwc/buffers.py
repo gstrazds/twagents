@@ -1,10 +1,11 @@
 import random
 
 import numpy as np
-from collections import namedtuple
+# from collections import namedtuple
+from rlpyt.utils.collections import namedarraytuple
 
 # a snapshot of state to be stored in replay memory
-Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
+Transition = namedarraytuple('Transition', ('observation_id_list', 'word_indices',
                                        'reward', 'mask', 'done',
                                        'next_observation_id_list',
                                        'next_word_masks'))
@@ -13,6 +14,7 @@ Transition = namedtuple('Transition', ('observation_id_list', 'word_indices',
 class HistoryScoreCache(object):
 
     def __init__(self, capacity=1):
+        self.memory = []
         self.capacity = capacity
         self.reset()
 
@@ -43,7 +45,7 @@ class PrioritizedReplayMemory(object):
         self.alpha_memory, self.beta_memory = [], []
         self.alpha_position, self.beta_position = 0, 0
 
-    def push(self, is_prior=False, transition:Transition=None):
+    def push(self, is_prior=False, transition: Transition = None):
         """Saves a transition."""
         assert transition is not None
 
