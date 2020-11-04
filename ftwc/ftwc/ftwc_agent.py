@@ -447,7 +447,7 @@ class AgentDQN(pl.LightningModule):
         """
         print(f"\nwarm_start_steps:{steps}")   # "obs_size:{obs_size}")
         for i in range(steps):
-            _obs_, scores, dones, _infos_ = self.env_experience(self.prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
+            _obs_, scores, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
 
     def step_env(self, commands: List[str], dones: List[bool]):  #-> List[str], List[int], List[bool], List[Map]
         # steps = [step + int(not done) for step, done in zip(steps, dones)]  # Increase step counts.
@@ -459,7 +459,11 @@ class AgentDQN(pl.LightningModule):
 
 
     def env_experience(self, obs, scores, dones, infos):
-        commands, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
+        __commands__, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
+        commands = self.vocab.get_chosen_strings(act_idlist, strip_padding=True)
+        assert len(__commands__) == len(commands), f"{__commands__} {commands}"
+        for i, c in enumerate(__commands__):
+            assert c == commands[i], f"{c} should== {commands[i]}"
 
         obs, scores, dones, infos = self.step_env(commands, dones)
 
@@ -467,7 +471,7 @@ class AgentDQN(pl.LightningModule):
         self._prev_infos = infos  # HACK: save for use in next call to training_step()
         # HACK: observe_action_results =>
         #    self.scores[-1] = scores; self.dones[-1] = dones;
-        #    self.prev_obs = obs
+        #    self._prev_obs = obs
         #    self.cache_description_id_list = obs_idlist  # token ids for prev obs
         #    self.cache_chosen_indices = act_idlist  # token ids for prev action
         #    self.step_reward = rewards_np from compute_per_step_rewards()
@@ -482,14 +486,13 @@ class AgentDQN(pl.LightningModule):
         rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
         self.step_reward = rewards_np
 
-        # _prev_obs = self.prev_obs
-        self.prev_obs = obs  # save for constructing transition during next step
         transitions = self.get_transitions_for_replay(rewards_np, mask_np, obs_idlist)  #, act_idlist)
         if not self.is_eval_mode() and transitions:
             for is_priority, transition in transitions:
                 self.replay_memory.push(is_priority=is_priority, transition=transition)
 
         # cache info from current game step for constructing next Transition
+        self._prev_obs = obs  # save for constructing transition during next step
         self.cache_description_id_list = obs_idlist  # token ids for prev obs
         self.cache_chosen_indices = act_idlist  # token ids for prev action
 
@@ -748,29 +751,6 @@ class FtwcAgent(AgentDQN):
         # self._episode_initialized = False
         self.requested_infos = self.select_additional_infos()
 
-
-    # def _start_episode(self, obs: List[str], infos: Dict[str, List[Any]]) -> None:
-    #     """
-    #     Prepare the agent for the upcoming episode.
-    #
-    #     Arguments:
-    #         obs: Initial feedback for each game.
-    #         infos: Additional information for each game.
-    #     """
-    #     self.start_episode_infos(obs, infos)
-
-    # def _end_episode(self, obs: List[str], scores: List[int], infos: Dict[str, List[Any]]) -> None:
-    #     """
-    #     Tell the agent the episode has terminated.
-    #
-    #     Arguments:
-    #         obs: Previous command's feedback for each game.
-    #         score: The score obtained so far for each game.
-    #         infos: Additional information for each game.
-    #     """
-    #     self.on_episode_end()
-    #     self._episode_initialized = False
-
     def select_additional_infos(self) -> EnvInfos:
         """
         Returns what additional information should be made available at each game step.
@@ -847,7 +827,7 @@ class FtwcAgent(AgentDQN):
 
         batch_size = len(obs)
         self.prev_actions = ['' for _ in range(batch_size)]
-        self.prev_obs = obs
+        self._prev_obs = obs
         self._prev_infos = infos
         self.cache_description_id_list = None   # numerical version of .prev_obs
         self.cache_chosen_indices = None        # numerical version of .prev_actions
@@ -865,7 +845,7 @@ class FtwcAgent(AgentDQN):
         self.dones.append([False])
         self.prepopulate_replay_buffer(steps=2)
 
-    def get_game_step_info(self, obs: List[str], infos: Dict[str, List[Any]]):
+    def prepare_input_for_action_selection(self, obs: List[str], infos: Dict[str, List[Any]]):
         """
         Get all the available information, and concat them together to be tensor for
         a neural model. we use post padding here, all information are tokenized here.
@@ -876,70 +856,19 @@ class FtwcAgent(AgentDQN):
         """
         # word2id = self.vocab.word2id
         inventory_id_list = self.vocab.token_id_lists_from_strings(infos["inventory"])
-
         feedback_id_list = self.vocab.token_id_lists_from_strings(obs, str_type="feedback")
-
         quest_id_list = self.vocab.token_id_lists_from_strings(infos["extra.recipe"])
-
         prev_action_id_list = self.vocab.token_id_lists_from_strings(self.prev_actions)
-
         description_id_list = self.vocab.token_id_lists_from_strings(infos["description"], subst_if_empty=['end'])
-
-        description_id_list = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
+        input_token_ids = [_d + _i + _q + _f + _pa for (_d, _i, _q, _f, _pa) in zip(description_id_list,
                                                                                         inventory_id_list,
                                                                                         quest_id_list,
                                                                                         feedback_id_list,
                                                                                         prev_action_id_list)]
 
-        input_description = pad_sequences(description_id_list, maxlen=max_len(description_id_list)).astype('int32')
-        input_description = to_pt(input_description, self.use_cuda)
-
-        return input_description, description_id_list
-
-    # def act_eval(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
-    #     """
-    #     Acts upon the current list of observations, during evaluation.
-    #
-    #     One text command must be returned for each observation.
-    #
-    #     Arguments:
-    #         obs: Previous command's feedback for each game.
-    #         score: The score obtained so far for each game (at previous step).
-    #         done: Whether a game is finished (at previous step).
-    #         infos: Additional information for each game.
-    #
-    #     Returns:
-    #         Text commands to be performed (one per observation).
-    #
-    #     Notes:
-    #         Commands returned for games marked as `done` have no effect.
-    #         The states for finished games are simply copy over until all
-    #         games are done, in which case `CustomAgent.finish()` is called
-    #         instead.
-    #     """
-    #     use_oracle = True
-    #
-    #     if all(dones):
-    #         self._on_episode_end()  # log/display some stats
-    #         return  # Nothing to return.
-    #
-    #     if use_oracle:
-    #         chosen_strings = []
-    #         game_id = None
-    #         for idx, (obstxt, agent) in enumerate(zip(obs, self.tw_oracles)):
-    #             actiontxt = invoke_oracle(agent, obstxt, infos, idx=idx, step=self.current_step)
-    #             chosen_strings.append(actiontxt)
-    #     else:
-    #         input_description, _ = self.get_game_step_info(obs, infos)
-    #         word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
-    #         word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
-    #
-    #         chosen_indices = [item.detach() for item in word_indices_maxq]
-    #         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
-    #     self.prev_actions = chosen_strings
-    #     self.current_step += 1
-    #
-    #     return self.prev_actions
+        input_token_ids = pad_sequences(input_token_ids, maxlen=max_len(input_token_ids)).astype('int32')
+        input_tensor = to_pt(input_token_ids, self.use_cuda)
+        return input_tensor, input_token_ids
 
     def select_next_action(self, obs: List[str], scores: List[int], dones: List[bool], infos: Dict[str, List[Any]]) -> List[str]:
         """
@@ -973,10 +902,10 @@ class FtwcAgent(AgentDQN):
         #     # compute previous step's rewards and masks
         #     rewards_pt, mask_pt = self.compute_reward(self.scores, self.dones)
 
-        input_description, description_id_list = self.get_game_step_info(obs, infos)
+        input_tensor, __input_token_ids__ = self.prepare_input_for_action_selection(obs, infos)
 
-        word_ranks = self.model.infer_word_ranks(input_description)  # list of batch x vocab
-        assert word_ranks[0].size(0) == input_description.size(0)   # refactoring
+        word_ranks = self.model.infer_word_ranks(input_tensor)  # list of batch x vocab
+        assert word_ranks[0].size(0) == input_tensor.size(0)   # refactoring
 
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
@@ -1005,19 +934,22 @@ class FtwcAgent(AgentDQN):
 
             #TODO: if not self.is_eval_mode() compute appropriate chosen_indices
             oracle_indices = self.vocab.command_strings_to_np(chosen_strings)  # pad and convert to token ids
+
             chosen_indices0 = chosen_indices
             chosen_indices = [to_pt(item, self.use_cuda) for item in oracle_indices]
             chosen_indices = [item.unsqueeze(-1) for item in chosen_indices]  # list of 5 tensors, each w size: batch x 1
+            print(f"ORACLE cmds: {chosen_strings} -> {oracle_indices} -> {self.vocab.get_chosen_strings(chosen_indices, strip_padding=False)}")
             # print(f'DEBUGGING use_oracle: len:{len(chosen_indices)}=={len(chosen_indices0)} shape: {chosen_indices[0].shape}=={chosen_indices0[0].shape} {chosen_indices} {chosen_indices0}')
             assert len(chosen_indices) == len(chosen_indices0)
             for _i in range(len(chosen_indices0)):
                 assert chosen_indices0[_i].shape == chosen_indices[_i].shape
+
         else:
             chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
         self.current_step += 1
-        return self.prev_actions, chosen_indices, description_id_list
+        return self.prev_actions, chosen_indices, __input_token_ids__
 
     def validation_step(self, batch, batch_idx):
         print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")

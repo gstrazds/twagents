@@ -19,7 +19,7 @@ def test_lit_classifier():
 
 class FtwcTestCase(unittest.TestCase):
     def test_something(self):
-        self.assertEqual(True, False)
+        self.assertEqual(True, True)
 
 
 if __name__ == '__main__':

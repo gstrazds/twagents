@@ -3,6 +3,7 @@ import json
 import gym
 from typing import List, Dict, Optional, Any
 import numpy as np
+import torch
 
 import textworld
 import textworld.gym
@@ -17,6 +18,22 @@ from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from .vocab import WordVocab, WordSpace
+
+# ToTensor gym env wrapoer copied from PyTorch-Lightning-Bolts
+class ToTensor(gym.Wrapper):
+    """Converts env outputs to torch Tensors"""
+
+    def __init__(self, env=None):
+        super(ToTensor, self).__init__(env)
+
+    def step(self, action):
+        """Take 1 step and cast to tensor"""
+        state, reward, done, info = self.env.step(action)
+        return torch.tensor(state), torch.tensor(reward), done, info
+
+    def reset(self):
+        """reset the env and cast to tensor"""
+        return torch.tensor(self.env.reset())
 
 # adapted from QAit (customized) version of textworld.generator.game.py
 def game_objects(game: Game) -> List[EntityInfo]:

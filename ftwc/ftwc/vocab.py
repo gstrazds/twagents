@@ -9,34 +9,24 @@ from .generic import to_np
 _global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
 
 
-def preproc_tw_output(s, str_type='None', tokenizer=None, lower_case=True):
-    if s is None:
-        return ["nothing"]
-    s = s.replace("\n", ' ')
-    if s.strip() == "":
-        return ["nothing"]
-    if str_type == 'feedback':
-        if "$$$$$$$" in s:
-            s = ""
-        if "-=" in s:
-            s = s.split("-=")[0]
-    s = s.strip()
-    if len(s) == 0:
-        return ["nothing"]
-    tokens = [t.text for t in tokenizer(s)]
-    if lower_case:
-        tokens = [t.lower() for t in tokens]
-    return tokens
 
 
-
-def _ensure_padded_len(list_of_ids: List[int], pad_to_len: int, pad_value: int) -> List[int]:
-    delta_len = pad_to_len - len(list_of_ids)
+def _ensure_padded_len(list_of_ids_in: List[int], pad_to_len: int, pad_value: int, eos_value: int = None) -> List[int]:
+    delta_len = pad_to_len - len(list_of_ids_in)
+    list_of_ids = list_of_ids_in.copy()
     if delta_len > 0:
-        return list_of_ids + [pad_value] * delta_len
-    elif delta_len < 0:
+        list_of_ids.extend([pad_value] * delta_len)   # pad to desired length
+
+    if eos_value is not None and eos_value not in list_of_ids and pad_value in list_of_ids:
+        if len(list_of_ids) and list_of_ids[-1] == pad_value:
+            end_idx = len(list_of_ids)-1
+            while end_idx > 0 and list_of_ids[end_idx-1] == pad_value:
+                end_idx -= 1
+            list_of_ids[end_idx] = eos_value
+
+    if delta_len < 0:
         return list_of_ids[:pad_to_len]
-    return list_of_ids   # only get here if the list was already of the correct length
+    return list_of_ids
 
 
 class WordVocab:
@@ -55,16 +45,26 @@ class WordVocab:
         for i, w in enumerate(self.word_vocab):
             self.word2id[w] = i
             # self.id2word[i] = w  # same as self.word_vocab
-        self.EOS_id = self.word2id["</S>"]
-        self.UNK_id = self.word2id.get("<UNK>", self.word2id.get("<unk>", 1))  # default: 1 if neither "<UNK>" or "<unk>"
-        self.single_word_verbs = set(["inventory", "look"])
-        self.preposition_map = {"take": "from",
-                                "chop": "with",
-                                "slice": "with",
-                                "dice": "with",
-                                "cook": "with",
-                                "insert": "into",
-                                "put": "on"}
+        self.PAD = "<PAD>"    # excluded when random sampling
+        self.UNK = "<UNK>"
+        self.BOS = "<S>"
+        self.EOS = "</S>"
+        self.SEP = "<|>"
+
+        self.EOS_id = self.word2id[self.EOS]
+        self.UNK_id = self.word2id.get(self.UNK, self.word2id.get("<unk>", 1))  # default: 1 if neither "<UNK>" or "<unk>"
+        self.PAD_id = self.word2id.get(self.PAD, self.word2id.get("<pad>", 0))  # should be 0
+        assert self.PAD_id == 0
+        self.single_word_verbs = set(["inventory", "look", "north", "south", "east", "west", "wait"])
+        self.preposition_map = {"take": ("from", ),
+                                "chop": ("with", ),
+                                "slice": ("with", ),
+                                "dice": ("with", ),
+                                "cook": ("with", ),
+                                "insert": ("into", ),
+                                "put": ("on", "in", "into"),
+                                "unlock": ("with", ),
+                                }
         # FROM extras.command_templates:
         #   'inventory',
         #   'look',
@@ -132,7 +132,26 @@ class WordVocab:
         second_adj_mask[:, self.EOS_id] = 1.0
         self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
 
-    def _word_ids_to_command_str(self, verb, adj, noun, adj_2, noun_2) -> str:
+    def preproc_tw_string(self, s, str_type='None', tokenizer=None, lower_case=True):
+        if s is None:
+            return ["nothing"]
+        s = s.replace("\n", ' ')
+        if s.strip() == "":
+            return ["nothing"]
+        if str_type == 'feedback':
+            if "$$$$$$$" in s:
+                s = ""
+            if "-=" in s:
+                s = s.split("-=")[0]
+        s = s.strip()
+        if len(s) == 0:
+            return ["nothing"]
+        tokens = [t.text for t in tokenizer(s)]
+        if lower_case:
+            tokens = [t.lower() for t in tokens]
+        return tokens
+
+    def _word_ids_to_command_str(self, verb, adj, noun, adj_2, noun_2, strip_padding=True) -> str:
         """
         Turn the 5 model-generated indices into an actual command string.
 
@@ -146,22 +165,25 @@ class WordVocab:
         # turns 5 indices into an actual command string
         if self.word_vocab[verb] in self.single_word_verbs:
             return self.word_vocab[verb]
-        if adj == self.EOS_id:
+        if adj == self.EOS_id or strip_padding and adj == self.PAD_id:
             res = self.word_vocab[verb] + " " + self.word_vocab[noun]
+        elif noun == self.EOS_id and adj != self.PAD_id:
+            res = self.word_vocab[verb] + " " + self.word_vocab[adj]
         else:
             res = self.word_vocab[verb] + " " + self.word_vocab[adj] + " " + self.word_vocab[noun]
         if self.word_vocab[verb] not in self.preposition_map:
             return res
-        if noun_2 == self.EOS_id:
+        if noun_2 == self.EOS_id or strip_padding and noun_2 == self.PAD_id:
             return res
-        prep = self.preposition_map[self.word_vocab[verb]]
-        if adj_2 == self.EOS_id:
+        # use first available preposition. TODO: adapt based on object type of arg2
+        prep = self.preposition_map[self.word_vocab[verb]][0]
+        if adj_2 == self.EOS_id or strip_padding and adj_2 == self.PAD_id:
             res = res + " " + prep + " " + self.word_vocab[noun_2]
         else:
             res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
         return res
 
-    def get_chosen_strings(self, chosen_indices):
+    def get_chosen_strings(self, chosen_indices, strip_padding=False):
         """
         Turns list of word indices into actual command strings.
 
@@ -169,7 +191,7 @@ class WordVocab:
             chosen_indices: Word indices chosen by model.
         """
         chosen_indices_np = [to_np(item)[:, 0] for item in chosen_indices]
-        res_str = []
+        ret_strings = []
         batch_size = chosen_indices_np[0].shape[0]
         for i in range(batch_size):
             verb, adj, noun, adj_2, noun_2 = chosen_indices_np[0][i],\
@@ -177,8 +199,9 @@ class WordVocab:
                                              chosen_indices_np[2][i],\
                                              chosen_indices_np[3][i],\
                                              chosen_indices_np[4][i]
-            res_str.append(self._word_ids_to_command_str(verb, adj, noun, adj_2, noun_2))
-        return res_str
+            ret_strings.append(
+                self._word_ids_to_command_str(verb, adj, noun, adj_2, noun_2, strip_padding=strip_padding))
+        return ret_strings
 
     def _words_to_ids(self, words: List[str]) -> List[int]:
         return [self.word2id.get(word, self.UNK_id) for word in words]
@@ -190,19 +213,35 @@ class WordVocab:
             #     ids.append(1)
         # return ids
 
-    def token_id_lists_from_strings(self, item_list: List[str], str_type=None, subst_if_empty=None):
-        token_lists = [preproc_tw_output(item, str_type=str_type, tokenizer=self.get_tokenizer())
-                      for item in item_list]
-        if subst_if_empty:
-            for i, d in enumerate(token_lists):
-                if not d:  #len(d) == 0:
-                    token_lists[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
+    def token_id_lists_from_strings(self, str_list: List[str], str_type=None, subst_if_empty=None):
+        token_lists = [self.preproc_tw_string(item, str_type=str_type, tokenizer=self.get_tokenizer())
+                       for item in str_list]
+        for i, tokens in enumerate(token_lists):
+            if subst_if_empty and not tokens:  #len(d) == 0:
+                token_lists[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
+            elif str_type == 'cmd':
+                # print("*********tokens=", tokens)
+                if tokens[0] in self.preposition_map.keys():
+                    for preposition in self.preposition_map[tokens[0]]:
+                        if preposition in tokens:   # adjust the token list to parse (adj noun) phrases
+                            # print("!!! FOUND PREP", preposition)
+                            prep_idx = tokens.index(preposition)
+                            tokens.pop(prep_idx)   # remove the preposition from the token list
+                            if prep_idx == 2:
+                                tokens.insert(1, self.PAD)  # arg1 must be noun with no adj
+                            cmd_len = len(tokens)
+                            if cmd_len == 5 and tokens[-1] == self.EOS or cmd_len == 4:
+                                tokens.insert(3, self.PAD)  # arg2 must be noun with no adj
+                elif tokens[0] not in self.single_word_verbs:  # then should be a verb with one arg (noun phrase)
+                    if len(tokens) == 3 and tokens[2] == self.EOS or len(tokens) == 2:
+                        tokens.insert(1, self.PAD)  # arg1 - a noun with no adj
+
         id_lists = [self._words_to_ids(tokens) for tokens in token_lists]
         return id_lists
 
     def command_strings_to_np(self, command_strings, pad_to_len=5, pad=0):   # pad token id
         # TODO: REWRITE THIS!
-        list_of_id_lists = self.token_id_lists_from_strings(command_strings)
+        list_of_id_lists = self.token_id_lists_from_strings(command_strings, str_type='cmd')
         # assert len(oracle_word_indices) == batch_size  # list (len=n_batch) of lists (token ids)
         list_of_padded_idlists = [_ensure_padded_len(idlist, pad_to_len, pad) for idlist in list_of_id_lists]
         return_list = [ [] for _ in range(pad_to_len)]
