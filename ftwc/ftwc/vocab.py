@@ -1,3 +1,4 @@
+from collections import namedtuple
 import copy
 from typing import List
 import numpy as np
@@ -8,7 +9,11 @@ from .generic import to_np
 
 _global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
 
+Token = namedtuple('parsedtoken', ('text', ))
 
+
+def super_simple_tokenizer(s: str):
+    return [Token(w) for w in s.split(' ')]
 
 
 def _ensure_padded_len(list_of_ids_in: List[int], pad_to_len: int, pad_value: int, eos_value: int = None) -> List[int]:
@@ -234,7 +239,11 @@ class WordVocab:
         # return ids
 
     def token_id_lists_from_strings(self, str_list: List[str], str_type=None, subst_if_empty=None):
-        token_lists = [self.preproc_tw_string(item, str_type=str_type, tokenizer=self.get_tokenizer())
+        if str_type == 'cmd':
+            tokenizer = super_simple_tokenizer
+        else:
+            tokenizer = self.get_tokenizer()
+        token_lists = [self.preproc_tw_string(item, str_type=str_type, tokenizer=tokenizer)
                        for item in str_list]
         for i, tokens in enumerate(token_lists):
             if subst_if_empty and not tokens:  #len(d) == 0:

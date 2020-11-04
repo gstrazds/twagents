@@ -23,6 +23,7 @@ class TestVocab(unittest.TestCase):
         "open green box":               ['open', 'green', 'box', '</S>'],
         "go east":                      ['go', '<PAD>', 'east'],
         "north":                        ['north'],
+        "open frosted-glass door":      ['open', 'frosted-glass', 'door'],
     }
 
     special_cases = {
