@@ -16,6 +16,8 @@ class TestVocab(unittest.TestCase):
         "put purple pepper on wooden table":   ['put', 'purple', 'pepper', 'wooden', 'table'],
         "put knife on steel table":     ['put', '<PAD>', 'knife', 'steel', 'table'],
         "put chicken leg on counter":   ['put', 'chicken', 'leg', '<PAD>', 'counter'],
+        "slice green cilantro with knife":   ['slice', 'green', 'cilantro', '<PAD>', 'knife'],
+        "slice cilantro with knife":   ['slice', '<PAD>', 'cilantro', '<PAD>', 'knife'],
         "insert knife into fridge":     ['insert', '<PAD>', 'knife', '<PAD>', 'fridge'],
         "open toolbox":                 ['open', '<PAD>', 'toolbox', '</S>'],
         "open green box":               ['open', 'green', 'box', '</S>'],

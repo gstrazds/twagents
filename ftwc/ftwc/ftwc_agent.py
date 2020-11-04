@@ -463,6 +463,8 @@ class AgentDQN(pl.LightningModule):
         commands = self.vocab.get_chosen_strings(act_idlist, strip_padding=True)
         assert len(__commands__) == len(commands), f"{__commands__} {commands}"
         for i, c in enumerate(__commands__):
+            while ' the ' in c:
+                c = c.replace(' the ', ' ')
             assert c == commands[i], f"{c} should== {commands[i]}"
 
         obs, scores, dones, infos = self.step_env(commands, dones)
@@ -679,7 +681,7 @@ class AgentDQN(pl.LightningModule):
         #
         # # step through environment with agent
         # reward, done = self.agent.play_step(self.net, epsilon, device)
-        _obs_, scores, dones, _infos_ = self.env_experience(self.prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
+        _obs_, scores, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
 
         # HACK:
         reward = self.step_reward
@@ -938,7 +940,7 @@ class FtwcAgent(AgentDQN):
             chosen_indices0 = chosen_indices
             chosen_indices = [to_pt(item, self.use_cuda) for item in oracle_indices]
             chosen_indices = [item.unsqueeze(-1) for item in chosen_indices]  # list of 5 tensors, each w size: batch x 1
-            print(f"ORACLE cmds: {chosen_strings} -> {oracle_indices} -> {self.vocab.get_chosen_strings(chosen_indices, strip_padding=False)}")
+            print(f"ORACLE cmds: {chosen_strings} -> {oracle_indices} -> {self.vocab.get_chosen_strings(chosen_indices, strip_padding=True)}")
             # print(f'DEBUGGING use_oracle: len:{len(chosen_indices)}=={len(chosen_indices0)} shape: {chosen_indices[0].shape}=={chosen_indices0[0].shape} {chosen_indices} {chosen_indices0}')
             assert len(chosen_indices) == len(chosen_indices0)
             for _i in range(len(chosen_indices0)):

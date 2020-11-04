@@ -56,7 +56,9 @@ class WordVocab:
         self.PAD_id = self.word2id.get(self.PAD, self.word2id.get("<pad>", 0))  # should be 0
         assert self.PAD_id == 0
         self.single_word_verbs = set(["inventory", "look", "north", "south", "east", "west", "wait"])
-        self.preposition_map = {"take": ("from", ),
+        self.single_word_nouns = ["knife", "oven", "stove", "bbq", "grill"]
+        self.preposition_map = {
+                                #"take": ("from", ),  #for FTWC, can simply "take" without specifying from where
                                 "chop": ("with", ),
                                 "slice": ("with", ),
                                 "dice": ("with", ),
@@ -163,6 +165,7 @@ class WordVocab:
             noun_2: Index of the second guessing noun in vocabulary
         """
         # turns 5 indices into an actual command string
+
         if self.word_vocab[verb] in self.single_word_verbs:
             return self.word_vocab[verb]
         if adj == self.EOS_id or strip_padding and adj == self.PAD_id:
@@ -171,16 +174,28 @@ class WordVocab:
             res = self.word_vocab[verb] + " " + self.word_vocab[adj]
         else:
             res = self.word_vocab[verb] + " " + self.word_vocab[adj] + " " + self.word_vocab[noun]
-        if self.word_vocab[verb] not in self.preposition_map:
-            return res
-        if noun_2 == self.EOS_id or strip_padding and noun_2 == self.PAD_id:
-            return res
-        # use first available preposition. TODO: adapt based on object type of arg2
-        prep = self.preposition_map[self.word_vocab[verb]][0]
-        if adj_2 == self.EOS_id or strip_padding and adj_2 == self.PAD_id:
-            res = res + " " + prep + " " + self.word_vocab[noun_2]
+        if self._tokid_to_word(verb) in self.preposition_map:
+            adj_x = None
+            if self._tokid_to_word(noun_2) in self.single_word_nouns and adj_2 != self.PAD_id:
+                adj_x = noun
+                noun = adj_2
+                adj_2 = self.PAD_id
+                res = f"{self.word_vocab[verb]} {self.word_vocab[adj]} {self.word_vocab[adj_x]} {self.word_vocab[noun]}"
+            # use first available preposition. TODO: adapt based on object type of arg2
+            prep = self.preposition_map[self.word_vocab[verb]][0]
+            if adj_2 == self.EOS_id or strip_padding and adj_2 == self.PAD_id:
+                res = res + " " + prep + " " + self.word_vocab[noun_2]
+            else:
+                res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
         else:
-            res = res + " " + prep + " " + self.word_vocab[adj_2] + " " + self.word_vocab[noun_2]
+            if adj_2 == self.EOS_id:
+                return res
+            elif not(strip_padding and adj_2 == self.PAD_id):
+                res = res + " " + self.word_vocab[adj_2]
+            if noun_2 == self.EOS_id:
+                return res
+            elif not(strip_padding and noun_2 == self.PAD_id):
+                res = res + " " + self.word_vocab[noun_2]
         return res
 
     def get_chosen_strings(self, chosen_indices, strip_padding=False):
@@ -203,6 +218,11 @@ class WordVocab:
                 self._word_ids_to_command_str(verb, adj, noun, adj_2, noun_2, strip_padding=strip_padding))
         return ret_strings
 
+    def _tokid_to_word(self, tokid):
+        if tokid >=0 and tokid < len(self.word_vocab):
+            return self.word_vocab[tokid]
+        return self.UNK
+
     def _words_to_ids(self, words: List[str]) -> List[int]:
         return [self.word2id.get(word, self.UNK_id) for word in words]
         # ids = []
@@ -220,6 +240,8 @@ class WordVocab:
             if subst_if_empty and not tokens:  #len(d) == 0:
                 token_lists[i] = subst_if_empty  # if empty description, insert replacement (list of tokens)
             elif str_type == 'cmd':
+                while 'the' in tokens:
+                    tokens.pop(tokens.index('the'))
                 # print("*********tokens=", tokens)
                 if tokens[0] in self.preposition_map.keys():
                     for preposition in self.preposition_map[tokens[0]]:

@@ -295,7 +295,7 @@ class QaitEnvWrapper(gym.Wrapper):
                 if commands and commands[idx] == 'do nothing':
                     pass
                 else:
-                    oracle.observe(commands[idx], scores[idx], obs[idx], dones[idx], idx=idx)
+                    oracle.observe(scores[idx], obs[idx], dones[idx], prev_action=None, idx=idx)  #UNNEEDED, causes problems: prev_action=commands[idx]
                     # populate oracle recommended action
                 infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
         return obs, scores, dones, infos
