@@ -17,7 +17,60 @@ from symbolic.task_modules.navigation_task import ExploreHereTask
 from twutils.twlogic import filter_observables
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
-from .vocab import WordVocab, WordSpace
+from ftwc.vocab import WordVocab
+
+class WordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_spaces
+    """ Word observation/action space
+
+    This space consists of a series of `gym.spaces.Discrete` objects all with
+    the same parameters. Each `gym.spaces.Discrete` can take integer values
+    between 0 and `len(self.vocab)`.
+
+    Notes
+    -----
+    The following special tokens will be prepended (if needed) to the vocabulary:
+    <PAD> : Padding
+    <UNK> : Unknown word
+    <S>   : Beginning of sentence
+    </S>  : End of sentence
+    """
+
+    def __init__(self, max_length, vocab):
+        """
+        Parameters
+        ----------
+        max_length : int
+            Maximum number of words in a text.
+        vocab : list of strings
+            Vocabulary defining this space. It shouldn't contain any
+            duplicate words.
+        """
+        # if len(vocab) != len(set(vocab)):
+        #     raise VocabularyHasDuplicateTokens()
+
+        self.PAD = "<PAD>"    # excluded when random sampling
+        self.UNK = "<UNK>"
+        self.BOS = "<S>"
+        self.EOS = "</S>"
+        self.SEP = "<|>"
+        self.max_length = max_length
+        special_tokens = [self.PAD, self.UNK, self.EOS, self.BOS, self.SEP]
+        self.sampling_offset = len(special_tokens)
+        self.vocab_size = len(vocab) - self.sampling_offset
+        # self.vocab = [w for w in special_tokens if w not in vocab]
+        # self.vocab += list(vocab)
+        # self.vocab_set = set(self.vocab)  # For faster lookup.
+        # self.vocab_size = len(self.vocab)
+        # self.id2w = {i: w for i, w in enumerate(self.vocab)}
+        # self.w2id = {w: i for i, w in self.id2w.items()}
+        # self.PAD_id = self.w2id[self.PAD]
+        # self.UNK_id = self.w2id[self.UNK]
+        # self.BOS_id = self.w2id[self.BOS]
+        # self.EOS_id = self.w2id[self.EOS]
+        # self.SEP_id = self.w2id[self.SEP]
+        # super().__init__([len(self.vocab) - 1] * self.max_length)
+        super().__init__([self.vocab_size] * self.max_length)
+        self.dtype = np.int64  # Overwrite Gym's dtype=int8.
 
 # ToTensor gym env wrapoer copied from PyTorch-Lightning-Bolts
 class ToTensor(gym.Wrapper):
@@ -312,53 +365,54 @@ class QaitEnvWrapper(gym.Wrapper):
         infos['tw_o_step'][idx] = actiontxt
         return infos
 
+    def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True):
+        if idx == len(self.tw_oracles):
+            tw_game_oracle = TextGameAgent(
+                self.random_seed + idx,  # seed
+                "TW",  # rom_name
+                game_id,  # env_name
+                idx=idx,
+                game=None  # TODO: infos['game'][idx]  # for better logging
+            )
+            self.tw_oracles.append(tw_game_oracle)
+            # FIXME: initialization HACK for MEAL
+            kg = tw_game_oracle.gi.kg
+            meal = kg.create_new_object('meal', MEAL)
+            meal.location = kg._nowhere  # the meal doesn't yet exist in the world
+            gt = tw_game_oracle.gi.gt
+            meal = gt.create_new_object('meal', MEAL)
+            meal.location = gt._nowhere  # the meal doesn't yet exist in the world
+        else:
+            assert idx < len(self.tw_oracles)
+            if not is_first_episode:
+                if need_to_forget:
+                    self.tw_oracles[idx].setup_logging(game_id, idx)
+                self.tw_oracles[idx].reset(forget_everything=need_to_forget)
+        tw_o = self.tw_oracles[idx]
+        assert tw_o.step_num == 0
+        _use_groundtruth = False
+        task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
+                     RecipeReaderTask(use_groundtruth=_use_groundtruth)]
+        for task in task_list:
+            tw_o.task_exec.queue_task(task)
+
     def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         # print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
 
         batch_size = len(obs)
         for idx in range(batch_size):
-            need_to_forget = True
             game_id = get_game_id_from_infos(infos, idx)
             if game_id:
-                need_to_forget = self.set_game_id(game_id, idx)   # if the same game again, remember initial layout
+                need_to_forget = self.set_game_id(game_id, idx)   # if playing the same game repeatedly, remember layout
             else:
+                need_to_forget = False
                 game_id = str(idx)
                 if idx == len(self.game_ids):
                     self.game_ids.append(game_id)
-
-            if idx == len(self.tw_oracles):
-                tw_game_oracle = TextGameAgent(
-                        self.random_seed + idx,  #seed
-                        "TW",     # rom_name
-                        game_id,  # env_name
-                        idx=idx,
-                        game=None  #TODO: infos['game'][idx]  # for better logging
-                )
-                self.tw_oracles.append(tw_game_oracle)
-                # FIXME: initialization HACK for MEAL
-                kg = tw_game_oracle.gi.kg
-                meal = kg.create_new_object('meal', MEAL)
-                meal.location = kg._nowhere  # the meal doesn't yet exist in the world
-                gt = tw_game_oracle.gi.gt
-                meal = gt.create_new_object('meal', MEAL)
-                meal.location = gt._nowhere  # the meal doesn't yet exist in the world
-            else:
-                assert idx < len(self.tw_oracles)
-                if episode_counter > 0:
-                    if need_to_forget:
-                        self.tw_oracles[idx].setup_logging(game_id, idx)
-                    self.tw_oracles[idx].reset(forget_everything=need_to_forget)
-            tw_o = self.tw_oracles[idx]
-            assert tw_o.step_num == 0
-            _use_groundtruth = False
-            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
-                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
-            for task in task_list:
-                tw_o.task_exec.queue_task(task)
-
-            # populate oracle recommended action
-            infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
+            self._init_oracle(game_id, idx, need_to_forget=need_to_forget, is_first_episode=(episode_counter == 0))
+        # populate oracle recommended action
+        infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
         return obs, infos
 
     def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback

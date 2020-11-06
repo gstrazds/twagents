@@ -19,7 +19,7 @@ from .model import LSTM_DQN
 from .generic import to_np, to_pt, pad_sequences, max_len
 from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
 from .vocab import WordVocab
-from .gym_wrapper import QaitGym
+from .wrappers import QaitGym
 
 
 def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
@@ -465,7 +465,7 @@ class AgentDQN(pl.LightningModule):
         for i, c in enumerate(__commands__):
             while ' the ' in c:
                 c = c.replace(' the ', ' ')
-            assert c == commands[i], f"{c} should== {commands[i]}"
+            assert c.lower() == commands[i], f"{c} should== {commands[i]}"
 
         obs, scores, dones, infos = self.step_env(commands, dones)
 
@@ -482,9 +482,9 @@ class AgentDQN(pl.LightningModule):
 
     def observe_action_results(self, scores, dones, obs, obs_idlist, act_idlist):
         # append scores / dones from previous step into memory
+
         self.scores.append(scores)
         self.dones.append(dones)
-
         rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
         self.step_reward = rewards_np
 
@@ -946,8 +946,8 @@ class FtwcAgent(AgentDQN):
             for _i in range(len(chosen_indices0)):
                 assert chosen_indices0[_i].shape == chosen_indices[_i].shape
 
-        else:
-            chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
+        # else:
+        chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
 
         self.current_step += 1

@@ -203,7 +203,7 @@ class WordVocab:
                 res = res + " " + self.word_vocab[noun_2]
         return res
 
-    def get_chosen_strings(self, chosen_indices, strip_padding=False):
+    def get_chosen_strings(self, chosen_indices, strip_padding=True):
         """
         Turns list of word indices into actual command strings.
 
@@ -293,57 +293,3 @@ class WordVocab:
 
 class VocabularyHasDuplicateTokens(ValueError):
     pass
-
-
-class WordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_spaces
-    """ Word observation/action space
-
-    This space consists of a series of `gym.spaces.Discrete` objects all with
-    the same parameters. Each `gym.spaces.Discrete` can take integer values
-    between 0 and `len(self.vocab)`.
-
-    Notes
-    -----
-    The following special tokens will be prepended (if needed) to the vocabulary:
-    <PAD> : Padding
-    <UNK> : Unknown word
-    <S>   : Beginning of sentence
-    </S>  : End of sentence
-    """
-
-    def __init__(self, max_length, vocab):
-        """
-        Parameters
-        ----------
-        max_length : int
-            Maximum number of words in a text.
-        vocab : list of strings
-            Vocabulary defining this space. It shouldn't contain any
-            duplicate words.
-        """
-        # if len(vocab) != len(set(vocab)):
-        #     raise VocabularyHasDuplicateTokens()
-
-        self.PAD = "<PAD>"    # excluded when random sampling
-        self.UNK = "<UNK>"
-        self.BOS = "<S>"
-        self.EOS = "</S>"
-        self.SEP = "<|>"
-        self.max_length = max_length
-        special_tokens = [self.PAD, self.UNK, self.EOS, self.BOS, self.SEP]
-        self.sampling_offset = len(special_tokens)
-        self.vocab_size = len(vocab) - self.sampling_offset
-        # self.vocab = [w for w in special_tokens if w not in vocab]
-        # self.vocab += list(vocab)
-        # self.vocab_set = set(self.vocab)  # For faster lookup.
-        # self.vocab_size = len(self.vocab)
-        # self.id2w = {i: w for i, w in enumerate(self.vocab)}
-        # self.w2id = {w: i for i, w in self.id2w.items()}
-        # self.PAD_id = self.w2id[self.PAD]
-        # self.UNK_id = self.w2id[self.UNK]
-        # self.BOS_id = self.w2id[self.BOS]
-        # self.EOS_id = self.w2id[self.EOS]
-        # self.SEP_id = self.w2id[self.SEP]
-        # super().__init__([len(self.vocab) - 1] * self.max_length)
-        super().__init__([self.vocab_size] * self.max_length)
-        self.dtype = np.int64  # Overwrite Gym's dtype=int8.
