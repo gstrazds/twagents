@@ -1,7 +1,8 @@
-from typing import Iterable
+from typing import Iterable, List
 from collections import defaultdict, OrderedDict
-from textworld.logic import Proposition, Variable, State, Signature
+from textworld.logic import Proposition, Variable, Signature, State
 from textworld.generator import World
+from textworld.generator.game import Game, EntityInfo
 
 OBSERVABLE_RELATIONS = ('at', 'in', 'on',
                         'chopped', 'diced', 'sliced', 'peeled', 'cut',
@@ -58,6 +59,8 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
     if where_fact:
         the_player = where_fact.arguments[0]
         player_location = where_fact.arguments[1]
+    else:
+        the_player, player_location = None, None   # redundant, suppress warnings
 
     # for room in world.rooms:
     #     print(room)
@@ -90,7 +93,7 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
             #         local_facts.append(locked_fact)
 
 
-def filter_observables(world_facts: Iterable[Proposition], verbose=False, game=None):
+def filter_observables(world_facts: List[Proposition], verbose=False, game=None):
     fixups = defaultdict(set)
     if not world_facts:
         return None
@@ -196,7 +199,7 @@ def get_obj_infos(infos, entities, room_infos, gid):
     excluded_types = ['ingredient', 'RECIPE', 'slot', 'I', 'r']  # I=inventory, r=room
     obj_infos = list(filter(lambda a: a['type'] in obj_types, infos))
     notexcluded_infos = list(filter(lambda a: a['type'] not in excluded_types, infos))
-    if (len(notexcluded_infos) != len(obj_infos)):
+    if len(notexcluded_infos) != len(obj_infos):
         s_ne = set()
         s_o = set()
         for i in notexcluded_infos:
@@ -367,5 +370,69 @@ def adapt_tw_instr(words: str, kg) -> str:
     else:
         return words, []
 
+# adapted from QAit (customized) version of textworld.generator.game.py
+def game_objects(game: Game) -> List[EntityInfo]:
+    """ The entity information of all relevant objects in this game. """
+    def _filter_unnamed_and_room_entities(e):
+        return e.name and e.type != "r"
+    return filter(_filter_unnamed_and_room_entities, game.infos.values())
+
+
+def game_object_names(game: Game) -> List[str]:
+    """ The names of all objects in this game. """
+    get_names_method = getattr(game, "object_names", None)  # game from TextWorld-QAit (customized)
+    if get_names_method and callable(get_names_method):
+        print(f"game_object_names<TextWorld-QAit>({game.metadata['uuid']}")
+        return game.get_names_method()
+    get_names_method = getattr(game, "objects_names", None)  # game from TextWorld (1.3.x)
+    if get_names_method and callable(get_names_method):
+        print(f"game_object_names<TextWorld-1.3.x>({game.metadata['uuid']}")
+        return game.get_names_method()
+    print(f"game_object_names<local -- game_objects()>({game.metadata['uuid']}")
+    return [entity.name for entity in game_objects(game)]
+
+
+def game_object_nouns(game: Game) -> List[str]:
+    """ The noun parts of all objects in this game. """
+    _object_nouns = [entity.noun for entity in game_objects(game)]
+    return _object_nouns
+
+
+def game_object_adjs(game: Game) -> List[str]:
+    """ The adjective parts of all objects in this game. """
+    _object_adjs = [entity.adj if entity.adj is not None else '' for entity in game_objects(game)]
+    return _object_adjs
+
+
+# from challenge.py (invoked during game generation)
+# Collect infos about this game.
+# metadata = {
+#     "seeds": options.seeds,
+#     "settings": settings,
+# }
+#
+# def _get_fqn(obj):
+#     """ Get fully qualified name """
+#     obj = obj.parent
+#     name = ""
+#     while obj:
+#         obj_name = obj.name
+#         if obj_name is None:
+#             obj_name = "inventory"
+#         name = obj_name + "." + name
+#         obj = obj.parent
+#     return name.rstrip(".")
+#
+# object_locations = {}
+# object_attributes = {}
+# for name in game.object_names:
+#     entity = M.find_by_name(name)
+#     if entity:
+#         if entity.type != "d":
+#             object_locations[name] = _get_fqn(entity)
+#         object_attributes[name] = [fact.name for fact in entity.properties]
+#
+# game.extras["object_locations"] = object_locations
+# game.extras["object_attributes"] = object_attributes
 
 

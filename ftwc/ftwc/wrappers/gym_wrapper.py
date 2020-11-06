@@ -8,13 +8,12 @@ import torch
 import textworld
 import textworld.gym
 from textworld import EnvInfos
-from textworld.generator.game import Game, EntityInfo
 import rlpyt.envs.gym
 
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
-from twutils.twlogic import filter_observables
+from twutils.twlogic import filter_observables, game_object_names, game_object_nouns, game_object_adjs
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from ftwc.vocab import WordVocab
@@ -72,6 +71,7 @@ class WordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_sp
         super().__init__([self.vocab_size] * self.max_length)
         self.dtype = np.int64  # Overwrite Gym's dtype=int8.
 
+
 # ToTensor gym env wrapoer copied from PyTorch-Lightning-Bolts
 class ToTensor(gym.Wrapper):
     """Converts env outputs to torch Tensors"""
@@ -88,70 +88,6 @@ class ToTensor(gym.Wrapper):
         """reset the env and cast to tensor"""
         return torch.tensor(self.env.reset())
 
-# adapted from QAit (customized) version of textworld.generator.game.py
-def game_objects(game: Game) -> List[EntityInfo]:
-    """ The entity information of all relevant objects in this game. """
-    def _filter_unnamed_and_room_entities(e):
-        return e.name and e.type != "r"
-    return filter(_filter_unnamed_and_room_entities, game.infos.values())
-
-
-def game_object_names(game: Game) -> List[str]:
-    """ The names of all objects in this game. """
-    get_names_method = getattr(game, "object_names", None)  # game from TextWorld-QAit (customized)
-    if get_names_method and callable(get_names_method):
-        print(f"game_object_names<TextWorld-QAit>({game.metadata['uuid']}")
-        return game.get_names_method()
-    get_names_method = getattr(game, "objects_names", None)  # game from TextWorld (1.3.x)
-    if get_names_method and callable(get_names_method):
-        print(f"game_object_names<TextWorld-1.3.x>({game.metadata['uuid']}")
-        return game.get_names_method()
-    print(f"game_object_names<local -- game_objects()>({game.metadata['uuid']}")
-    return [entity.name for entity in game_objects(game)]
-
-
-def game_object_nouns(game: Game) -> List[str]:
-    """ The noun parts of all objects in this game. """
-    _object_nouns = [entity.noun for entity in game_objects(game)]
-    return _object_nouns
-
-
-def game_object_adjs(game: Game) -> List[str]:
-    """ The adjective parts of all objects in this game. """
-    _object_adjs = [entity.adj if entity.adj is not None else '' for entity in game_objects(game)]
-    return _object_adjs
-
-
-# from challenge.py (invoked during game generation)
-# Collect infos about this game.
-# metadata = {
-#     "seeds": options.seeds,
-#     "settings": settings,
-# }
-#
-# def _get_fqn(obj):
-#     """ Get fully qualified name """
-#     obj = obj.parent
-#     name = ""
-#     while obj:
-#         obj_name = obj.name
-#         if obj_name is None:
-#             obj_name = "inventory"
-#         name = obj_name + "." + name
-#         obj = obj.parent
-#     return name.rstrip(".")
-#
-# object_locations = {}
-# object_attributes = {}
-# for name in game.object_names:
-#     entity = M.find_by_name(name)
-#     if entity:
-#         if entity.type != "d":
-#             object_locations[name] = _get_fqn(entity)
-#         object_attributes[name] = [fact.name for fact in entity.properties]
-#
-# game.extras["object_locations"] = object_locations
-# game.extras["object_attributes"] = object_attributes
 #
 # game.metadata = metadata
 # uuid = "tw-interactive_qa-{specs}-{seeds}"
@@ -292,12 +228,11 @@ def parse_gameid(game_id: str) -> str:
 
 
 class QaitEnvWrapper(gym.Wrapper):
-    def __init__(self, env, vocab=None, random_seed=None, **kwargs):
+    def __init__(self, env, random_seed=None, **kwargs):
         super().__init__(env, **kwargs)
         if random_seed is None:
             random_seed = 42
         self.random_seed = random_seed
-        self.vocab = vocab
         self.game_ids = []
         self.tw_oracles = []
         self.episode_counter = -1
@@ -336,7 +271,6 @@ class QaitEnvWrapper(gym.Wrapper):
             self.episode_counter += 1
 
         obs, infos = self.env.reset()
-        self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
         obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
         return obs, infos
 
@@ -532,77 +466,80 @@ class QaitGym:
         #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
         # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
-        gym_env = QaitEnvWrapper(gym.make(batch_env_id), vocab=vocab, random_seed=self.random_seed)
+        gym_env = QaitEnvWrapper(gym.make(batch_env_id), random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
 
-    def ensure_gameinfo_file(self, gamefile, env_seed=42, save_to_file=True):
-        # NOTE: individual gamefiles have already been registered
-        # NO NEED FOR batch env here
-        # if env_id is not None:
-        #     assert gamefile == self.env2game_map[env_id]
-        print("+++== ensure_gameinfo_file:", gamefile, "...")
-        if not _gameinfo_file_exists(gamefile):
-            print(f"NEED TO GENERATE game_info: '{_gameinfo_path_from_gamefile(gamefile)}'", )
-            print("CURRENT WORKING DIR:", os.getcwd())
-            if gamefile.find("game_") > -1:
-                game_guid = gamefile[gamefile.find("game_"):].split('_')[1]
-            else:
-                game_guid = ''
-            game_guid += "-ginfo"
 
-            request_qait_infos = EnvInfos(
-                # static infos, don't change during the game:
-                game=True,
-                verbs=True,
-                # the following are all specific to TextWorld version customized for QAIT (all are static)
-                #UNUSED # location_names=True,
-                #UNUSED # location_nouns=True,
-                #UNUSED # location_adjs=True,
-                #TODO: object_names=True,
-                #TODO: object_nouns=True,
-                #TODO: object_adjs=True,
-                extras=["object_locations", "object_attributes", "uuid"])
 
-            _env = textworld.start(gamefile, infos=request_qait_infos)
-            game_state = _env.reset()
-
-            # print(game_state.keys())
-            # example from TW 1.3.2 without qait_infos
-            # dict_keys(
-            #     ['feedback', 'raw', 'game', 'command_templates', 'verbs', 'entities', 'objective', 'max_score', 'extra.seeds',
-            #      'extra.goal', 'extra.ingredients', 'extra.skills', 'extra.entities', 'extra.nb_distractors',
-            #      'extra.walkthrough', 'extra.max_score', 'extra.uuid', 'description', 'inventory', 'score', 'moves', 'won',
-            #      'lost', '_game_progression', '_facts', '_winning_policy', 'facts', '_last_action', '_valid_actions',
-            #      'admissible_commands'])
-            # game_uuid = game_state['extra.uuid']   # tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q
-
-            game_info = _get_gameinfo_from_gamestate(game_state)  # ? maybe don't filter/ keep everything (including dynamic info)
-            _env.close()
-            load_additional_gameinfo_from_jsonfile(game_info, _gamejson_path_from_gamefile(gamefile))
-
-            if save_to_file:
-                print("+++== save_gameinfo_file:", gamefile, game_info.keys())
-                _s = _serialize_gameinfo(game_info)
-                with open(_gameinfo_path_from_gamefile(gamefile), "w") as infofile:
-                    infofile.write(_s + '\n')
-                    infofile.flush()
-            game_info['_gamefile'] = gamefile
-            return game_info
+def ensure_gameinfo_file(gamefile, env_seed=42, save_to_file=True):
+    # NOTE: individual gamefiles have already been registered
+    # NO NEED FOR batch env here
+    # if env_id is not None:
+    #     assert gamefile == self.env2game_map[env_id]
+    print("+++== ensure_gameinfo_file:", gamefile, "...")
+    if not _gameinfo_file_exists(gamefile):
+        print(f"NEED TO GENERATE game_info: '{_gameinfo_path_from_gamefile(gamefile)}'", )
+        print("CURRENT WORKING DIR:", os.getcwd())
+        if gamefile.find("game_") > -1:
+            game_guid = gamefile[gamefile.find("game_"):].split('_')[1]
         else:
-            return self.load_gameinfo_file(gamefile)
+            game_guid = ''
+        game_guid += "-ginfo"
 
-    def load_gameinfo_file(self, gamefile):
-        if not _gameinfo_file_exists(gamefile):
-            return self.ensure_gameinfo_file(gamefile)
+        request_qait_infos = EnvInfos(
+            # static infos, don't change during the game:
+            game=True,
+            verbs=True,
+            # the following are all specific to TextWorld version customized for QAIT (all are static)
+            #UNUSED # location_names=True,
+            #UNUSED # location_nouns=True,
+            #UNUSED # location_adjs=True,
+            #TODO: object_names=True,
+            #TODO: object_nouns=True,
+            #TODO: object_adjs=True,
+            extras=["object_locations", "object_attributes", "uuid"])
 
-        game_info = None
-        with open(_gameinfo_path_from_gamefile(gamefile), "r") as infofile:
-            print("+++== load_gameinfo_file:", gamefile)
-            game_info = _deserialize_gameinfo(infofile)
-            game_info['_gamefile'] = gamefile
+        _env = textworld.start(gamefile, infos=request_qait_infos)
+        game_state = _env.reset()
+
+        # print(game_state.keys())
+        # example from TW 1.3.2 without qait_infos
+        # dict_keys(
+        #     ['feedback', 'raw', 'game', 'command_templates', 'verbs', 'entities', 'objective', 'max_score', 'extra.seeds',
+        #      'extra.goal', 'extra.ingredients', 'extra.skills', 'extra.entities', 'extra.nb_distractors',
+        #      'extra.walkthrough', 'extra.max_score', 'extra.uuid', 'description', 'inventory', 'score', 'moves', 'won',
+        #      'lost', '_game_progression', '_facts', '_winning_policy', 'facts', '_last_action', '_valid_actions',
+        #      'admissible_commands'])
+        # game_uuid = game_state['extra.uuid']   # tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q
+
+        game_info = _get_gameinfo_from_gamestate(game_state)  # ? maybe don't filter/ keep everything (including dynamic info)
+        _env.close()
+        load_additional_gameinfo_from_jsonfile(game_info, _gamejson_path_from_gamefile(gamefile))
+
+        if save_to_file:
+            print("+++== save_gameinfo_file:", gamefile, game_info.keys())
+            _s = _serialize_gameinfo(game_info)
+            with open(_gameinfo_path_from_gamefile(gamefile), "w") as infofile:
+                infofile.write(_s + '\n')
+                infofile.flush()
+        game_info['_gamefile'] = gamefile
         return game_info
+    else:
+        return load_gameinfo_file(gamefile)
+
+
+def load_gameinfo_file(gamefile):
+    if not _gameinfo_file_exists(gamefile):
+        return ensure_gameinfo_file(gamefile)
+
+    game_info = None
+    with open(_gameinfo_path_from_gamefile(gamefile), "r") as infofile:
+        print("+++== load_gameinfo_file:", gamefile)
+        game_info = _deserialize_gameinfo(infofile)
+        game_info['_gamefile'] = gamefile
+    return game_info
 
 
 def load_additional_gameinfo_from_jsonfile(gameinfo_dict, filepath):

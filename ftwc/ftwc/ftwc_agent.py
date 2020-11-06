@@ -823,6 +823,8 @@ class FtwcAgent(AgentDQN):
                                                 batch_size=len(gamefiles),
                                                 max_episode_steps=self.max_nb_steps_per_episode)  #self.cfg.training.batch_size)
         obs, infos = self.gym_env.reset()
+        self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
+
         # self.start_episode_infos(obs, infos)
         assert len(self.vocab.word_masks_np) == self.model.generate_length, \
                 f"{len(self.vocab.word_masks_np)} SHOULD == {self.model.generate_length}"  # == 5
