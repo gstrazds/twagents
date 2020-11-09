@@ -19,7 +19,7 @@ from .model import LSTM_DQN
 from .generic import to_np, to_pt, pad_sequences, max_len
 from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
 from .vocab import WordVocab
-from .wrappers import QaitGym
+from .wrappers import QaitGym, ScoreToRewardWrapper
 
 
 def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
@@ -499,7 +499,7 @@ class AgentDQN(pl.LightningModule):
         self.cache_chosen_indices = act_idlist  # token ids for prev action
 
         if all(dones):
-            self.gym_env._on_episode_end()  # log/display some stats
+            self.qait_env._on_episode_end()  # log/display some stats
         return transitions
 
     def get_transitions_for_replay(self, rewards_np, mask_np, obs_idlist):  #, act_idlist):
@@ -817,11 +817,16 @@ class FtwcAgent(AgentDQN):
             obs: Previous command's feedback for each game.
             infos: Additional information for each game.
         """
-        if gamefiles:
-            self.gym_env = self.qgym.make_batch_env(gamefiles, self.vocab,
-                                                request_infos=self.requested_infos,
-                                                batch_size=len(gamefiles),
-                                                max_episode_steps=self.max_nb_steps_per_episode)  #self.cfg.training.batch_size)
+        if not gamefiles:
+            assert False, "Missing arg: gamefiles"
+        batch_size = len(gamefiles)
+        self.qait_env = self.qgym.make_batch_env(gamefiles, self.vocab,
+                                            request_infos=self.requested_infos,
+                                            batch_size=len(gamefiles),
+                                            max_episode_steps=self.max_nb_steps_per_episode)  #self.cfg.training.batch_size)
+
+        wrapped_env = ScoreToRewardWrapper(self.qait_env)
+        self.gym_env = wrapped_env
         obs, infos = self.gym_env.reset()
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
 

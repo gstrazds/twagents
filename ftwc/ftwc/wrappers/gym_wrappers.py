@@ -436,8 +436,36 @@ class QaitGym:
         #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
         # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
-        gym_env = QaitEnvWrapper(gym.make(batch_env_id), random_seed=self.random_seed)
+        base_env = gym.make(batch_env_id)
+        gym_env = QaitEnvWrapper(base_env, random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
+
+
+class ScoreToRewardWrapper(gym.RewardWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self._prev_score = []
+
+    def reset(self, **kwargs):
+        obs, infos = self.env.reset(**kwargs)
+        assert isinstance(obs, (list, tuple))   # for use only with vector envs (TW gym env wrapper produces such by default)
+        self._prev_score = [0] * len(obs)
+        return obs, infos
+
+    # gym.RewardWrapper
+    # def step(self, action):
+    #     observation, score, done, info = self.env.step(action)
+    #     return observation, self.reward(score), done, info
+
+    def reward(self, score):
+        assert isinstance(score, (list, tuple))
+        assert len(score) == len(self._prev_score)
+        _reward = []
+        for _i in range(len(score)):
+            _reward.append(score[_i] - self._prev_score[_i])
+            self._prev_score[_i] = score[_i]
+        return _reward
+
 
