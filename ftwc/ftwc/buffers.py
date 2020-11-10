@@ -5,9 +5,9 @@ import numpy as np
 from rlpyt.utils.collections import namedarraytuple
 
 # a snapshot of state to be stored in replay memory
-Transition = namedarraytuple('Transition', ('observation_id_list', 'word_indices',
+Transition = namedarraytuple('Transition', ('obs_word_ids', 'cmd_word_ids',
                                        'reward', 'mask', 'done',
-                                       'next_observation_id_list',
+                                       'next_obs_word_ids',
                                        'next_word_masks'))
 
 

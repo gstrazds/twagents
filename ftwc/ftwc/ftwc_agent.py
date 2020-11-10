@@ -467,9 +467,10 @@ class AgentDQN(pl.LightningModule):
                 c = c.replace(' the ', ' ')
             assert c.lower() == commands[i], f"{c} should== {commands[i]}"
 
-        obs, scores, dones, infos = self.step_env(commands, dones)
+        obs, rewards, dones, infos = self.step_env(commands, dones)
+        accum_score = [score+reward for score, reward in zip(scores, rewards)]
 
-        self._cache_transitions = self.observe_action_results(scores, dones, obs, obs_idlist, act_idlist)
+        self._cache_transitions = self.observe_action_results(rewards, dones, obs, obs_idlist, act_idlist)
         self._prev_infos = infos  # HACK: save for use in next call to training_step()
         # HACK: observe_action_results =>
         #    self.scores[-1] = scores; self.dones[-1] = dones;
@@ -478,12 +479,18 @@ class AgentDQN(pl.LightningModule):
         #    self.cache_chosen_indices = act_idlist  # token ids for prev action
         #    self.step_reward = rewards_np from compute_per_step_rewards()
 
-        return obs, scores, dones, infos
+        return obs, accum_score, dones, infos
 
-    def observe_action_results(self, scores, dones, obs, obs_idlist, act_idlist):
+    def observe_action_results(self, rewards, dones, obs, obs_idlist, act_idlist):
         # append scores / dones from previous step into memory
 
-        self.scores.append(scores)
+        # self.scores.append(scores)
+        if len(self.scores) > 0:
+            prev_scores = self.scores[-1]
+        else:
+            prev_scores = [0] * len(rewards)
+        new_scores = [prev_score + reward for prev_score, reward in zip(prev_scores, rewards)]
+        self.scores.append(new_scores)
         self.dones.append(dones)
         rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
         self.step_reward = rewards_np
@@ -516,17 +523,16 @@ class AgentDQN(pl.LightningModule):
             is_priority = rewards_np[b] > 0.0
 
             transition = Transition(
-                observation_id_list=self.cache_description_id_list[b],
-                word_indices=[item[b] for item in self.cache_chosen_indices],
+                obs_word_ids=self.cache_description_id_list[b],
+                cmd_word_ids=[item[b] for item in self.cache_chosen_indices],
                 reward=rewards_pt[b],
                 mask=mask_pt[b],
                 done=self.dones[-1][b],
-                next_observation_id_list=obs_idlist[b],
+                next_obs_word_ids=obs_idlist[b],
                 next_word_masks=[word_mask[b]
                                  for word_mask in self.vocab.word_masks_np])
             transitions.append((is_priority, transition))
         return transitions
-
 
     def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
         """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
@@ -598,11 +604,11 @@ class AgentDQN(pl.LightningModule):
 
     def calculate_batch_loss(self, batch):
 
-        observation_id_list = pad_sequences(batch.observation_id_list, maxlen=max_len(batch.observation_id_list)).astype('int32')
+        observation_id_list = pad_sequences(batch.obs_word_ids, maxlen=max_len(batch.obs_word_ids)).astype('int32')
         input_observation = to_pt(observation_id_list, self.use_cuda)
-        next_observation_id_list = pad_sequences(batch.next_observation_id_list, maxlen=max_len(batch.next_observation_id_list)).astype('int32')
+        next_observation_id_list = pad_sequences(batch.next_obs_word_ids, maxlen=max_len(batch.next_obs_word_ids)).astype('int32')
         next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
-        chosen_indices = list(list(zip(*batch.word_indices)))
+        chosen_indices = list(list(zip(*batch.cmd_word_ids)))
         chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list (len n_words) of tensors size =(batch x 1)
 
         word_ranks = self.model.infer_word_ranks(input_observation)  # list (len = n_words) of (batch x vocab) (one row per potential output word)
@@ -681,11 +687,12 @@ class AgentDQN(pl.LightningModule):
         #
         # # step through environment with agent
         # reward, done = self.agent.play_step(self.net, epsilon, device)
-        _obs_, scores, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
+        _obs_, reward, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
 
         # HACK:
-        reward = self.step_reward
-        self.episode_reward = np.array(scores, dtype='float32')
+        # reward = self.step_reward
+        self.episode_reward = np.array(self.scores[-1], dtype='float32')
+
         #
         # # calculates training loss
         if not self._cache_transitions:
@@ -713,7 +720,6 @@ class AgentDQN(pl.LightningModule):
             self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         if all(dones):
             #UGLY HACK TODO: (very soon) get rid of this!!!!
-            self.initialize_episode()
             self.prepare_for_fake_replay()
         return loss   # loss is a torch.Tensor
 
@@ -819,6 +825,7 @@ class FtwcAgent(AgentDQN):
         """
         if not gamefiles:
             assert False, "Missing arg: gamefiles"
+        self._gamefiles = gamefiles   #HACK
         batch_size = len(gamefiles)
         self.qait_env = self.qgym.make_batch_env(gamefiles, self.vocab,
                                             request_infos=self.requested_infos,
@@ -850,6 +857,7 @@ class FtwcAgent(AgentDQN):
         return obs, infos
 
     def prepare_for_fake_replay(self):
+        self.initialize_episode(self._gamefiles)
         self.scores.append([0])
         self.dones.append([False])
         self.prepopulate_replay_buffer(steps=2)
