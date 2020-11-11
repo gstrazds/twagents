@@ -138,24 +138,44 @@ def tally_word_qvalues(word_ranks, word_masks_np):
     word_qvalues = [torch.stack(item) for item in word_qvalues]     # apply torch.stack to each entry (each is a list of scalar tensors)
     return word_qvalues  # list (len=n_words) of tensors w size=(batch)  # 1 dim, since stack([s1,s2,s3])->>tensor([1,2,3])
 
+def mask_per_step_rewards(rewards, dones):
+    """
+    Compute rewards by agent. Note this is different from what the training/evaluation
+    scripts do. Agent keeps track of scores and other game information for training purpose.
+
+    """
+    assert rewards
+    assert len(rewards)   # 1 x batch size
+    rewards_np = np.array(rewards, dtype='float32')
+    # mask = 1 if game is not finished or just finished at current step
+    if not dones or len(dones) == 1:
+        # it's not possible to finish a game at 0th step
+        mask_np = np.ones_like(rewards_np)
+    else:
+        assert len(dones) > 1
+        mask = [1.0 if not dones[-2][i] else 0.0 for i in range(len(dones[-1]))]
+        mask_np = np.array(mask, dtype='float32')
+        rewards_np = rewards_np * mask_np   # if game finished on previous step, can't get more reward this step
+    return rewards_np, mask_np
+
 def compute_per_step_rewards(scores, dones):
     """
     Compute rewards by agent. Note this is different from what the training/evaluation
     scripts do. Agent keeps track of scores and other game information for training purpose.
 
     """
+    assert scores
+    assert len(scores)
     # mask = 1 if game is not finished or just finished at current step
     if not dones or len(dones) == 1:
         # it's not possible to finish a game at 0th step
-        mask = [1.0 for _ in dones[-1]]
+        mask = [1.0 for _ in scores[-1]]
     else:
         assert len(dones) > 1
         mask = [1.0 if not dones[-2][i] else 0.0 for i in range(len(dones[-1]))]
     mask_np = np.array(mask, dtype='float32')
     # rewards returned by game engine are always the accumulated value received during the entire episode.
     # so the reward it gets in the current game step is the new value minus value at previous step.
-    assert scores
-    assert len(scores)
     rewards_np = np.array(scores[-1], dtype='float32')  # batch
     if len(scores) > 1:
         prev_rewards = np.array(scores[-2], dtype='float32')
@@ -323,12 +343,12 @@ def compute_per_step_rewards(scores, dones):
 #         return ["wait"] * len(obs)  # No-op
 
 
-class AgentDQN(pl.LightningModule):
+class FtwcAgentDQN:
     MODE_TRAIN = 'train'
     MODE_EVAL = 'eval'
 
     def __init__(self, cfg, **kwargs):
-        print(f"AgentDQN.__init__ {cfg} {kwargs}")
+        print(f"FtwcAgentDQN.__init__ {cfg} {kwargs}")
         # CustomAgent.__init__(self)
         seedval = cfg.general.random_seed
 
@@ -417,348 +437,6 @@ class AgentDQN(pl.LightningModule):
         assert self.mode == self.MODE_TRAIN or self.mode == self.MODE_EVAL, self.mode
         return self.mode == self.MODE_EVAL
 
-    def train(self, mode=True):
-        """
-        Tell the agent that it's training phase.
-        """
-        self.model.train(mode)
-        if mode:
-            self.set_mode(self.MODE_TRAIN)
-        else:
-            self.set_mode(self.MODE_EVAL)
-        super().train(mode)
-
-    def eval(self):
-        """
-        Tell the agent that it's evaluation phase.
-        """
-        self.model.eval()
-        self.set_mode(self.MODE_EVAL)
-        super().eval()
-
-    def prepopulate_replay_buffer(self, steps=1000):
-
-        """
-        Carries out several random steps through the environment to initially fill
-        up the replay buffer with experiences
-
-        Args:
-            steps: number of random steps to populate the buffer with
-        """
-        print(f"\nwarm_start_steps:{steps}")   # "obs_size:{obs_size}")
-        for i in range(steps):
-            _obs_, scores, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
-
-    def step_env(self, commands: List[str], dones: List[bool]):  #-> List[str], List[int], List[bool], List[Map]
-        # steps = [step + int(not done) for step, done in zip(steps, dones)]  # Increase step counts.
-        for idx, done in enumerate(dones):
-            if not done:
-                self.num_steps[idx] += 1
-            obs, scores, dones, infos = self.gym_env.step(commands)
-            return obs, scores, dones, infos
-
-
-    def env_experience(self, obs, scores, dones, infos):
-        __commands__, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
-        commands = self.vocab.get_chosen_strings(act_idlist, strip_padding=True)
-        assert len(__commands__) == len(commands), f"{__commands__} {commands}"
-        for i, c in enumerate(__commands__):
-            while ' the ' in c:
-                c = c.replace(' the ', ' ')
-            assert c.lower() == commands[i], f"{c} should== {commands[i]}"
-
-        obs, rewards, dones, infos = self.step_env(commands, dones)
-        accum_score = [score+reward for score, reward in zip(scores, rewards)]
-
-        self._cache_transitions = self.observe_action_results(rewards, dones, obs, obs_idlist, act_idlist)
-        self._prev_infos = infos  # HACK: save for use in next call to training_step()
-        # HACK: observe_action_results =>
-        #    self.scores[-1] = scores; self.dones[-1] = dones;
-        #    self._prev_obs = obs
-        #    self.cache_description_id_list = obs_idlist  # token ids for prev obs
-        #    self.cache_chosen_indices = act_idlist  # token ids for prev action
-        #    self.step_reward = rewards_np from compute_per_step_rewards()
-
-        return obs, accum_score, dones, infos
-
-    def observe_action_results(self, rewards, dones, obs, obs_idlist, act_idlist):
-        # append scores / dones from previous step into memory
-
-        # self.scores.append(scores)
-        if len(self.scores) > 0:
-            prev_scores = self.scores[-1]
-        else:
-            prev_scores = [0] * len(rewards)
-        new_scores = [prev_score + reward for prev_score, reward in zip(prev_scores, rewards)]
-        self.scores.append(new_scores)
-        self.dones.append(dones)
-        rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
-        self.step_reward = rewards_np
-
-        transitions = self.get_transitions_for_replay(rewards_np, mask_np, obs_idlist)  #, act_idlist)
-        if not self.is_eval_mode() and transitions:
-            for is_priority, transition in transitions:
-                self.replay_memory.push(is_priority=is_priority, transition=transition)
-
-        # cache info from current game step for constructing next Transition
-        self._prev_obs = obs  # save for constructing transition during next step
-        self.cache_description_id_list = obs_idlist  # token ids for prev obs
-        self.cache_chosen_indices = act_idlist  # token ids for prev action
-
-        if all(dones):
-            self.qait_env._on_episode_end()  # log/display some stats
-        return transitions
-
-    def get_transitions_for_replay(self, rewards_np, mask_np, obs_idlist):  #, act_idlist):
-        if not self.cache_chosen_indices:  # skip if this is the first step (no transition is yet available
-            return None
-        transitions = []
-        mask_pt = to_pt(mask_np, self.use_cuda, type='float')
-        rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
-        # push info from previous game step into replay memory
-        # if self.current_step > 0:
-        for b in range(len(mask_np)):   # for each in batch
-            if mask_np[b] == 0:
-                continue
-            is_priority = rewards_np[b] > 0.0
-
-            transition = Transition(
-                obs_word_ids=self.cache_description_id_list[b],
-                cmd_word_ids=[item[b] for item in self.cache_chosen_indices],
-                reward=rewards_pt[b],
-                mask=mask_pt[b],
-                done=self.dones[-1][b],
-                next_obs_word_ids=obs_idlist[b],
-                next_word_masks=[word_mask[b]
-                                 for word_mask in self.vocab.word_masks_np])
-            transitions.append((is_priority, transition))
-        return transitions
-
-    def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
-        """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
-        # batch_size = self.batch_size
-        # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
-
-        obs, infos = self.initialize_episode(gamefiles)
-        # self.num_steps = [0] * len(obs)   # step counts, local var (not really used, except for logging/print out at end)
-        # self.initial_observation(obs, infos)
-
-        scores = [0] * len(obs)
-        dones = [False] * len(obs)
-        while not all(dones):
-
-            obs, scores, dones, infos = self.env_experience(obs, scores, dones, infos)
-            batch = self.get_next_training_batch()
-            if batch and not self.is_eval_mode():
-                if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
-                    loss = self.calculate_batch_loss(batch)
-                    if loss is not None:
-                        # Backpropagate
-                        self.backpropagate(loss)
-            else:
-                print("WARNING: **** no batch => no loss ****")
-
-        # Let the agent know the game is done and see the final observation
-        # self.select_next_action(obs, scores, dones, infos)
-        self._compute_episode_rewards()
-        self._maybe_save_checkpoint()
-        self.current_episode += 1
-        self._anneal_epsilon()
-        return scores, self.num_steps   #, steps
-
-    def save_checkpoint(self, episode_num):
-        save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
-        if not os.path.isdir(self.model_checkpoint_path):
-            os.mkdir(self.model_checkpoint_path)
-        torch.save(self.model.state_dict(), save_to)
-        print("========= saved checkpoint =========")
-
-    def load_pretrained_model(self, load_from):
-        """
-        Load pretrained checkpoint from file.
-
-        Arguments:
-            load_from: File name of the pretrained model checkpoint.
-        """
-        # print("loading model from %s\n" % (load_from))
-        try:
-            if self.use_cuda:
-                state_dict = torch.load(load_from)
-            else:
-                state_dict = torch.load(load_from, map_location='cpu')
-            self.model.load_state_dict(state_dict)
-        except:
-            print("Failed to load checkpoint...")
-
-    def get_next_training_batch(self):
-        """
-        Update neural model in agent. In this example we follow algorithm
-        of updating model in dqn with replay memory.
-
-        """
-        if len(self.replay_memory) < self.replay_batch_size:
-            return None
-        transitions = self.replay_memory.sample(self.replay_batch_size)
-        batch = Transition(*zip(*transitions))
-        return batch
-
-    def calculate_batch_loss(self, batch):
-
-        observation_id_list = pad_sequences(batch.obs_word_ids, maxlen=max_len(batch.obs_word_ids)).astype('int32')
-        input_observation = to_pt(observation_id_list, self.use_cuda)
-        next_observation_id_list = pad_sequences(batch.next_obs_word_ids, maxlen=max_len(batch.next_obs_word_ids)).astype('int32')
-        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
-        chosen_indices = list(list(zip(*batch.cmd_word_ids)))
-        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list (len n_words) of tensors size =(batch x 1)
-
-        word_ranks = self.model.infer_word_ranks(input_observation)  # list (len = n_words) of (batch x vocab) (one row per potential output word)
-        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
-        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
-
-        next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batch x n_second_noun
-        next_word_masks = list(list(zip(*batch.next_word_masks)))
-        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
-        next_word_qvalues = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
-
-        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
-        next_q_value = next_q_value.detach()  # make a copy, detatched from autograd graph (don't backprop)
-
-        rewards = torch.stack(batch.reward)  # batch
-        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
-        not_done = to_pt(not_done, self.use_cuda, type='float')
-        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
-
-        mask = torch.stack(batch.mask)  # batch
-        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
-        return loss
-
-    def backpropagate(self, loss):
-        self.optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
-        self.optimizer.step()  # apply gradients
-
-    def _compute_episode_rewards(self):
-        dones = []
-        for d in self.dones:
-            d = np.array([float(dd) for dd in d], dtype='float32')
-            dones.append(d)
-        dones = np.array(dones)
-        step_used = 1.0 - dones
-        self.step_used_before_done = np.sum(step_used, 0)  # batch
-
-        if len(self.scores):
-            self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
-            self.history_avg_scores.push(np.mean(self.final_rewards))
-        else:
-            print(f"!!! WARNING: finish() called but self.scores={self.scores}")
-
-    def _maybe_save_checkpoint(self):
-        # save checkpoint
-        if not self.is_eval_mode() and self.current_episode % self.save_frequency == 0:
-            avg_score = self.history_avg_scores.get_avg()
-            if avg_score > self.best_avg_score_so_far:
-                self.best_avg_score_so_far = avg_score
-
-                self.save_checkpoint(self.current_episode)
-
-    def _anneal_epsilon(self):
-        # self.current_episode += 1
-        # annealing
-        if self.current_episode < self.epsilon_anneal_episodes:
-            self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
-
-    def training_step(self, batch, batch_idx) -> Dict[str, Any]:
-        """
-        Carries out a single step through the environment to update the replay buffer.
-        Then calculates loss based on the minibatch received
-
-        Args:
-            batch: current mini batch of replay data (Tuple[torch.Tensor, torch.Tensor, ...])
-            batch_idx: batch number
-
-        Returns:
-            Training loss and log metrics
-        """
-        # device = self.get_device(batch)
-        # epsilon = max(self.eps_end, self.eps_start -
-        #               self.global_step + 1 / self.eps_last_frame)
-        #
-        # # step through environment with agent
-        # reward, done = self.agent.play_step(self.net, epsilon, device)
-        _obs_, reward, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
-
-        # HACK:
-        # reward = self.step_reward
-        self.episode_reward = np.array(self.scores[-1], dtype='float32')
-
-        #
-        # # calculates training loss
-        if not self._cache_transitions:
-            loss = None
-        else:
-            batch_transitions = [transition for _, transition in self._cache_transitions]
-            batch = Transition(*zip(*batch_transitions))
-            loss = self.calculate_batch_loss(batch)
-        #
-        # if all(dones):
-        #     self.total_reward = self.episode_reward
-        #     self.episode_reward = np.array([0.0]*len(_obs_))
-
-        # Soft update of target network
-        if self.global_step % self.sync_rate == 0:
-            self.target_net.load_state_dict(self.model.state_dict())
-        #
-        # # log = {'total_reward': torch.tensor(self.total_reward).to(device),
-        # #        'reward': torch.tensor(reward).to(device),
-        # #        'steps': torch.tensor(self.global_step).to(device)}
-        self.log('reward', torch.tensor(reward, dtype=torch.float32), on_step=True, on_epoch=True)
-        self.log('episode_reward', torch.tensor(self.episode_reward, dtype=torch.float32), on_step=True, on_epoch=True)
-        self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
-        if loss:
-            self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
-        if all(dones):
-            #UGLY HACK TODO: (very soon) get rid of this!!!!
-            self.prepare_for_fake_replay()
-        return loss   # loss is a torch.Tensor
-
-    def configure_optimizers(self) -> List[Optimizer]:
-        """Initialize Adam optimizer"""
-        # optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
-        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
-        optimizer = torch.optim.Adam(parameters, lr=self.learning_rate)
-        return [optimizer]
-
-    # def __dataloader(self) -> DataLoader:
-    #     """Initialize the Replay Buffer dataset used for retrieving experiences"""
-    #     dataset = RLDataset(self.buffer, self.episode_length)
-    #     dataloader = DataLoader(
-    #         dataset=dataset,
-    #         batch_size=self.batch_size,
-    #         sampler=None,
-    #     )
-    #     return dataloader
-    #
-    # def train_dataloader(self) -> DataLoader:
-    #     """Get train loader"""
-    #     return self.__dataloader()
-
-    def get_device(self, batch) -> str:
-        """Retrieve device currently being used by minibatch"""
-        return batch[0].device.index if self.on_gpu else 'cpu'
-
-
-class FtwcAgent(AgentDQN):
-    def __init__(self, cfg: Dict[str, Any], **kwargs):
-        """
-        Arguments:
-            vocab: words supported.
-        """
-        super().__init__(cfg, **kwargs)
-        # self._episode_initialized = False
-        self.requested_infos = self.select_additional_infos()
-
     def select_additional_infos(self) -> EnvInfos:
         """
         Returns what additional information should be made available at each game step.
@@ -813,7 +491,6 @@ class FtwcAgent(AgentDQN):
             extras=_REQUESTED_EXTRAS
         )
         return request_infos
-
 
     def initialize_episode(self, gamefiles=None):
         """
@@ -967,6 +644,348 @@ class FtwcAgent(AgentDQN):
 
         self.current_step += 1
         return self.prev_actions, chosen_indices, __input_token_ids__
+
+    def prepopulate_replay_buffer(self, steps=1000):
+        """
+        Carries out several random steps through the environment to initially fill
+        up the replay buffer with experiences
+
+        Args:
+            steps: number of random steps to populate the buffer with
+        """
+        print(f"\nwarm_start_steps:{steps}")   # "obs_size:{obs_size}")
+        for i in range(steps):
+            _obs_, scores, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
+
+    def step_env(self, commands: List[str], dones: List[bool]):  #-> List[str], List[int], List[bool], List[Map]
+        # steps = [step + int(not done) for step, done in zip(steps, dones)]  # Increase step counts.
+        for idx, done in enumerate(dones):
+            if not done:
+                self.num_steps[idx] += 1
+            obs, scores, dones, infos = self.gym_env.step(commands)
+            return obs, scores, dones, infos
+
+
+    def env_experience(self, obs, scores, dones, infos):
+        __commands__, act_idlist, obs_idlist = self.select_next_action(obs, scores, dones, infos)
+        commands = self.vocab.get_chosen_strings(act_idlist, strip_padding=True)
+        assert len(__commands__) == len(commands), f"{__commands__} {commands}"
+        for i, c in enumerate(__commands__):
+            while ' the ' in c:
+                c = c.replace(' the ', ' ')
+            assert c.lower() == commands[i], f"{c} should== {commands[i]}"
+
+        obs, rewards, dones, infos = self.step_env(commands, dones)
+        accum_score = [score+reward for score, reward in zip(scores, rewards)]
+
+        self._cache_transitions = self.observe_action_results(rewards, dones, obs, obs_idlist, act_idlist)
+        self._prev_infos = infos  # HACK: save for use in next call to training_step()
+        # HACK: observe_action_results =>
+        #    self.scores[-1] = scores; self.dones[-1] = dones;
+        #    self._prev_obs = obs
+        #    self.cache_description_id_list = obs_idlist  # token ids for prev obs
+        #    self.cache_chosen_indices = act_idlist  # token ids for prev action
+        #    self.step_reward = rewards_np from compute_per_step_rewards()
+
+        return obs, accum_score, dones, infos
+
+    def observe_action_results(self, rewards, dones, obs, obs_idlist, act_idlist):
+        # append scores / dones from previous step into memory
+
+        # self.scores.append(scores)
+        if len(self.scores) > 0:
+            prev_scores = self.scores[-1]
+        else:
+            prev_scores = [0] * len(rewards)
+        new_scores = [prev_score + reward for prev_score, reward in zip(prev_scores, rewards)]
+        self.scores.append(new_scores)
+        self.dones.append(dones)
+        rewards_np, mask_np = compute_per_step_rewards(self.scores, self.dones)
+        self.step_reward = rewards_np
+
+        transitions = self.get_transitions_for_replay(rewards_np, mask_np, obs_idlist)  #, act_idlist)
+        if not self.is_eval_mode() and transitions:
+            for is_priority, transition in transitions:
+                self.replay_memory.push(is_priority=is_priority, transition=transition)
+
+        # cache info from current game step for constructing next Transition
+        self._prev_obs = obs  # save for constructing transition during next step
+        self.cache_description_id_list = obs_idlist  # token ids for prev obs
+        self.cache_chosen_indices = act_idlist  # token ids for prev action
+
+        if all(dones):
+            self.qait_env._on_episode_end()  # log/display some stats
+        return transitions
+
+    def get_transitions_for_replay(self, rewards_np, mask_np, obs_idlist):  #, act_idlist):
+        if not self.cache_chosen_indices:  # skip if this is the first step (no transition is yet available
+            return None
+        transitions = []
+        mask_pt = to_pt(mask_np, self.use_cuda, type='float')
+        rewards_pt = to_pt(rewards_np, self.use_cuda, type='float')
+        # push info from previous game step into replay memory
+        # if self.current_step > 0:
+        for b in range(len(mask_np)):   # for each in batch
+            if mask_np[b] == 0:
+                continue         # GVS NOTE: ! this means that transition.mask will never == 0 in replay buffer
+            is_priority = rewards_np[b] > 0.0
+
+            transition = Transition(
+                obs_word_ids=self.cache_description_id_list[b],
+                cmd_word_ids=[item[b] for item in self.cache_chosen_indices],
+                reward=rewards_pt[b],
+                mask=mask_pt[b],
+                done=self.dones[-1][b],
+                next_obs_word_ids=obs_idlist[b],
+                next_word_masks=[word_mask[b]
+                                 for word_mask in self.vocab.word_masks_np])
+            transitions.append((is_priority, transition))
+        return transitions
+
+    def run_episode(self, gamefiles: List[str]) -> Tuple[List[int], List[int]]:
+        """ returns two lists (each containing one value per game in batch): final_score, number_of_steps"""
+        # batch_size = self.batch_size
+        # assert len(gamefiles) == batch_size, f"{batch_size} {len(gamefiles)}"
+
+        obs, infos = self.initialize_episode(gamefiles)
+        # self.num_steps = [0] * len(obs)   # step counts, local var (not really used, except for logging/print out at end)
+        # self.initial_observation(obs, infos)
+
+        scores = [0] * len(obs)
+        dones = [False] * len(obs)
+        while not all(dones):
+
+            obs, scores, dones, infos = self.env_experience(obs, scores, dones, infos)
+            batch = self.get_next_training_batch()
+            if batch and not self.is_eval_mode():
+                if self.current_step > 0 and self.current_step % self.update_per_k_game_steps == 0:
+                    loss = self.calculate_batch_loss(batch)
+                    if loss is not None:
+                        # Backpropagate
+                        self.backpropagate(loss)
+            elif not self.is_eval_mode():
+                print("WARNING: **** no batch => no loss ****")
+
+        # Let the agent know the game is done and see the final observation
+        # self.select_next_action(obs, scores, dones, infos)
+        self._compute_episode_rewards()
+        self._maybe_save_checkpoint()
+        self.current_episode += 1
+        self._anneal_epsilon()
+        return scores, self.num_steps   #, steps
+
+    def save_checkpoint(self, episode_num):
+        save_to = self.model_checkpoint_path + '/' + self.experiment_tag + "_episode_" + str(episode_num) + ".pt"
+        if not os.path.isdir(self.model_checkpoint_path):
+            os.mkdir(self.model_checkpoint_path)
+        torch.save(self.model.state_dict(), save_to)
+        print("========= saved checkpoint =========")
+
+    def load_pretrained_model(self, load_from):
+        """
+        Load pretrained checkpoint from file.
+
+        Arguments:
+            load_from: File name of the pretrained model checkpoint.
+        """
+        # print("loading model from %s\n" % (load_from))
+        try:
+            if self.use_cuda:
+                state_dict = torch.load(load_from)
+            else:
+                state_dict = torch.load(load_from, map_location='cpu')
+            self.model.load_state_dict(state_dict)
+        except:
+            print("Failed to load checkpoint...")
+
+    def get_next_training_batch(self):
+        """
+        Update neural model in agent. In this example we follow algorithm
+        of updating model in dqn with replay memory.
+
+        """
+        if len(self.replay_memory) < self.replay_batch_size:
+            return None
+        transitions = self.replay_memory.sample(self.replay_batch_size)
+        batch = Transition(*zip(*transitions))   # each element of the Transition => a tuple of len replay_batch_size
+        return batch
+
+    def calculate_batch_loss(self, batch):
+
+        observation_id_list = pad_sequences(batch.obs_word_ids, maxlen=max_len(batch.obs_word_ids)).astype('int32')
+        input_observation = to_pt(observation_id_list, self.use_cuda)
+        next_observation_id_list = pad_sequences(batch.next_obs_word_ids, maxlen=max_len(batch.next_obs_word_ids)).astype('int32')
+        next_input_observation = to_pt(next_observation_id_list, self.use_cuda)
+        chosen_indices = list(list(zip(*batch.cmd_word_ids)))
+        chosen_indices = [torch.stack(item, 0) for item in chosen_indices]  # list (len n_words) of tensors size =(batch x 1)
+
+        word_ranks = self.model.infer_word_ranks(input_observation)  # list (len = n_words) of (batch x vocab) (one row per potential output word)
+        word_qvalues = [w_rank.gather(1, idx).squeeze(-1) for w_rank, idx in zip(word_ranks, chosen_indices)]  # list of batch
+        q_value = torch.mean(torch.stack(word_qvalues, -1), -1)  # batch
+
+        next_word_ranks = self.model.infer_word_ranks(next_input_observation)  # batch x n_verb, batch x n_noun, batch x n_second_noun
+        next_word_masks = list(list(zip(*batch.next_word_masks)))
+        next_word_masks = [np.stack(item, 0) for item in next_word_masks]
+        next_word_qvalues = tally_word_qvalues(next_word_ranks, next_word_masks)  # batch
+
+        next_q_value = torch.mean(torch.stack(next_word_qvalues, -1), -1)  # batch
+        next_q_value = next_q_value.detach()  # make a copy, detatched from autograd graph (don't backprop)
+
+        rewards = torch.stack(batch.reward)  # batch
+        not_done = 1.0 - np.array(batch.done, dtype='float32')  # batch
+        not_done = to_pt(not_done, self.use_cuda, type='float')
+        rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
+
+        # GVS NOTE: batch.mask is never 0, because any transitions w/mask == 0 do not get added to reply buffer
+        mask = torch.stack(batch.mask)  # batch
+        loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
+        return loss
+
+    def backpropagate(self, loss):
+        self.optimizer.zero_grad()
+        loss.backward(retain_graph=True)
+        # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+        self.optimizer.step()  # apply gradients
+
+    def _compute_episode_rewards(self):
+        dones = []
+        for d in self.dones:
+            d = np.array([float(dd) for dd in d], dtype='float32')
+            dones.append(d)
+        dones = np.array(dones)
+        step_used = 1.0 - dones
+        self.step_used_before_done = np.sum(step_used, 0)  # batch
+
+        if len(self.scores):
+            self.final_rewards = np.array(self.scores[-1], dtype='float32')  # batch
+            self.history_avg_scores.push(np.mean(self.final_rewards))
+        else:
+            print(f"!!! WARNING: finish() called but self.scores={self.scores}")
+
+    def _maybe_save_checkpoint(self):
+        # save checkpoint
+        if not self.is_eval_mode() and self.current_episode % self.save_frequency == 0:
+            avg_score = self.history_avg_scores.get_avg()
+            if avg_score > self.best_avg_score_so_far:
+                self.best_avg_score_so_far = avg_score
+
+                self.save_checkpoint(self.current_episode)
+
+    def _anneal_epsilon(self):
+        # self.current_episode += 1
+        # annealing
+        if self.current_episode < self.epsilon_anneal_episodes:
+            self.epsilon -= (self.epsilon_anneal_from - self.epsilon_anneal_to) / float(self.epsilon_anneal_episodes)
+
+    def get_device(self, batch) -> str:
+        """Retrieve device currently being used by minibatch"""
+        return batch[0].device.index if self.on_gpu else 'cpu'
+
+
+class FtwcAgent(FtwcAgentDQN, pl.LightningModule):
+    def __init__(self, cfg: Dict[str, Any], **kwargs):
+        """
+        Arguments:
+            vocab: words supported.
+        """
+        super().__init__(cfg, **kwargs)
+        # self._episode_initialized = False
+        self.requested_infos = self.select_additional_infos()
+
+    def train(self, mode=True):
+        """
+        Tell the agent that it's training phase.
+        """
+        self.model.train(mode)
+        if mode:
+            self.set_mode(self.MODE_TRAIN)
+        else:
+            self.set_mode(self.MODE_EVAL)
+        super().train(mode)
+
+    def eval(self):
+        """
+        Tell the agent that it's evaluation phase.
+        """
+        self.model.eval()
+        self.set_mode(self.MODE_EVAL)
+        super().eval()
+
+    def configure_optimizers(self) -> List[Optimizer]:
+        """Initialize Adam optimizer"""
+        # optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+        parameters = filter(lambda p: p.requires_grad, self.model.parameters())
+        optimizer = torch.optim.Adam(parameters, lr=self.learning_rate)
+        return [optimizer]
+
+    def training_step(self, batch, batch_idx) -> Dict[str, Any]:
+        """
+        Carries out a single step through the environment to update the replay buffer.
+        Then calculates loss based on the minibatch received
+
+        Args:
+            batch: current mini batch of replay data (Tuple[torch.Tensor, torch.Tensor, ...])
+            batch_idx: batch number
+
+        Returns:
+            Training loss and log metrics
+        """
+        # device = self.get_device(batch)
+        # epsilon = max(self.eps_end, self.eps_start -
+        #               self.global_step + 1 / self.eps_last_frame)
+        #
+        # # step through environment with agent
+        # reward, done = self.agent.play_step(self.net, epsilon, device)
+        _obs_, reward, dones, _infos_ = self.env_experience(self._prev_obs, self.scores[-1], self.dones[-1], self._prev_infos)
+
+        # HACK:
+        # reward = self.step_reward
+        self.episode_reward = np.array(self.scores[-1], dtype='float32')
+
+        #
+        # # calculates training loss
+        if not self._cache_transitions:
+            loss = None
+        else:
+            batch_transitions = [transition for _, transition in self._cache_transitions]
+            batch = Transition(*zip(*batch_transitions))
+            loss = self.calculate_batch_loss(batch)
+        #
+        # if all(dones):
+        #     self.total_reward = self.episode_reward
+        #     self.episode_reward = np.array([0.0]*len(_obs_))
+
+        # Soft update of target network
+        if self.global_step % self.sync_rate == 0:
+            self.target_net.load_state_dict(self.model.state_dict())
+        #
+        # # log = {'total_reward': torch.tensor(self.total_reward).to(device),
+        # #        'reward': torch.tensor(reward).to(device),
+        # #        'steps': torch.tensor(self.global_step).to(device)}
+        self.log('reward', torch.tensor(reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        self.log('episode_reward', torch.tensor(self.episode_reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
+        if loss:
+            self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        if all(dones):
+            #UGLY HACK TODO: (very soon) get rid of this!!!!
+            self.prepare_for_fake_replay()
+        return loss   # loss is a torch.Tensor
+
+    # def __dataloader(self) -> DataLoader:
+    #     """Initialize the Replay Buffer dataset used for retrieving experiences"""
+    #     dataset = RLDataset(self.buffer, self.episode_length)
+    #     dataloader = DataLoader(
+    #         dataset=dataset,
+    #         batch_size=self.batch_size,
+    #         sampler=None,
+    #     )
+    #     return dataloader
+    #
+    # def train_dataloader(self) -> DataLoader:
+    #     """Get train loader"""
+    #     return self.__dataloader()
 
     def validation_step(self, batch, batch_idx):
         print(f"\n=========== VALIDATION_STEP [{batch_idx}] {batch}\n")
