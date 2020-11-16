@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from textworld import EnvInfos
 
-from ftwc import FtwcAgent
+from ftwc import FtwcAgentLit
 from ftwc import GamefileDataModule
 
 # List of additional information available during evaluation.
@@ -109,7 +109,7 @@ def main(cfg: DictConfig) -> None:
     data.setup()
     # train(cfg, data.test_dataloader())
 
-    agent = FtwcAgent(cfg)
+    agent = FtwcAgentLit(cfg)
     n_eval_subset = 1.0  # eval the full test set
     n_eval_subset = int(cfg.test.num_test_episodes/data.test_dataloader().batch_size)
     trainer = Trainer(

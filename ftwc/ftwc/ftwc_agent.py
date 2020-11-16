@@ -377,10 +377,12 @@ class FtwcAgentDQN:
             if not cfg.general.use_cuda:
                 print("WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
-            else:
+            elif self.cfg.cuda_idx is not None:
                 torch.backends.cudnn.deterministic = True
                 torch.cuda.manual_seed(seedval)
                 self.use_cuda = True
+            else:
+                self.use_cuda = False
         else:
             self.use_cuda = False
 
@@ -428,6 +430,7 @@ class FtwcAgentDQN:
         # optimizer
         self.learning_rate = cfg.training.optimizer.learning_rate
         self.optimizer = self.configure_optimizers()[0]
+        self.requested_infos = self.select_additional_infos()
 
     def set_mode(self, mode):
         assert mode == self.MODE_TRAIN or mode == self.MODE_EVAL, str(mode)
@@ -883,15 +886,14 @@ class FtwcAgentDQN:
         return batch[0].device.index if self.on_gpu else 'cpu'
 
 
-class FtwcAgent(FtwcAgentDQN, pl.LightningModule):
+class FtwcAgentLit(FtwcAgentDQN, pl.LightningModule):
     def __init__(self, cfg: Dict[str, Any], **kwargs):
         """
         Arguments:
-            vocab: words supported.
+            cfg: configuration from hydra-config
         """
         super().__init__(cfg, **kwargs)
         # self._episode_initialized = False
-        self.requested_infos = self.select_additional_infos()
 
     def train(self, mode=True):
         """
@@ -1008,3 +1010,12 @@ class FtwcAgent(FtwcAgentDQN, pl.LightningModule):
         for nsteps in steps:  # total steps, per env in batch
             self.log(f"{prefix}_nsteps", torch.tensor(nsteps, dtype=torch.int16), on_step=True, on_epoch=True)
         return None
+
+class FtwcAgentRlpyt(FtwcAgentDQN):
+    def __init__(self, cfg: Dict[str, Any], **kwargs):
+        """
+        Arguments:
+            cfg: configuration from hydra-config
+        """
+        super().__init__(cfg, **kwargs)
+        # self._episode_initialized = False

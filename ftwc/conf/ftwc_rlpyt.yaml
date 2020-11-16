@@ -1,11 +1,12 @@
 # @package _global_
 cwd_path: "."   # gets expanded to an absolute path to the original current directory (not the Hydra/runtime working dir)
+cuda_idx: 0     # set to None to run without using CUDA
 
 general:
   vocab_words: ${cwd_path}/conf/vocab.txt
   discount_gamma: 0.5
   random_seed: 42
-  use_cuda: True  # disable this when running on machine without cuda
+  # use_cuda: True # disable this when running on machine without cuda
 
   # replay memory
   replay_memory_capacity: 500000  # adjust this depending on your RAM size
