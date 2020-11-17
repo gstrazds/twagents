@@ -105,7 +105,7 @@ def main(cfg: DictConfig) -> None:
 
     print("{} games found for training.".format(len(games)))
     # print(games)
-    data = GamefileDataModule(gamefiles=games, testfiles=test_games)
+    data = GamefileDataModule(cfg, gamefiles=games, testfiles=test_games)
     data.setup()
     # train(cfg, data.test_dataloader())
 

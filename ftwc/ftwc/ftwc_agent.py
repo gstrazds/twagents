@@ -377,7 +377,7 @@ class FtwcAgentDQN:
             if not cfg.general.use_cuda:
                 print("WARNING: CUDA device detected but 'use_cuda: false' found in config.yaml")
                 self.use_cuda = False
-            elif self.cfg.cuda_idx is not None:
+            elif cfg.cuda_idx is not None:
                 torch.backends.cudnn.deterministic = True
                 torch.cuda.manual_seed(seedval)
                 self.use_cuda = True

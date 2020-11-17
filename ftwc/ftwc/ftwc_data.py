@@ -96,13 +96,14 @@ class GamefileDataset(torch.utils.data.Dataset):
 
 
 class GamefileDataModule(pl.LightningDataModule):
-    def __init__(self, gamefiles: List[str], testfiles : Optional[List[str]] = None, **kwargs):
+    def __init__(self, cfg, gamefiles: List[str], testfiles : Optional[List[str]] = None, **kwargs):
         super().__init__()
         self._training_list = gamefiles
         self._testing_list = testfiles
         self.train_ds = None
         self.val_ds = None
         self.test_ds = None
+        self.cfg = cfg
 
     def setup(self, stage: Optional[str] = None):
         # NOTE/WARNING: setup is called from every GPU. Setting state here is okay.
@@ -127,26 +128,26 @@ class GamefileDataModule(pl.LightningDataModule):
                 self.test_ds = GamefileDataset(self._testing_list)
                 # self.dims = getattr(self, 'dims', self.mnist_test[0][0].shape)
 
-    train_params = { #'shuffle': True
-       'batch_size': 1,
-        'num_workers': 1,
-    }
-    val_params = { #'shuffle': False,
-        'batch_size': 1,
-        'num_workers': 1,
-    }
-    test_params = { #'shuffle': False,
-        'batch_size': 1,
-        'num_workers': 1,
-    }
 
     def train_dataloader(self):
-        return DataLoader(self.train_ds, **self.train_params)    # Parameters
+        train_params = {  # 'shuffle': True
+            'batch_size': self.cfg.training.batch_size,
+            'num_workers': 1,
+        }
+        return DataLoader(self.train_ds, **train_params)    # Parameters
 
     def val_dataloader(self):
-        return DataLoader(self.val_ds, **self.val_params)    # Parameters
+        val_params = {  # 'shuffle': False,
+            'batch_size': self.cfg.test.batch_size,
+            'num_workers': 1,
+        }
+        return DataLoader(self.val_ds, **val_params)    # Parameters
 
     def test_dataloader(self):
         if self.test_ds:
-            return DataLoader(self.test_ds, **self.test_params)    # Parameters
+            test_params = {  # 'shuffle': False,
+                'batch_size': self.cfg.test.batch_size,
+                'num_workers': 1,
+            }
+            return DataLoader(self.test_ds, **test_params)    # Parameters
         return None

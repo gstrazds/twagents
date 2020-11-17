@@ -260,12 +260,12 @@ class QaitEnvWrapper(gym.Wrapper):
     def _compute_oracle_action(self, idx, infos, obs, dones=None, verbose=False):
         if 'tw_o_step' not in infos:
             assert idx == 0, \
-                f"we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-            infos['tw_o_step'] = ['action'] * len(self.tw_oracles)  # will be replaced before anyone sees these
-            if dones and dones[idx]:  # agent idx has already terminated, don't invoke it again
-                actiontxt = 'do nothing'
-            else:
-                actiontxt = self.invoke_oracle(idx, obs[idx], infos, verbose=verbose)
+                f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
+            infos['tw_o_step'] = ['fake action'] * len(obs)  # will be replaced before anyone sees these
+        if dones and dones[idx]:  # agent idx has already terminated, don't invoke it again
+            actiontxt = 'do nothing'
+        else:
+            actiontxt = self.invoke_oracle(idx, obs[idx], infos, verbose=verbose)
         infos['tw_o_step'][idx] = actiontxt
         return infos
 
@@ -315,8 +315,8 @@ class QaitEnvWrapper(gym.Wrapper):
                 if idx == len(self.game_ids):
                     self.game_ids.append(game_id)
             self._init_oracle(game_id, idx, need_to_forget=need_to_forget, is_first_episode=(episode_counter == 0))
-        # populate oracle recommended action
-        infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
+            # populate oracle recommended action
+            infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
         return obs, infos
 
     def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback
