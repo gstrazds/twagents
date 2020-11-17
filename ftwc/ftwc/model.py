@@ -14,12 +14,12 @@ class LSTM_DQN(torch.nn.Module):
 
     def __init__(self, model_config, word_vocab, generate_length=5, enable_cuda=False):
         super(LSTM_DQN, self).__init__()
-        self.model_config = model_config
+        # self.model_config = model_config
         self.enable_cuda = enable_cuda
         self.word_vocab_size = len(word_vocab)
         self.id2word = word_vocab
         self.generate_length = generate_length  # how many (max) output words we want to produce
-        self.read_config()
+        self.read_config(model_config)
         self._def_layers()
         self.init_weights()
         # self.print_parameters()
@@ -35,12 +35,12 @@ class LSTM_DQN(torch.nn.Module):
             amount += np.prod(p.size())
         print("number of trainable parameters: %s" % (amount))
 
-    def read_config(self):
+    def read_config(self, model_config):
         # model config
-        self.embedding_size = self.model_config['embedding_size']
-        self.encoder_rnn_hidden_size = self.model_config['encoder_rnn_hidden_size']
-        self.action_scorer_hidden_dim = self.model_config['action_scorer_hidden_dim']
-        self.dropout_between_rnn_layers = self.model_config['dropout_between_rnn_layers']
+        self.embedding_size = model_config.embedding_size
+        self.encoder_rnn_hidden_size = model_config.encoder_rnn_hidden_size
+        self.action_scorer_hidden_dim = model_config.action_scorer_hidden_dim
+        self.dropout_between_rnn_layers = model_config.dropout_between_rnn_layers
 
     def _def_layers(self):
 

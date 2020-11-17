@@ -69,9 +69,9 @@ def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
         word_ranks: Q values for each word by model.action_scorer.
         word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun).
     """
-    word_ranks_np = [to_np(item) for item in word_ranks]  # list of arrays, batch_len x n_vocab
+    word_ranks_np = [to_np(item) for item in word_ranks]  # list of 5 np arrays, each w/size batch_len x n_vocab
     word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
-    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+    word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # mask out ineligible words
 
     word_indices = [np.argmax(item, -1) for item in word_ranks_np]  # list of 5 arrays, each w len = batch
 
@@ -603,6 +603,7 @@ class FtwcAgentDQN:
 
         word_ranks = self.model.infer_word_ranks(input_tensor)  # list of batch x vocab
         assert word_ranks[0].size(0) == input_tensor.size(0)   # refactoring
+        word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
 
         # generate commands for one game step, epsilon greedy is applied, i.e.,
         # there is epsilon of chance to generate random commands
@@ -611,7 +612,6 @@ class FtwcAgentDQN:
         #                                    self.use_cuda,
         #                                    epsilon=(0.0 if self.is_eval_mode() else self.epsilon))
 
-        word_indices_maxq = _choose_maxQ_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
         if self.is_eval_mode() or self.epsilon <= 0.0:
             chosen_indices = word_indices_maxq
         else:  # if not self.is_eval_mode() and self.epsilon > 0.0:
@@ -839,7 +839,7 @@ class FtwcAgentDQN:
         not_done = to_pt(not_done, self.use_cuda, type='float')
         rewards = rewards + not_done * next_q_value * self.discount_gamma  # batch
 
-        # GVS NOTE: batch.mask is never 0, because any transitions w/mask == 0 do not get added to reply buffer
+        # GVS NOTE: batch.mask is never 0, because any transitions w/mask == 0 do not get added to replay buffer
         mask = torch.stack(batch.mask)  # batch
         loss = F.smooth_l1_loss(q_value * mask, rewards * mask)
         return loss

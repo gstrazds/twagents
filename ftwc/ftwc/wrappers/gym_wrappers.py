@@ -452,12 +452,21 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
         obs, infos = self.env.reset(**kwargs)
         assert isinstance(obs, (list, tuple))   # for use only with vector envs (TW gym env wrapper produces such by default)
         self._prev_score = [0] * len(obs)
+        if 'game_score' not in infos:
+            infos['game_score'] = self._prev_score
         return obs, infos
 
     # gym.RewardWrapper
     # def step(self, action):
     #     observation, score, done, info = self.env.step(action)
     #     return observation, self.reward(score), done, info
+    def step(self, action):
+        observation, score, done, infos = self.env.step(action)
+        #if 'game_score' in infos:
+        #     assert infos['game_score'] == score, f"{infos['game_score']} should== {score}" #FAILS: infos from prev step
+        # else:
+        infos['game_score'] = score
+        return observation, self.reward(score), done, infos
 
     def reward(self, score):
         assert isinstance(score, (list, tuple))
@@ -467,5 +476,3 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
             _reward.append(score[_i] - self._prev_score[_i])
             self._prev_score[_i] = score[_i]
         return _reward
-
-
