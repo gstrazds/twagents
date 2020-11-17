@@ -313,7 +313,7 @@ class WordVocab:
             return_list[i] = np.array(return_list[i])
         return return_list
 
-    def generate_random_command_phrase(self, _ignored_word_ranks_, use_cuda):
+    def generate_random_command_phrase(self, _ignored_word_ranks_):
         """
         Generate a command randomly, for epsilon greedy.
 
@@ -348,8 +348,6 @@ class WordVocab:
         #     for j in range(len(word_qvalues)):
         #         word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
         # word_qvalues = [torch.stack(item) for item in word_qvalues]
-        word_indices = [to_pt(item, use_cuda) for item in word_indices]
-        word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of 5 tensors, each w size: batch x 1
         # return word_qvalues, word_indices
         return word_indices
 

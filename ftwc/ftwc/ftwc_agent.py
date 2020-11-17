@@ -576,7 +576,10 @@ class FtwcAgentDQN:
             chosen_indices = word_indices_maxq
         else:  # if not self.is_eval_mode() and self.epsilon > 0.0:
             _ignored_word_ranks = None   # word_ranks
-            word_indices_random = self.vocab.generate_random_command_phrase(_ignored_word_ranks, self.use_cuda)
+            word_indices_random = self.vocab.generate_random_command_phrase(_ignored_word_ranks) # list of np arrays
+            word_indices_random = [to_pt(item, self.use_cuda) for item in word_indices_random]
+            word_indices_random = [item.unsqueeze(-1) for item in word_indices_random]  # list of 5 tensors, each w size: batch x 1
+
             chosen_indices = choose_epsilon_greedy(word_indices_maxq, word_indices_random, self.epsilon)
 
         chosen_indices = [item.detach() for item in chosen_indices]

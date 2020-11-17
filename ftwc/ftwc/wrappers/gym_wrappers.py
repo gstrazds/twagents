@@ -52,6 +52,11 @@ class MultiWordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.te
         super().__init__([self.vocab_size] * self.max_length)
         self.dtype = np.int64  # Overwrite Gym's dtype=int8.
 
+    def sample(self):
+        if self._is_cmd_phrases:
+            return self.vocab.generate_random_command_phrase(None)
+        else:
+            return super().sample()
 
 # ToTensor gym env wrapoer copied from PyTorch-Lightning-Bolts
 class ToTensor(gym.Wrapper):
