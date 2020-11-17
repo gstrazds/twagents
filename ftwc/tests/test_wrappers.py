@@ -60,9 +60,9 @@ class TestVocab(unittest.TestCase):
             tok_ids = tok_ids[0]  #list of lists, know there is only one
             tok_ids = _ensure_padded_len(tok_ids, 5, self.vocab.PAD_id, eos_value=self.vocab.EOS_id)
             # print(tok_ids)
-            tok_ids = list(map(lambda t: self.vocab.word_vocab[t], tok_ids))
+            toks_decoded = list(map(lambda t: self.vocab.id2tok(t), tok_ids))
             # print(tok_ids)
-            self.assertEqual(toks, tok_ids)
+            self.assertEqual(toks, toks_decoded)
 
 
 

@@ -16,7 +16,7 @@ from symbolic.entity import MEAL
 from twutils.twlogic import filter_observables
 from ftwc.vocab import WordVocab
 
-class WordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_spaces
+class MultiWordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_spaces.WordSpace
     """ Word observation/action space
 
     This space consists of a series of `gym.spaces.Discrete` objects all with
@@ -378,8 +378,8 @@ class QaitGym:
         self.base_vocab = base_vocab
         self.random_seed = random_seed
         if base_vocab is not None:
-            self._action_space = WordSpace(max_length=5, vocab=self.base_vocab.word_vocab)
-            self._obs_space = WordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
+            self._action_space = MultiWordSpace(max_length=5, vocab=self.base_vocab.word_vocab)
+            self._obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
 
     def _register_batch_games(self,
                     gamefiles: List[str],
@@ -415,8 +415,8 @@ class QaitGym:
             _obs_space = self._obs_space
         else:
             print("CREATING NEW WordSpaces")
-            _action_space = WordSpace(max_length=5, vocab=vocab.word_vocab),
-            _obs_space = WordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
+            _action_space = MultiWordSpace(max_length=5, vocab=vocab.word_vocab),
+            _obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
 
         batch_env_id = self._register_batch_games(gamefiles=gamefiles,
                                                   request_infos=request_infos,

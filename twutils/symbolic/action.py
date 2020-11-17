@@ -268,7 +268,7 @@ class MoveItemAction(DoubleAction):
 
 
 # Global Action Definitions
-NoOp       = StandaloneAction('<NOOP>')  # special singleton -- explicitly ignored
+NoOp       = StandaloneAction('<NONE>')  # special singleton -- explicitly ignored
 DoNothing  = StandaloneAction('do nothing')
 Look       = StandaloneAction('look')
 Inventory  = StandaloneAction('inventory')

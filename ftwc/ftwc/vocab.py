@@ -39,25 +39,33 @@ class WordVocab:
     # (but not counting spaces or punct)
     # also inventory and other feedback can dynamically be added to the raw description
 
-    MAX_NUM_CMD_TOKENS = 8
+    #MAX_NUM_CMD_TOKENS = 8
 
     def __init__(self, vocab_file="./vocab.txt"):
+        self.PAD = "<PAD>"    # excluded when random sampling cmds
+        self.UNK = "<UNK>"    # excluded when random sampling
+        self.BOS = "<S>"      # parsing: start-of-sentence, excluded when random sampling
+        self.EOS = "</S>"     # parsing: end-of-sentence, excluded when sampling
+        self.SEP = "<|>"      # separator for input text segments, excluded when sampling cmds
+        self.NONE = "<NONE>"  # placeholder when entities have no adj
+        self.special_tokens = [self.PAD, self.UNK, self.BOS, self.EOS, self.SEP, self.NONE]
+        self.word_vocab = [w.lower() for w in self.special_tokens]
         with open(vocab_file) as f:
-            self.word_vocab = f.read().split("\n")
-        self.word2id = {}
+            words = f.read().split("\n")
+            #assume that vocab file contains unique words,
+            filtered_words = [w.lower() for w in words if w.strip() and not w.startswith('#<')]
+        self.word_vocab.extend(filtered_words)
+        self._word2id = {}
         # self.id2word = []  # same as self.word_vocab
-        for i, w in enumerate(self.word_vocab):
-            self.word2id[w] = i
-            # self.id2word[i] = w  # same as self.word_vocab
-        self.PAD = "<PAD>"    # excluded when random sampling
-        self.UNK = "<UNK>"
-        self.BOS = "<S>"
-        self.EOS = "</S>"
-        self.SEP = "<|>"
 
-        self.EOS_id = self.word2id[self.EOS]
-        self.UNK_id = self.word2id.get(self.UNK, self.word2id.get("<unk>", 1))  # default: 1 if neither "<UNK>" or "<unk>"
-        self.PAD_id = self.word2id.get(self.PAD, self.word2id.get("<pad>", 0))  # should be 0
+        for i, w in enumerate(self.word_vocab):
+            # if not w.strip():
+            #     assert f"[{i}] Expected all words/lines in vocab file to be non-empty!"
+            self._word2id[w] = i
+
+        self.EOS_id = self.word2id(self.EOS)
+        self.UNK_id = self.word2id(self.UNK)  # default: 1 if neither "<UNK>" or "<unk>"
+        self.PAD_id = self.word2id(self.PAD)  # should be 0
         assert self.PAD_id == 0
         self.single_word_verbs = set(["inventory", "look", "north", "south", "east", "west", "wait"])
         self.single_word_nouns = ["knife", "oven", "stove", "bbq", "grill"]
@@ -69,6 +77,7 @@ class WordVocab:
                                 "cook": ("with", ),
                                 "insert": ("into", ),
                                 "put": ("on", "in", "into"),
+                                "lock": ("with", ),
                                 "unlock": ("with", ),
                                 }
         # FROM extras.command_templates:
@@ -123,14 +132,17 @@ class WordVocab:
 
         for i in range(batch_size):
             for w in verbs_word_lists[i]:
-                if w in self.word2id:
-                    verb_mask[i][self.word2id[w]] = 1.0
+                w_id = self.word2id(w)
+                if w_id != self.UNK_id:
+                    verb_mask[i][w_id] = 1.0
             for w in noun_word_lists[i]:
-                if w in self.word2id:
-                    noun_mask[i][self.word2id[w]] = 1.0
+                w_id = self.word2id(w)
+                if w_id != self.UNK_id:
+                    noun_mask[i][w_id] = 1.0
             for w in adj_word_lists[i]:
-                if w in self.word2id:
-                    adj_mask[i][self.word2id[w]] = 1.0
+                w_id = self.word2id(w)
+                if w_id != self.UNK_id:
+                    adj_mask[i][w_id] = 1.0
         second_noun_mask = copy.copy(noun_mask)
         second_adj_mask = copy.copy(adj_mask)
         second_noun_mask[:, self.EOS_id] = 1.0
@@ -227,8 +239,23 @@ class WordVocab:
             return self.word_vocab[tokid]
         return self.UNK
 
+    def is_unknown(self, word: str):
+        return word.lower() not in self._word2id
+
+    def word2id(self, word: str) -> int:
+        w = word.lower()
+        if w not in self._word2id:
+            return self.UNK_id
+        return self._word2id[w]
+
+    def id2tok(self, tok_id:int):
+        if tok_id < len(self.special_tokens):
+            return self.special_tokens[tok_id]
+        else:
+            return self.word_vocab[tok_id]
+
     def _words_to_ids(self, words: List[str]) -> List[int]:
-        return [self.word2id.get(word, self.UNK_id) for word in words]
+        return [self.word2id(word) for word in words]
         # ids = []
         # for word in words:
             # try:
