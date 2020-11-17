@@ -4,7 +4,7 @@ from typing import List
 import numpy as np
 import spacy
 
-from .generic import to_np
+from .generic import to_np, to_pt
 
 _global_nlp = spacy.load('en_core_web_sm', disable=['ner', 'parser', 'tagger'])  # used only for tokenization
 
@@ -106,6 +106,10 @@ class WordVocab:
 
         # self.word_masks_np = [verb_mask, adj_mask, noun_mask, second_adj_mask, second_noun_mask]
         self.word_masks_np = []  # will be a list of np.array (x5), one for each potential output word
+
+    @property
+    def vocab_size(self):
+        return len(self.word_vocab)
 
     def init_from_infos_lists(self, verbs_word_lists, entities_word_lists):
         # get word masks
@@ -308,6 +312,46 @@ class WordVocab:
         for i in range(len(return_list)):
             return_list[i] = np.array(return_list[i])
         return return_list
+
+    def generate_random_command_phrase(self, _ignored_word_ranks_, use_cuda):
+        """
+        Generate a command randomly, for epsilon greedy.
+
+        Arguments:
+            word_ranks: Q values for each word by model.action_scorer.
+            word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun, adj2, noun2).
+        """
+        # word_ranks = _ignored_word_ranks_
+        # assert len(word_ranks) == len(word_masks_np)
+
+        # word_ranks_np = [to_np(item) for item in word_ranks]  # list of (batch x n_vocab) arrays, len=5 (5 word output phrases)
+        # # GVS QUESTION? why is this next line commented out here? ( compare _choose_maxQ_command() )
+        # # word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
+        # # GVS ANSWER: because the values in word_ranks_np are never actually used
+        # word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
+
+        # batch_size = word_ranks[0].size(0)
+        # print("batch_size=", batch_size, len(word_masks_np))
+        word_indices = []
+        for i in range(len(self.word_masks_np)):  # len=5 (verb, adj1, noun1, adj2, noun2)
+            indices = []
+            # for j in range(batch_size):
+            #     msk = word_masks_np[i][j]  # msk is of len = vocab, j is index into batch
+            for msk in self.word_masks_np[i]:
+                indices.append(
+                    np.random.choice(len(msk), p=msk / np.sum(msk, -1)))  # choose from non-zero entries of msk
+            word_indices.append(np.array(indices))
+        # word_indices: list of batch
+
+        # word_qvalues = [[] for _ in word_masks_np]
+        # for i in range(batch_size):
+        #     for j in range(len(word_qvalues)):
+        #         word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
+        # word_qvalues = [torch.stack(item) for item in word_qvalues]
+        word_indices = [to_pt(item, use_cuda) for item in word_indices]
+        word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of 5 tensors, each w size: batch x 1
+        # return word_qvalues, word_indices
+        return word_indices
 
     def get_tokenizer(self):
         # if not self.nlp:    #TODO: this should be a per-process singleton

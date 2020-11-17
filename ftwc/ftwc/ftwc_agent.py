@@ -21,46 +21,6 @@ from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
 from .vocab import WordVocab
 from .wrappers import QaitGym, ScoreToRewardWrapper
 
-
-def _choose_random_command(_unused_word_ranks_, word_masks_np, use_cuda):
-    """
-    Generate a command randomly, for epsilon greedy.
-
-    Arguments:
-        word_ranks: Q values for each word by model.action_scorer.
-        word_masks_np: Vocabulary masks for words depending on their type (verb, adj, noun, adj2, noun2).
-    """
-    # assert len(word_ranks) == len(word_masks_np)
-
-    # word_ranks_np = [to_np(item) for item in word_ranks]  # list of (batch x n_vocab) arrays, len=5 (5 word output phrases)
-    # # GVS QUESTION? why is this next line commented out here? ( compare _choose_maxQ_command() )
-    # # word_ranks_np = [r - np.min(r) for r in word_ranks_np]  # minus the min value, so that all values are non-negative
-    # # GVS ANSWER: because the values in word_ranks_np are never actually used
-    # word_ranks_np = [r * m for r, m in zip(word_ranks_np, word_masks_np)]  # list of batch x n_vocab
-
-    # batch_size = word_ranks[0].size(0)
-    # print("batch_size=", batch_size, len(word_masks_np))
-    word_indices = []
-    for i in range(len(word_masks_np)):  # len=5 (verb, adj1, noun1, adj2, noun2)
-        indices = []
-        # for j in range(batch_size):
-        #     msk = word_masks_np[i][j]  # msk is of len = vocab, j is index into batch
-        for msk in word_masks_np[i]:
-            indices.append(np.random.choice(len(msk), p=msk / np.sum(msk, -1)))  # choose from non-zero entries of msk
-        word_indices.append(np.array(indices))
-    # word_indices: list of batch
-
-    # word_qvalues = [[] for _ in word_masks_np]
-    # for i in range(batch_size):
-    #     for j in range(len(word_qvalues)):
-    #         word_qvalues[j].append(word_ranks[j][i][word_indices[j][i]])
-    # word_qvalues = [torch.stack(item) for item in word_qvalues]
-    word_indices = [to_pt(item, use_cuda) for item in word_indices]
-    word_indices = [item.unsqueeze(-1) for item in word_indices]  # list of 5 tensors, each w size: batch x 1
-    # return word_qvalues, word_indices
-    return word_indices
-
-
 def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     """
     Generate a command by maximum q values, for epsilon greedy.
@@ -97,7 +57,7 @@ def choose_epsilon_greedy(word_indices_maxq, word_indices_random, epsilon, use_c
     _batch_size = word_indices_maxq[0].size(0)
     rand_num = np.random.uniform(low=0.0, high=1.0, size=(_batch_size, 1)) # independtly random for each batch
     less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
-    # note: one random number controls all n_words (=5) words in the p
+    # note: one random number controls all n_words (=5) words in the cmd phrase
     greater_than_epsilon = 1.0 - less_than_epsilon
     less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
     greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
@@ -411,12 +371,12 @@ class FtwcAgentDQN:
         self.model = LSTM_DQN(model_config=cfg.model,
                               word_vocab=self.vocab.word_vocab,
                               # DEFAULT: generate_length=5,  # how many output words to generate
-                              # generate_length=len(self.vocab.word_masks_np), # but vocab.word_masks_np get initialized later
+                              # generate_length=len(self.word_masks_np), # but vocab.word_masks_np get initialized later
                               enable_cuda=self.use_cuda)
         self.target_net = LSTM_DQN(model_config=cfg.model,
                               word_vocab=self.vocab.word_vocab,
                               # DEFAULT: generate_length=5,  # how many output words to generate
-                              # generate_length=len(self.vocab.word_masks_np), # but vocab.word_masks_np get initialized later
+                              # generate_length=len(self.word_masks_np), # but vocab.word_masks_np get initialized later
                               enable_cuda=self.use_cuda)
         if cfg.checkpoint.load_pretrained:
             self.load_pretrained_model(
@@ -614,7 +574,8 @@ class FtwcAgentDQN:
         if self.is_eval_mode() or self.epsilon <= 0.0:
             chosen_indices = word_indices_maxq
         else:  # if not self.is_eval_mode() and self.epsilon > 0.0:
-            word_indices_random = _choose_random_command(word_ranks, self.vocab.word_masks_np, self.use_cuda)
+            _ignored_word_ranks = None   # word_ranks
+            word_indices_random = self.vocab.generate_random_command_phrase(_ignored_word_ranks, self.use_cuda)
             chosen_indices = choose_epsilon_greedy(word_indices_maxq, word_indices_random, self.epsilon)
 
         chosen_indices = [item.detach() for item in chosen_indices]

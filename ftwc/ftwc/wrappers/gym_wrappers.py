@@ -16,6 +16,7 @@ from symbolic.entity import MEAL
 from twutils.twlogic import filter_observables
 from ftwc.vocab import WordVocab
 
+
 class MultiWordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.text_spaces.WordSpace
     """ Word observation/action space
 
@@ -32,40 +33,22 @@ class MultiWordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.te
     </S>  : End of sentence
     """
 
-    def __init__(self, max_length, vocab):
+    def __init__(self, max_length, vocab: WordVocab, cmd_phrases=False):
         """
         Parameters
         ----------
         max_length : int
             Maximum number of words in a text.
-        vocab : list of strings
+        vocab :
             Vocabulary defining this space. It shouldn't contain any
             duplicate words.
         """
         # if len(vocab) != len(set(vocab)):
         #     raise VocabularyHasDuplicateTokens()
-
-        self.PAD = "<PAD>"    # excluded when random sampling
-        self.UNK = "<UNK>"
-        self.BOS = "<S>"
-        self.EOS = "</S>"
-        self.SEP = "<|>"
+        self._is_cmd_phrases = cmd_phrases
+        self.vocab = vocab
+        self.vocab_size = vocab.vocab_size
         self.max_length = max_length
-        special_tokens = [self.PAD, self.UNK, self.EOS, self.BOS, self.SEP]
-        self.sampling_offset = len(special_tokens)
-        self.vocab_size = len(vocab) - self.sampling_offset
-        # self.vocab = [w for w in special_tokens if w not in vocab]
-        # self.vocab += list(vocab)
-        # self.vocab_set = set(self.vocab)  # For faster lookup.
-        # self.vocab_size = len(self.vocab)
-        # self.id2w = {i: w for i, w in enumerate(self.vocab)}
-        # self.w2id = {w: i for i, w in self.id2w.items()}
-        # self.PAD_id = self.w2id[self.PAD]
-        # self.UNK_id = self.w2id[self.UNK]
-        # self.BOS_id = self.w2id[self.BOS]
-        # self.EOS_id = self.w2id[self.EOS]
-        # self.SEP_id = self.w2id[self.SEP]
-        # super().__init__([len(self.vocab) - 1] * self.max_length)
         super().__init__([self.vocab_size] * self.max_length)
         self.dtype = np.int64  # Overwrite Gym's dtype=int8.
 
@@ -378,8 +361,8 @@ class QaitGym:
         self.base_vocab = base_vocab
         self.random_seed = random_seed
         if base_vocab is not None:
-            self._action_space = MultiWordSpace(max_length=5, vocab=self.base_vocab.word_vocab)
-            self._obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab.word_vocab)
+            self._action_space = MultiWordSpace(max_length=5, vocab=self.base_vocab, cmd_phrases=True)
+            self._obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab)
 
     def _register_batch_games(self,
                     gamefiles: List[str],
@@ -415,8 +398,8 @@ class QaitGym:
             _obs_space = self._obs_space
         else:
             print("CREATING NEW WordSpaces")
-            _action_space = MultiWordSpace(max_length=5, vocab=vocab.word_vocab),
-            _obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab.word_vocab)
+            _action_space = MultiWordSpace(max_length=5, vocab=vocab, cmd_phrases=True),
+            _obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=vocab)
 
         batch_env_id = self._register_batch_games(gamefiles=gamefiles,
                                                   request_infos=request_infos,
