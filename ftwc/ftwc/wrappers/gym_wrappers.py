@@ -245,17 +245,17 @@ class QaitEnvWrapper(gym.Wrapper):
         return obs, infos
 
     def step(self, commands: List[str]):
-        obs, scores, dones, infos = self.env.step(commands)
+        obs, rewards, dones, infos = self.env.step(commands)
         if self.tw_oracles:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
                 if commands and commands[idx] == 'do nothing':
                     pass
                 else:
-                    oracle.observe(scores[idx], obs[idx], dones[idx], prev_action=None, idx=idx)  #UNNEEDED, causes problems: prev_action=commands[idx]
+                    oracle.observe(rewards[idx], obs[idx], dones[idx], prev_action=None, idx=idx)  #UNNEEDED, causes problems: prev_action=commands[idx]
                     # populate oracle recommended action
                 infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
-        return obs, scores, dones, infos
+        return obs, rewards, dones, infos
 
     def _compute_oracle_action(self, idx, infos, obs, dones=None, verbose=False):
         if 'tw_o_step' not in infos:
@@ -407,7 +407,8 @@ class QaitGym:
             name=name,
             **kwargs)
 
-    def make_batch_env(self, gamefiles, vocab, request_infos: Optional[EnvInfos] = None, batch_size=None, **kwargs):
+    def make_batch_env(self, gamefiles, vocab, request_infos: Optional[EnvInfos] = None,
+                       batch_size=None, max_episode_steps=100, **kwargs):
         if self.base_vocab:
             print("REUSING SHARED WordSpaces")  # NOTE: this HACK doesn't actually speed things up! (unknown why)
             _action_space = self._action_space
@@ -429,6 +430,7 @@ class QaitGym:
  #                                                                         vocab=vocab.word_vocab),
                                                   action_space=_action_space,
                                                   observation_space=_obs_space,
+                                                  max_episode_steps=max_episode_steps,
                                                   **kwargs)
         print(f"Registered {len(gamefiles)} gamefiles as {batch_env_id}")
         for igf, gf in enumerate(gamefiles):
@@ -437,7 +439,8 @@ class QaitGym:
         # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
         base_env = gym.make(batch_env_id)
-        gym_env = QaitEnvWrapper(base_env, random_seed=self.random_seed)
+        reward_env = ScoreToRewardWrapper(base_env)
+        gym_env = QaitEnvWrapper(reward_env, random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id

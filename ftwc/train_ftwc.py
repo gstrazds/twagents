@@ -124,7 +124,7 @@ def main(cfg: DictConfig) -> None:
     )
     # os.mkdir("lightning_logs")
 # HACK! TEMPORARY: this should be part of train_dataloader
-    agent.initialize_episode([games[0]])
+    agent.initialize_episode(games[:cfg.training.batch_size])
 
     # UGLY HACK so we can construct a transition and compute a loss
     agent.prepare_for_fake_replay()

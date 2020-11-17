@@ -225,7 +225,7 @@ class TextGameAgent:
         self.step_num += 1
         return next_action.text()
 
-    def observe(self, score, new_obs, done, prev_action=None, idx=None):
+    def observe(self, reward, new_obs, done, prev_action=None, idx=None):
         """ Observe could be used for learning from rewards. """
 #GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
@@ -245,7 +245,7 @@ class TextGameAgent:
         # Print out this step.
         player_location = self.gi.kg.player_location
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
-        print(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Score: {score}")
+        print(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Reward: {reward}")
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:

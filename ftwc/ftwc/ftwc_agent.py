@@ -366,7 +366,7 @@ class FtwcAgentDQN:
 
         # training
         # self.batch_size = cfg.training.batch_size
-        self.max_nb_steps_per_episode = cfg.training.max_nb_steps_per_episode
+        self.max_episode_steps = cfg.training.max_episode_steps
         self.sync_rate = cfg.training.sync_rate
         # self.nb_epochs = cfg.training.nb_epochs
 
@@ -507,13 +507,11 @@ class FtwcAgentDQN:
             assert False, "Missing arg: gamefiles"
         self._gamefiles = gamefiles   #HACK
         batch_size = len(gamefiles)
-        self.qait_env = self.qgym.make_batch_env(gamefiles, self.vocab,
+        self.gym_env = self.qgym.make_batch_env(gamefiles, self.vocab,
                                             request_infos=self.requested_infos,
                                             batch_size=len(gamefiles),
-                                            max_episode_steps=self.max_nb_steps_per_episode)  #self.cfg.training.batch_size)
+                                            max_episode_steps=self.max_episode_steps)  #self.cfg.training.batch_size)
 
-        wrapped_env = ScoreToRewardWrapper(self.qait_env)
-        self.gym_env = wrapped_env
         obs, infos = self.gym_env.reset()
         self.vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
 
@@ -537,9 +535,10 @@ class FtwcAgentDQN:
         return obs, infos
 
     def prepare_for_fake_replay(self):
+        batch_size = len(self._gamefiles)
         self.initialize_episode(self._gamefiles)
-        self.scores.append([0])
-        self.dones.append([False])
+        self.scores.append([0]*batch_size)
+        self.dones.append([False]*batch_size)
         self.prepopulate_replay_buffer(steps=2)
 
     def prepare_input_for_action_selection(self, obs: List[str], infos: Dict[str, List[Any]]):
@@ -717,7 +716,8 @@ class FtwcAgentDQN:
         self.cache_chosen_indices = act_idlist  # token ids for prev action
 
         if all(dones):
-            self.qait_env._on_episode_end()  # log/display some stats
+            #TODO - fix this HACK: here we assume gym_env is a QaitEnvWrapper
+            self.gym_env._on_episode_end()  # log/display some stats
         return transitions
 
     def get_transitions_for_replay(self, rewards_np, mask_np, obs_idlist):  #, act_idlist):
@@ -965,11 +965,12 @@ class FtwcAgentLit(FtwcAgentDQN, pl.LightningModule):
         # # log = {'total_reward': torch.tensor(self.total_reward).to(device),
         # #        'reward': torch.tensor(reward).to(device),
         # #        'steps': torch.tensor(self.global_step).to(device)}
-        self.log('reward', torch.tensor(reward, dtype=torch.float32), on_step=True, on_epoch=True)
-        self.log('episode_reward', torch.tensor(self.episode_reward, dtype=torch.float32), on_step=True, on_epoch=True)
-        self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
-        if loss:
-            self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+
+        # self.log('reward', torch.tensor(reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        # self.log('episode_reward', torch.tensor(self.episode_reward, dtype=torch.float32), on_step=True, on_epoch=True)
+        # self.log('steps', torch.tensor(self.global_step, dtype=torch.float32), on_epoch=True)
+        # if loss:
+        #     self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
         if all(dones):
             #UGLY HACK TODO: (very soon) get rid of this!!!!
             self.prepare_for_fake_replay()
