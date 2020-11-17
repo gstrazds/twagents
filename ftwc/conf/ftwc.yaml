@@ -37,6 +37,7 @@ training:
     step_rule: 'adam'  # adam
     learning_rate: 0.001
     clip_grad_norm: 5
+  use_oracle: True
 
 test:
   games:   # a list of game files or directories containing game files
@@ -44,6 +45,7 @@ test:
   batch_size: 2   # 16
   #limit_test_batches: 5  #speed up debugging cycle by only evaluating a subset of test set
   num_test_episodes: 10
+  use_oracle: True
 
 model:
   embedding_size: 64

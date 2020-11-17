@@ -57,11 +57,12 @@ def choose_epsilon_greedy(word_indices_maxq, word_indices_random, epsilon, use_c
     _batch_size = word_indices_maxq[0].size(0)
     rand_num = np.random.uniform(low=0.0, high=1.0, size=(_batch_size, 1)) # independtly random for each batch
     less_than_epsilon = (rand_num < epsilon).astype("float32")  # batch
-    # note: one random number controls all n_words (=5) words in the cmd phrase
     greater_than_epsilon = 1.0 - less_than_epsilon
     less_than_epsilon = to_pt(less_than_epsilon, use_cuda, type='float')
     greater_than_epsilon = to_pt(greater_than_epsilon, use_cuda, type='float')
     less_than_epsilon, greater_than_epsilon = less_than_epsilon.long(), greater_than_epsilon.long()
+    # print(f"choose_epsilon_greedy -> {less_than_epsilon} (eps={epsilon}, rand={rand_num})")
+    # note: one random number controls all n_words (=5) words in the cmd phrase
     # choose a word for each position in the output phrase
     chosen_indices = [  # per batch: choose either all 5 maxq words or all 5 random words
         less_than_epsilon * idx_random + greater_than_epsilon * idx_maxq
@@ -579,7 +580,10 @@ class FtwcAgentDQN:
             chosen_indices = choose_epsilon_greedy(word_indices_maxq, word_indices_random, self.epsilon)
 
         chosen_indices = [item.detach() for item in chosen_indices]
-        use_oracle = True or self.is_eval_mode()
+        if self.is_eval_mode():
+            use_oracle = self.hparams.test.use_oracle
+        else:
+            use_oracle = self.hparams.training.use_oracle
         if use_oracle:
             chosen_strings = []
             # for idx, (obstxt, agent) in enumerate(zip(obs, self.qgym.tw_oracles)):
@@ -589,13 +593,13 @@ class FtwcAgentDQN:
                 actiontxt = infos['tw_o_step'][idx]
                 chosen_strings.append(actiontxt)
 
-            #TODO: if not self.is_eval_mode() compute appropriate chosen_indices
+            #if use_oracle, compute appropriate chosen_indices
             oracle_indices = self.vocab.command_strings_to_np(chosen_strings)  # pad and convert to token ids
 
             chosen_indices0 = chosen_indices
             chosen_indices = [to_pt(item, self.use_cuda) for item in oracle_indices]
             chosen_indices = [item.unsqueeze(-1) for item in chosen_indices]  # list of 5 tensors, each w size: batch x 1
-            print(f"ORACLE cmds: {chosen_strings} -> {oracle_indices} -> {self.vocab.get_chosen_strings(chosen_indices, strip_padding=True)}")
+            print(f"ORACLE cmds: {chosen_strings} -> {{oracle_indices}} -> {self.vocab.get_chosen_strings(chosen_indices, strip_padding=True)}")
             # print(f'DEBUGGING use_oracle: len:{len(chosen_indices)}=={len(chosen_indices0)} shape: {chosen_indices[0].shape}=={chosen_indices0[0].shape} {chosen_indices} {chosen_indices0}')
             assert len(chosen_indices) == len(chosen_indices0)
             for _i in range(len(chosen_indices0)):
@@ -604,6 +608,9 @@ class FtwcAgentDQN:
         # else:
         chosen_strings = self.vocab.get_chosen_strings(chosen_indices)
         self.prev_actions = chosen_strings
+
+        if not use_oracle:
+            print(f"\nstep [{self.current_step}]\t--- select_next_action --- : {chosen_strings}")
 
         self.current_step += 1
         return self.prev_actions, chosen_indices, __input_token_ids__
