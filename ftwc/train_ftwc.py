@@ -117,8 +117,8 @@ def main(cfg: DictConfig) -> None:
         deterministic=True,
         distributed_backend='dp',
         # val_check_interval=100,
-        max_epochs=1,
-        # max_epochs=0,  # does not call training_step() at all
+        # max_epochs=1,
+        max_epochs=cfg.training.nb_epochs,  # 0 => does not call training_step() at all
         limit_val_batches=0,  # prevent validation_step() from getting called
         limit_test_batches=n_eval_subset  # eval a subset of test_set to speed things up while debugging
     )

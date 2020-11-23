@@ -189,7 +189,9 @@ class TextGameAgent:
             if prev_action != self._last_action.text() and \
                     not self._last_action.text().startswith("answer:"):
                 print(f"WARNING: prev_action:|{prev_action}| != self._last_action: |{self._last_action.text()}|")
-                assert prev_action == self._last_action.text()
+                # assert prev_action == self._last_action.text()
+        if not prev_action:
+            prev_action = self._last_action
 
         if hasattr(self, 'env') and getattr(self.env, 'get_player_location', None):
             # Add true locations to the .log file.
@@ -201,7 +203,7 @@ class TextGameAgent:
         #     f.write(str(self.knowledge_graph)+'\n\n')
 
         if observable_facts and self.gi.kg:
-            self.gi.kg.update_facts(observable_facts, prev_action=self._last_action)
+            self.gi.kg.update_facts(observable_facts, prev_action=prev_action)
 
         observation = observation.strip()
         if self.first_step:
@@ -238,9 +240,11 @@ class TextGameAgent:
         else:
             idx = self._idx
         if prev_action and self._last_action:
-            assert prev_action == self._last_action.text(), f"{prev_action} should== {self._last_action}"
-            self.gi.action_recognized(self._last_action, new_obs)
-        elif prev_action:
+            if prev_action != self._last_action.text():
+                print(f"WARNING: prev_action:{prev_action} should== self._last_action:{self._last_action}")
+        if not prev_action and self._last_action:
+            prev_action = self._last_action.text()
+        if prev_action:
             self.gi.action_recognized(prev_action, new_obs)  # Updates the unrecognized words
         # Print out this step.
         player_location = self.gi.kg.player_location

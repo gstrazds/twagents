@@ -297,13 +297,19 @@ class TaskExecutor(DecisionModule):
         while self.task_stack and self.task_stack[-1].is_active:
             # try:
             active_task = self.task_stack[-1]
+            if active_task.has_postcondition_checks:
+                active_task.check_postconditions(kg, deactivate_ifdone=True)
+            # self.remove_completed_tasks()
             prereqs_satisfied = False
             if not active_task.is_done:
                 prereqs_satisfied = _check_preconditions(active_task, gi)
             else:
                 self.rescind_broadcasted_preconditions(active_task)
+                self.remove_completed_tasks()
+                self._activate_next_task()
+                continue
 
-            if prereqs_satisfied or active_task.is_done:
+            if prereqs_satisfied: # or active_task.is_done:
                 kg = _get_kg_for_task(active_task, gi)
                 next_action = active_task.get_next_action(observation, kg)  # ?get next action from DONE task?
             else:
@@ -319,6 +325,7 @@ class TaskExecutor(DecisionModule):
                 # self.deactivate(gi)
                 # return None
             if next_action:
+                self.print_state()
                 print(f"[TaskExecutor] (generate_next_action) active:{str(self.task_stack[-1])} -> |{next_action}|")
                 observation = yield next_action
                 # print(f"RECEIVED observation={observation}")
