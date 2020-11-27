@@ -89,6 +89,29 @@ def ensure_gameinfo_file(gamefile, env_seed=42, save_to_file=True):
         return load_gameinfo_file(gamefile)
 
 
+def load_gameinfo_files(gamefiles):
+    game_infos = {}
+    # for env_id in env_ids:  # merge multiple infos into one
+    #     gamefile = self.qgym.env2game_map[env_id]
+    for gamefile in gamefiles:  # merge multiple infos into one
+        game_info = load_gameinfo_file(gamefile)  # maybe filter out dynamic info?
+        game_uuid = game_info['extra.uuid']
+        print("+++ +++ load_gameinfo_file:", gamefile, 'uuid:', game_uuid)
+        game_infos[game_uuid] = {}
+        for key in game_info:
+            if key == '_gamefile':
+                game_infos[game_uuid][key] = game_info[key]
+            else:
+                if not key in game_infos[game_uuid]:
+                    game_infos[game_uuid][key] = game_info[key]
+                    # game_infos[game_uuid][key] = []
+                # game_infos[game_uuid][key].append(game_info[key])
+                else:
+                    print(game_info)
+                    assert False, f"Multiple values for game_infos[{game_uuid}][{key}]"
+    return game_infos
+
+
 def load_gameinfo_file(gamefile):
     if not _gameinfo_file_exists(gamefile):
         return ensure_gameinfo_file(gamefile)

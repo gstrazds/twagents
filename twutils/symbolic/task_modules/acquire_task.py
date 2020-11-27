@@ -61,7 +61,7 @@ class TakeItemTask(Task):
 
 
 class AcquireTask(SequentialTasks):
-    """ The Ground Truth Acquire module locates takeable objects, takes specific objects (into inventory) """
+    """ locates and takes specific objects (into inventory) """
     def __init__(self, objname=None, description=None, take=True, use_groundtruth=False):
         assert objname, "Missing required argument: must specify the name of an object to acquire"
         self.take_when_found = take

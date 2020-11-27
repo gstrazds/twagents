@@ -298,6 +298,7 @@ class TaskExecutor(DecisionModule):
             # try:
             active_task = self.task_stack[-1]
             if active_task.has_postcondition_checks:
+                kg = _get_kg_for_task(active_task, gi)
                 active_task.check_postconditions(kg, deactivate_ifdone=True)
             # self.remove_completed_tasks()
             prereqs_satisfied = False
