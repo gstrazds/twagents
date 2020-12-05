@@ -125,7 +125,7 @@ def load_gameinfo_file(gamefile):
 
 
 def load_additional_gameinfo_from_jsonfile(gameinfo_dict, filepath):
-    with open(_gameinfo_path_from_gamefile(filepath), "r") as jsonfile:
+    with open(filepath, "r") as jsonfile:
         print("+++== loading gamejson file:", filepath)
         jsondict = json.load(jsonfile)
         print("LOADED:", jsondict.keys())
@@ -141,11 +141,20 @@ def load_additional_gameinfo_from_jsonfile(gameinfo_dict, filepath):
 
 
 def _gameinfo_path_from_gamefile(gamefile):
-    return gamefile.replace(".ulx", ".ginfo")
-
+    if gamefile.endswith(".ulx"):
+        return gamefile.replace(".ulx", ".ginfo")
+    elif gamefile.endswith(".z8"):
+        return gamefile.replace(".z8", ".ginfo")
+    else:
+        assert False, f"Expected {gamefile} suffix either .z8 or .ulx"
 
 def _gamejson_path_from_gamefile(gamefile):
-    return gamefile.replace(".ulx", ".json")
+    if gamefile.endswith(".ulx"):
+        return gamefile.replace(".ulx", ".json")
+    elif gamefile.endswith(".z8"):
+        return gamefile.replace(".z8", ".json")
+    else:
+        assert False, f"Expected {gamefile} suffix either .z8 or .ulx"
 
 
 def _gameinfo_file_exists(gamefile):

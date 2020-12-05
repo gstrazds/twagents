@@ -19,7 +19,7 @@ from .model import LSTM_DQN
 from .generic import to_np, to_pt, pad_sequences, max_len
 from .buffers import HistoryScoreCache, PrioritizedReplayMemory, Transition
 from .vocab import WordVocab
-from .wrappers import QaitGym, ScoreToRewardWrapper
+from .wrappers import QaitGym
 
 def _choose_maxQ_command(word_ranks, word_masks_np, use_cuda):
     """
@@ -446,6 +446,7 @@ class FtwcAgentDQN:
         _REQUESTED_EXTRAS = ["recipe", "uuid"]
 
         request_infos = EnvInfos(
+            feedback=True,
             description=True,
             inventory=True,
             location=True,

@@ -84,8 +84,7 @@ def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg, resolve=True))
     print("cwd_path = ", cfg.cwd_path)
     start_time = datetime.datetime.now()
-    print("=================================================== evaluate.py - Start time:", start_time)
-    print(os.getcwd(), '\n')
+    print(f"=================================================== train_ftwc.py - Start time: {start_time}\n{os.getcwd()}\n")
 
     games = []
     for game in cfg.training.games:
@@ -138,7 +137,7 @@ def main(cfg: DictConfig) -> None:
 
     trainer.test(agent, datamodule=data)
     finish_time = datetime.datetime.now()
-    print(f"=================================================== evaluate.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
+    print(f"=================================================== train_ftwc.py - Finished : {finish_time} -- elapsed: {finish_time-start_time}")
 
 
 if __name__ == '__main__':

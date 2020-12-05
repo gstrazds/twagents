@@ -14,6 +14,7 @@ from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from twutils.twlogic import filter_observables
+from twutils.gym_wrappers import ScoreToRewardWrapper, ConsistentFeedbackWrapper
 from ftwc.vocab import WordVocab
 
 
@@ -427,43 +428,14 @@ class QaitGym:
         # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
         base_env = gym.make(batch_env_id)
-        reward_env = ScoreToRewardWrapper(base_env)
-        gym_env = QaitEnvWrapper(reward_env, random_seed=self.random_seed)
+        wrapped_env = ScoreToRewardWrapper(base_env)
+        if request_infos and request_infos.feedback:
+            wrapped_env = ConsistentFeedbackWrapper(wrapped_env)
+        else:
+            print("WARNING: skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
+        gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
 
 
-class ScoreToRewardWrapper(gym.RewardWrapper):
-    def __init__(self, env):
-        super().__init__(env)
-        self._prev_score = []
-
-    def reset(self, **kwargs):
-        obs, infos = self.env.reset(**kwargs)
-        assert isinstance(obs, (list, tuple))   # for use only with vector envs (TW gym env wrapper produces such by default)
-        self._prev_score = [0] * len(obs)
-        if 'game_score' not in infos:
-            infos['game_score'] = self._prev_score
-        return obs, infos
-
-    # gym.RewardWrapper
-    # def step(self, action):
-    #     observation, score, done, info = self.env.step(action)
-    #     return observation, self.reward(score), done, info
-    def step(self, action):
-        observation, score, done, infos = self.env.step(action)
-        #if 'game_score' in infos:
-        #     assert infos['game_score'] == score, f"{infos['game_score']} should== {score}" #FAILS: infos from prev step
-        # else:
-        infos['game_score'] = score
-        return observation, self.reward(score), done, infos
-
-    def reward(self, score):
-        assert isinstance(score, (list, tuple))
-        assert len(score) == len(self._prev_score)
-        _reward = []
-        for _i in range(len(score)):
-            _reward.append(score[_i] - self._prev_score[_i])
-            self._prev_score[_i] = score[_i]
-        return _reward
