@@ -567,6 +567,7 @@ class KnowledgeGraph:
         inventory_facts = []
         other_facts = []
         for fact in obs_facts:
+            #print("UPDATE FACTS:", fact)
             a0 = fact.arguments[0]
             a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
             if fact.name == 'link' and self.groundtruth:

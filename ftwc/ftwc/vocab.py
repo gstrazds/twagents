@@ -49,11 +49,13 @@ class WordVocab:
         self.SEP = "<|>"      # separator for input text segments, excluded when sampling cmds
         self.NONE = "<NONE>"  # placeholder when entities have no adj
         self.special_tokens = [self.PAD, self.UNK, self.BOS, self.EOS, self.SEP, self.NONE]
-        self.word_vocab = [w.lower() for w in self.special_tokens]
+        _lowercase_special = [w.lower() for w in self.special_tokens]
+        self.word_vocab = _lowercase_special.copy()
         with open(vocab_file) as f:
             words = f.read().split("\n")
             #assume that vocab file contains unique words,
-            filtered_words = [w.lower() for w in words if w.strip() and not w.startswith('#<')]
+            filtered_words = [w.lower() for w in words if w.strip()]
+            filtered_words = [filter(lambda w: w.startswith('#<') or w in _lowercase_special, filtered_words)]
         self.word_vocab.extend(filtered_words)
         self._word2id = {}
         # self.id2word = []  # same as self.word_vocab
@@ -66,7 +68,7 @@ class WordVocab:
         self.EOS_id = self.word2id(self.EOS)
         self.UNK_id = self.word2id(self.UNK)  # default: 1 if neither "<UNK>" or "<unk>"
         self.PAD_id = self.word2id(self.PAD)  # should be 0
-        assert self.PAD_id == 0
+        assert self.PAD_id == 0, f"word2id({self.PAD})={self.word2id(self.PAD)} !!! "
         self.single_word_verbs = set(["inventory", "look", "north", "south", "east", "west", "wait"])
         self.single_word_nouns = ["knife", "oven", "stove", "bbq", "grill"]
         self.preposition_map = {

@@ -6,6 +6,7 @@ out/
 results/
 console_out/
 tmp_out*.txt
+nail_logs/
 
 # trained models
 saved_models/

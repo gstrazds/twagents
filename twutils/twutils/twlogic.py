@@ -98,6 +98,10 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None)
     if not world_facts:
         return None
 
+    if not isinstance(world_facts[0], Proposition):   # maybe serialized list of facts
+        # world_facts0 = world_facts.copy()
+        world_facts = [Proposition.deserialize(fact_json) for fact_json in world_facts]
+        # print("Deserialized:\n", world_facts0, "\n===>\n", world_facts)
     # print("WORLD FACTS:")
     for fact in world_facts:
         # print('\t', fact)

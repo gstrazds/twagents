@@ -109,6 +109,7 @@ class ToTensor(gym.Wrapper):
 request_step_infos = EnvInfos(
                                description=True,
                                inventory=True,
+                               feedback=True,
                                # location=True, # not actually used by qait agent
                                facts=True,
                                last_action=True,
@@ -189,6 +190,7 @@ def get_game_id_from_infos(infos, idx):
 class QaitEnvWrapper(gym.Wrapper):
     def __init__(self, env, random_seed=None, **kwargs):
         super().__init__(env, **kwargs)
+        #print("QaitEnvWrapper.__init__", self.env, self.unwrapped)
         if random_seed is None:
             random_seed = 42
         self.random_seed = random_seed
@@ -234,7 +236,9 @@ class QaitEnvWrapper(gym.Wrapper):
         return obs, infos
 
     def step(self, commands: List[str]):
+        #print(f"--------QAIT WRAPPER.step({commands})")
         obs, rewards, dones, infos = self.env.step(commands)
+        #print(f"--------QAIT WRAPPER => obs:>>{obs}<<")
         if self.tw_oracles:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
@@ -336,6 +340,10 @@ class QaitEnvWrapper(gym.Wrapper):
 
             world_facts = infos['facts'][idx]
 
+            # if world_facts:   # facts can be a list of Proposition or serialized (json) Propositions
+            #     if isinstance(world_facts[0], textworld.logic.Proposition):
+            #         world_facts = [f.serialize() for f in world_facts]
+
             # TODO: remove ground_truth -- no longer needed
             tw_oracle.set_ground_truth(world_facts)
 
@@ -433,6 +441,7 @@ class QaitGym:
             wrapped_env = ConsistentFeedbackWrapper(wrapped_env)
         else:
             print("WARNING: skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
+
         gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed)
         env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
