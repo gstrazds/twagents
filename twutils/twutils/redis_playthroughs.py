@@ -421,6 +421,10 @@ def step_game_for_playthrough(gymenv, step_cmds:List[str]):
     return obs, rewards, dones, infos
 
 
+def _format_stepkey(step_num:int):
+    return f'step_{step_num:02d}'
+
+
 def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones, infos, cmds,
                               redisbasekey=REDIS_FTWC_PLAYTHROUGHS, ptid=f'eatmeal_42',
                               do_write=False, redis=None, redis_ops=0):
@@ -429,8 +433,9 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
     observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0])
     world_facts_serialized = [ f.serialize() for f in world_facts ]
     observable_facts_serialized = [ f.serialize() for f in observable_facts ]
+    step_key = _format_stepkey(step_num)
     step_json = {
-        f'step_{step_num:02d}': {
+             step_key: {
             'reward': rewards[0],
             'score': infos['game_score'][0],
             'done': dones[0],
@@ -442,14 +447,12 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
             'prev_action': cmds[0],
             'next_action': infos['tw_o_step'][0],
             'possible_actions': infos['admissible_commands'][0],
-            'oservable_facts': observable_facts_serialized,
+            'obs_facts': observable_facts_serialized,
             #'GT_FACTS': world_facts_serialized,
         }
     }
-    if step_num == 0:  # at start of game
-        step_json['step_00']['GT_FACTS'] = world_facts_serialized
-    elif dones[0]:     # finished game
-        step_json[f'step_{step_num:02d}']['GT_FACTS'] = world_facts_serialized
+    if step_num == 0 or dones[0]:  # at start of game or game over
+        step_json[_format_stepkey(step_num)]['GT_FACTS'] = world_facts_serialized
 
     if do_write:
         step_key = list(step_json.keys())[0]  # get the first (and only) key
@@ -504,7 +507,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         elif skip_existing:
             if redis.jsonobjlen(f'{redisbasekey}:{gamename}', Path('.'+ptid)):  # if exists and non-empty
                 print(f"SKIPPED EXISTING playthrough {gamename}")
-                return num_steps
+                return num_steps, redis_ops
 
 
     _dones = [0]
@@ -530,6 +533,28 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     gymenv.close()
     print(f"----------------- {gamename} playthrough steps: {num_steps}  Redis writes {redis_ops} ----------------")
     return num_steps, redis_ops
+
+
+def get_playthrough_json(
+        gamename,
+        redis=None,  # redis server: expected to be a RedisJSON client connection
+        ptid=playthrough_id(),  # default playthrough, can optionally specify
+        redisbasekey=REDIS_FTWC_PLAYTHROUGHS, randseed=DEFAULT_PTHRU_SEED):
+
+    if redis is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        assert isinstance(redis, Client)
+        _rj = redis
+    jsonobj = _rj.jsonget(f'{redisbasekey}:{gamename}', Path('.'+ptid))
+    if redis is None:
+        _rj.close()
+    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
+    for i, step_key in enumerate(list(jsonobj.keys())):
+        assert step_key == _format_stepkey(i)
+        step_array.append(jsonobj[step_key])
+    assert len(step_array) == len(jsonobj.keys())
+    return step_array
 
 
 if __name__ == "__main__":

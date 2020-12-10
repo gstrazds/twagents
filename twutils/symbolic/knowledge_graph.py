@@ -210,8 +210,9 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False, logger=None):
+    def __init__(self, event_stream, groundtruth=False, logger=None, debug=True):
         self._logger = logger
+        self._debug = debug
         self._unknown_location   = UnknownLocation()
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
         self._player             = Person(name="You", description="The Protagonist")
@@ -237,11 +238,19 @@ class KnowledgeGraph:
         else:
             print("### DEBUG:", msg)
 
+    def warn(self, msg):
+        if self._logger:
+            logger = self._logger
+            logger.warning(msg)
+        else:
+            print("### WARNING:", msg)
+
     def broadcast_event(self, ev):
         if self.event_stream:
             self.event_stream.push(ev)
         else:
-            print("KG: No Event Stream! event not sent:", ev)
+            if self._debug:
+                print("KG: No Event Stream! event not sent:", ev)
 
     # ASSUMPTIONS: name=>entity mapping is many-to-one. A given name can refer to at most one entity or location.
     # ASSUMPTION: names are stable. A given name will always refer to the same entity. Entity names don't change over time.
@@ -284,7 +293,9 @@ class KnowledgeGraph:
         if new_location == prev_location:
             return False
         if new_location:
-            new_location.visit()
+            newly_discovered = new_location.visit()
+            if newly_discovered and self._debug:
+                print(f"visit() DISCOVERED {self}")
             if not Location.is_unknown(prev_location):  # Don't bother broadcasting spawn location
                 self.broadcast_event(LocationChangedEvent(new_location))
         self._player.location = new_location
@@ -304,7 +315,8 @@ class KnowledgeGraph:
         """Returns the knowledge_graph to a state resembling the start of the
         game. Note this does not remove discovered objects or locations. """
         kg = self
-        print(f"RESETTING Knowledge Graph {kg}")
+        if self._debug:
+            print(f"RESETTING Knowledge Graph {kg}")
         # self.inventory.reset(kg)  -- done in _player.reset()
         # print("***** reset _player")
         self._player.reset(kg)
@@ -364,7 +376,7 @@ class KnowledgeGraph:
         if entitytype:
             wrong_type = {e for e in ret if e._type != entitytype}
             if wrong_type:
-                print(f"WARNING: filtering out entities with non-matching type != {entitytype}: {wrong_type}")
+                self.warn(f"Filtering out entities with non-matching type != {entitytype}: {wrong_type}")
                 return ret - wrong_type
         return ret
 
@@ -389,7 +401,7 @@ class KnowledgeGraph:
             room_set.discard(self._unknown_location)
         if room_set:
             if len(room_set) > 1:
-                print(f"WARNING: multiple locations for <{entityname}>: {location_set} => {room_set}")
+                self.warn(f"multiple locations for <{entityname}>: {location_set} => {room_set}")
             return room_set.pop()  # choose one (TODO: choose with shortest path to player_location)
         return None
 
@@ -459,7 +471,8 @@ class KnowledgeGraph:
             # if not self.groundtruth:
             #     print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
             return new_loc
-        print("LOCATION NOT FOUND:", roomname)
+        if self._debug:
+            print("LOCATION NOT FOUND:", roomname)
         return None
 
     def maybe_move_entity(self, entity, locations=None):
@@ -475,17 +488,19 @@ class KnowledgeGraph:
             if loc.add_entity(entity):
                 if not self.groundtruth and not Location.is_unknown(loc):
                     if entity.location == entity._init_loc:
-                        print(f"\tDISCOVERED NEW entity: {entity} at {loc}")
+                        if self._debug:
+                            print(f"\tDISCOVERED NEW entity: {entity} at {loc}")
                         ev = NewEntityEvent(entity)
                         self.broadcast_event(ev)
                     else:
-                        print(f"\tMOVED entity: {entity} to {loc}")
+                        if self._debug:
+                            print(f"\tMOVED entity: {entity} to {loc}")
 
     def get_entity(self, name, entitytype=None):
         entities = self.entities_with_name(name, entitytype=entitytype)
         if entities:
             if len(entities) > 1:
-                print(f"WARNING: get_entity({name}, entitytype={entitytype}) found multiple potential matches: {entities}")
+                self.warn(f"get_entity({name}, entitytype={entitytype}) found multiple potential matches: {entities}")
             for e in entities:
                 if entitytype is None or e._type == entitytype:
                     return e   # if more than one: choose the first matching entity
@@ -509,7 +524,8 @@ class KnowledgeGraph:
         o = fact.arguments[0]
         h = fact.arguments[1]
         if o.name.startswith('~') or h.name.startswith('~'):
-            print("_add_obj_to_obj: SKIPPING FACT", fact)
+            if self._debug:
+                print("_add_obj_to_obj: SKIPPING FACT", fact)
             return None, None
         assert h.type != 'I'   # Inventory
 
@@ -519,7 +535,8 @@ class KnowledgeGraph:
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             if not self.groundtruth:
-                print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+                if self._debug:
+                    print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
                 # print("DISCOVERED NEW entity:", obj)
                 ev = NewEntityEvent(obj)
                 self.broadcast_event(ev)
@@ -549,16 +566,18 @@ class KnowledgeGraph:
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
-            print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
+            if self._debug:
+                print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
         self.maybe_move_entity(obj, locations=loc_list)
         # DEBUGGING: redundant SANITY CHECK
         if not self.inventory.get_entity_by_name(obj.name):
-            print(obj.name, "NOT IN INVENTORY", self.inventory.entities)
+            self.warn(obj.name, "NOT IN INVENTORY", self.inventory.entities)
             assert False
         return obj
 
     def update_facts(self, obs_facts, prev_action=None):
-        print(f"*********** {'GROUND TRUTH' if self.groundtruth else 'observed'} FACTS *********** ")
+        if self._debug:
+            print(f"*********** {'GROUND TRUTH' if self.groundtruth else 'observed'} FACTS *********** ")
         player_loc = None
         door_facts = []
         at_facts = []
@@ -567,7 +586,6 @@ class KnowledgeGraph:
         inventory_facts = []
         other_facts = []
         for fact in obs_facts:
-            #print("UPDATE FACTS:", fact)
             a0 = fact.arguments[0]
             a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
             if fact.name == 'link' and self.groundtruth:
@@ -676,10 +694,12 @@ class KnowledgeGraph:
             prev_loc = self.player_location
             if self.set_player_location(player_loc):
                 if self.groundtruth:
-                    print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
+                    if self._debug:
+                        print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
                 else:
                     if prev_action:
-                        print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
+                        if self._debug:
+                            print(f"Action: <{prev_action}> CHANGED player location from {prev_loc} to {player_loc}")
                         if prev_action and player_loc != self._unknown_location and prev_loc != self._unknown_location:
                             if isinstance(prev_action, Action):
                                 prev_action_words = prev_action.text().split()
@@ -690,7 +710,7 @@ class KnowledgeGraph:
                                 verb = prev_action_words[1]
                             direction_rel = verb + '_of'
                             if direction_rel not in DIRECTION_ACTIONS:
-                                print(f"WARNING: UNEXPECTED direction: {verb} (maybe '{prev_action}' is not a NavAction?)")
+                                self.warn(f"WARNING: UNEXPECTED direction: {verb} (maybe '{prev_action}' is not a NavAction?)")
                             else:
                                 door = None   # TODO: remember door directions relative to rooms, and look up the appropr door
                                 new_connection = Connection(prev_loc,
@@ -708,8 +728,7 @@ class KnowledgeGraph:
             if loc:
                 locs = [loc]
             else:
-                print("WARNING: at_facts failed to find location: ", r.name)
-                print(self.player_location, self.locations)
+                self.warn(f"at_facts failed to find location {r.name}")  # ({self.player_location}, {self.locations})
                 locs = None
             if r.type == 'r':
                 entitytype = entity_type_for_twvar(o.type)
@@ -718,7 +737,7 @@ class KnowledgeGraph:
                     obj = self.create_new_object(o.name, entitytype)  #, locations=locs)
                 self.maybe_move_entity(obj, locations=locs)
             else:
-                print("WARNING -- ADD FACTS: unexpected location for at(o,l): {}".format(r))
+                self.warn(f"-- ADD FACTS: unexpected location for at(o,l): {f}")
             # add_attributes_for_type(obj, o.type)
 
         #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
@@ -764,8 +783,9 @@ class KnowledgeGraph:
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
-                print("Warning: add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
-        print(f"---------------- update FACTS end -------------------")
+                self.warn("add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
+        if self._debug:
+            print(f"---------------- update FACTS end -------------------")
 
 
 class ConnectionGraph:

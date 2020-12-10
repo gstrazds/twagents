@@ -151,10 +151,10 @@ class Location(Entity):
     #     assert self._visit_count > 0 unless kg.groundtruth
 
     def visit(self):
-        if self._visit_count == 0 or not self._discovered:
-            print(f"visit() DISCOVERED {self}")
+        newly_discovered = self._visit_count == 0 or not self._discovered
         self._visit_count += 1
         self._discovered = True
+        return newly_discovered
 
     @property
     def location(self):
