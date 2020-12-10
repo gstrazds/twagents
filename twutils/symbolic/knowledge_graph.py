@@ -1,5 +1,8 @@
 # import os, sys
 # from itertools import chain
+from typing import Tuple
+import re    # regular expressions, for finding mentions of entities
+
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
@@ -204,6 +207,143 @@ def entity_type_for_twvar(vartype):
 #             return fact.arguments[1].name
 #     return None
 
+def _span_len(span: Tuple):
+    return span[1] - span[0]
+
+def _span_overlap(span1: Tuple, span2: Tuple):
+    if span1[1] <= span2[0] or span1[0] >= span2[1]:
+        return 0  # NO OVERLAP
+    if span1[0] >= span2[0] and span1[0] < span2[1]:  # they overlap!
+        return min(span2[1], span1[1]) - span1[0]
+    return _span_overlap(span2, span1)   # same checks, other ordering
+
+def test_span_overlap():
+    overlaps = [
+        _span_overlap((0, 1), (0, 1)),    # identical len 1   => 1
+        _span_overlap((10, 11), (10, 11)), # identical len 1   => 1
+        _span_overlap((2, 4), (2, 4)),     # identical 2 pos   => 2
+        _span_overlap((5, 8), (6, 20)),    # partial overlap   => 2
+        _span_overlap((6, 20), (5, 8)),    # -> 2
+        _span_overlap((5, 10), (4, 10)),   # common end        => 5
+        _span_overlap((4, 10), (5, 10)),   # command end       => 5
+        _span_overlap((5, 10), (5, 11)),   # common start      => 5
+        _span_overlap((5, 11), (5, 10)),   # common start      => 5
+    ]
+    if overlaps != [1,1,2,2,2,5,5,5,5]:
+        assert overlaps == [1, 1, 2, 2, 2, 5, 5, 5, 5]
+        return False
+
+    non_overlaps = [
+        _span_overlap((5, 7), (8, 10)),  # disjoint
+        _span_overlap((8, 10), (5, 7)),  # disjoint
+        _span_overlap((0, 1), (1, 2)),  # adjacent 1 pos
+        _span_overlap((1, 2), (0, 1)),  # adjacent 1 pos
+        _span_overlap((10, 11), (11, 12)),  # adjacent 1 pos
+        _span_overlap((11, 12), (12, 11)),  # adjacent 1 pos
+        _span_overlap((10, 15), (15, 20)),  # adjacent longer
+        _span_overlap((15, 20), (10, 15)),  # adjacent longer
+    ]
+    _zero_overlaps = [0] * 8
+    if non_overlaps != _zero_overlaps:
+        assert non_overlaps == _zero_overlaps
+        return False
+    return True
+
+test_span_overlap()   # module won't load if this test fails!!!
+
+
+class MentionIndex:
+    def __init__(self, observ_str:str):
+        self._observ_str = observ_str
+        self.mentions = {}  # dict like {name: List[Tuple(start,end)]}
+
+    def is_subspan_of_existing(self, span, name=''):
+        _my_len = _span_len(span)
+        for k in self.mentions:
+            span_list = self.mentions[k]
+            for span0 in span_list:
+                overlap = _span_overlap(span0, span)
+                if overlap:
+                    if _my_len == overlap:   # full inclusion
+                        print(f"New span for [{name}]{span} is included in [{k}]{span0}")
+                        return True
+                    if _my_len <= _span_len(span0):
+                        print(f"WARNING: ignoring SHORTER new span for [{name}]{span} OVERLAPS [{k}]{span0}")
+                        return True
+                    else:  # _my_len > _span_len(span0):
+                        print(f"WARNING!!! LONGER new span for [{name}]{span} OVERLAPS [{k}]{span0} => will unindex [{k}]{span0}")
+                        # continue
+        return False
+
+    def remove_subspans_of(self, span, name=None):
+        """ if any existing spans are (shorter) subspans of span, remove them from the index"""
+        _my_len = _span_len(span)
+        for k in self.mentions:
+            span_list = self.mentions[k]
+            for span0 in span_list:
+                overlap = _span_overlap(span0, span)
+                if overlap:
+                    if _my_len <= _span_len(span0):  # full inclusion or new is shorter
+                        assert False, f"SHOULD ALREADY BE FILTERED OUT: shorter new span [{name}]{span} OVERLAPS [{k}]{span0}"
+                        continue
+                    else:  # _my_len > _span_len(span0):
+                        print(f"UNINDEXING [{k}]{span0} because of LONGER new span: [{name}]{span}")
+                        span_list.remove(span0)
+
+    def get_first_mention(self, name: str) -> int:
+        if name in self.mentions:
+            return self.mentions[name][0][0]   # start position of first mention
+        return -1   # mention not found
+
+    def add_mention(self, name: str, span: Tuple):
+        """ Adds a mention to the index.
+         In case of an overlap with other mentions
+          (which should be either a full inclusion or a superset),
+         the shorter span is removed from the index and the longer is kept"""
+        if self.is_subspan_of_existing(span, name=name):
+            return None
+        else:
+            self.remove_subspans_of(span, name)
+            if name in self.mentions:
+                if span not in self.mentions[name]:
+                    self.mentions[name].append(span)
+                    self.mentions[name] = sorted(self.mentions[name])  # maintain sorted ordering (short lists)
+            else:
+                self.mentions[name] = [span]
+        return self.mentions[name][0]  # return span of first mention
+
+    def index_mentions(self, name: str):  # adds all mentions
+        # print("INDEX MENTIONS of:", name)
+        matches = re.finditer(name, self._observ_str)
+        for span in [m.span() for m in matches]:
+            # print(name, ":", span)
+            self.add_mention(name, span)
+        # print(self.mentions)
+
+    def sort_facts_by_first_mention(self, facts_list):   # returns sorted facts_list
+        zip_list = []
+        for fact in facts_list:
+            pass
+        return facts_list
+
+    def sort_entity_list_by_first_mention(self, entities):   # returns sorted list of entity
+        zip_list = []
+        # print("PRE: sort_entity_list:", self.mentions)
+        for entity in entities:
+            if isinstance(entity, Entity):
+                name = entity.name
+            else:    # assuming it's just the name string
+                name = str(entity)
+
+            mention_start = self.get_first_mention(name)
+            if mention_start >= 0:
+                zip_list.append((mention_start, entity))
+            else:
+                print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND", entity)
+        # print("POST: sort_entity_list:", self.mentions)
+        zip_list = sorted(zip_list)
+        sorted_list = [entity for (start, entity) in zip_list]
+        return sorted_list
 
 class KnowledgeGraph:
     """
@@ -260,6 +400,80 @@ class KnowledgeGraph:
                 assert self._entities_by_name[name] is entity, \
                     f"name '{name}' should always refer to the same entity"
             self._entities_by_name[name] = entity
+
+    def __str__(self):
+        s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
+        if self.player_location == None:
+            s += "PlayerLocation: None"
+        else:
+            s += "PlayerLocation: {}".format(self.player_location.name)
+        s += "\n" + str(self.inventory)
+        s += "\nKnownLocations:"
+        for loc in self.locations:
+                s += "\n" + loc.to_string("  ")
+                outgoing = self.connections.outgoing(loc)
+                if outgoing:
+                    s += "\n    Connections:"
+                    for con in outgoing:
+                        s += "\n      {} --> {}".format(con.action, con.to_location.name)
+        return s
+
+    def describe_visible_objects(self, loc, mention_tracker=None):
+        """ Generate a concise (and easily parseable) text of the objects currently observable in the specified room.
+             if optional obs_descr string is given, tries to match the order in which entities are mentioned.
+         """
+        entity_list = list(loc.entities)  # using a copy of the list
+
+#TODO: similarly for exits
+        if mention_tracker:
+            for entity in entity_list:
+                mention_tracker.index_mentions(entity.name)
+            for entity in self.inventory.entities:
+                mention_tracker.index_mentions(entity.name)
+            #TODO: ?add non-door exits...
+            non_door_entities = [entity for entity in entity_list if not entity.is_a(DOOR)]
+            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(entity_list)
+        obs_descr = f"You see {[entity.name for entity in entity_list]}"
+        return obs_descr
+
+    def describe_exits(self, loc, mention_tracker=None):
+        # assert False, "Not Yet Implemented"
+        obs_descr = "\nExits: NOT YET IMPLEMENTED\n"
+        return obs_descr
+
+    def describe_items_on_floor(self, loc, mention_tracker=None):
+        # assert False, "Not Yet Implemented"
+        obs_descr = "\nItems on Floor: NOT YET IMPLEMENTED\n"
+        return obs_descr
+
+    def describe_inventory(self, mention_tracker=None):
+        # assert False, "Not Yet Implemented"
+        if mention_tracker:
+            obs_descr = f"You carry: {list(self.inventory.entities)}"
+        else:
+            obs_descr = f"{self.inventory.to_string()}"
+        return obs_descr
+
+
+    def describe_room(self, roomname, obs_descr=None):
+        """ Generate a concise (and easily parseable) text description of the room and what's currently observable there.
+            if optional obs_descr string is given, tries to match the order in which entities are mentioned.
+        """
+        loc = self.get_location(roomname)
+        if not loc or (not loc.is_a(ROOM) and loc.is_a(ROOM) is not None):  # is_a can return None if entitytype is unset
+            return "-= Unknown Location =-"
+        elif loc == self._unknown_location:
+            return "-= Unknown Location =-"
+        #else:   # we've got a genuine Room object
+        room_descr = f"-= {loc.name} =-\n"
+        if loc == self.player_location:
+            room_descr += f"You are_in: {loc.name}\n"
+        mention_tracker = None if not obs_descr else MentionIndex(obs_descr)
+        room_descr += self.describe_visible_objects(loc, mention_tracker=mention_tracker)
+        room_descr += self.describe_exits(loc, mention_tracker=mention_tracker)
+        room_descr += self.describe_items_on_floor(loc, mention_tracker=mention_tracker)
+        room_descr += self.describe_inventory(mention_tracker=mention_tracker)
+        return room_descr
 
     @property
     def locations(self):
@@ -342,23 +556,6 @@ class KnowledgeGraph:
                  is_cooked = (cooked_state.startswith(verb) or
                     cooked_state == 'fried' and verb == 'fry')
         return is_cooked
-
-    def __str__(self):
-        s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
-        if self.player_location == None:
-            s += "PlayerLocation: None"
-        else:
-            s += "PlayerLocation: {}".format(self.player_location.name)
-        s += "\n" + str(self.inventory)
-        s += "\nKnownLocations:"
-        for loc in self.locations:
-                s += "\n" + loc.to_string("  ")
-                outgoing = self.connections.outgoing(loc)
-                if outgoing:
-                    s += "\n    Connections:"
-                    for con in outgoing:
-                        s += "\n      {} --> {}".format(con.action, con.to_location.name)
-        return s
 
     def entities_with_name(self, entityname, entitytype=None):
         """ Returns all entities with a particular name. """

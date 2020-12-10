@@ -94,6 +94,11 @@ class Entity:
         else:
             self._names.append(new_name)
 
+    def is_a(self, entitytype):
+        if self._type is None:
+            return None
+        return self._type == entitytype
+
     @property
     def description(self):
         return self._description
