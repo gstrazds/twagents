@@ -280,7 +280,7 @@ class MentionIndex:
         _my_len = _span_len(span)
         for k in self.mentions:
             span_list = self.mentions[k]
-            for span0 in span_list:
+            for span0 in list(span_list):  # iterate through a copy of the list
                 overlap = _span_overlap(span0, span)
                 if overlap:
                     if _my_len <= _span_len(span0):  # full inclusion or new is shorter
@@ -425,15 +425,34 @@ class KnowledgeGraph:
         entity_list = list(loc.entities)  # using a copy of the list
 
 #TODO: similarly for exits
-        if mention_tracker:
-            for entity in entity_list:
+        for entity in entity_list:
+            if mention_tracker:
                 mention_tracker.index_mentions(entity.name)
+            for subentity in entity.entities:
+                entity_list.append(subentity)
+                if mention_tracker:
+                    mention_tracker.index_mentions(subentity.name)
             for entity in self.inventory.entities:
-                mention_tracker.index_mentions(entity.name)
-            #TODO: ?add non-door exits...
-            non_door_entities = [entity for entity in entity_list if not entity.is_a(DOOR)]
-            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(entity_list)
-        obs_descr = f"You see {[entity.name for entity in entity_list]}"
+                if mention_tracker:
+                    mention_tracker.index_mentions(entity.name)
+        #TODO: ?add non-door exits...
+        non_door_entities = []
+        door_entities = []
+        for entity in entity_list:
+            if not entity.is_a(DOOR):
+                non_door_entities.append(entity)
+            else:
+                door_entities.append(entity)
+        if mention_tracker:
+            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(non_door_entities)
+        else:
+            sorted_entity_list = non_door_entities
+        obs_descr = f"You see {[entity.name for entity in sorted_entity_list]}"
+        if mention_tracker:
+            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(door_entities)
+        else:
+            sorted_entity_list = door_entities
+        obs_descr += f"\nDoors: {sorted_entity_list}"
         return obs_descr
 
     def describe_exits(self, loc, mention_tracker=None):

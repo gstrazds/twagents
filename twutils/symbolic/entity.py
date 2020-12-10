@@ -66,6 +66,7 @@ class Entity:
         self._description = description
         self._type        = entitytype
         self._discovered = False
+        self._entities = ()  # an empty tuple
 
     @property
     def name(self):
@@ -109,6 +110,10 @@ class Entity:
 
     def reset(self, kg):   #kg: KnowledgeGraph
         pass
+
+    @property
+    def entities(self):
+        return self._entities
 
     @property
     def parent(self):   # for building compositional hierarchy
@@ -165,9 +170,9 @@ class Location(Entity):
     def location(self):
         return self
 
-    @property
-    def entities(self):
-        return self._entities
+    # @property
+    # def entities(self):
+    #     return self._entities
 
     def add_entity(self, entity) -> bool:
         if not self.has_entity_with_name(entity.name):
@@ -467,6 +472,19 @@ class Thing(Entity):
                 if Location.is_unknown(self._init_loc):
                     # print(f"\tSETTING initial_location for {self} to: {new_location}")
                     self._init_loc = new_location
+
+    @property
+    def entities(self):  # return a list of controlled (contained and/or supported) entities)
+        if self.is_container or self.is_support:
+            controlled_entities = []
+            if self._container:
+                controlled_entities.extend(self._container.entities)
+            if self._supporting_surface:
+                controlled_entities.extend(self._supporting_surface.entities)
+            return controlled_entities
+        else:
+            assert not self._entities  # default to an empty tuple
+            return self._entities
 
     @property
     def parent(self):
