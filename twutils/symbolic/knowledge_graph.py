@@ -6,7 +6,7 @@ import re    # regular expressions, for finding mentions of entities
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
-from symbolic.entity import DOOR, ROOM, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
+from symbolic.entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
 from twutils.twlogic import reverse_direction
 
 DIRECTION_ACTIONS = {
@@ -17,6 +17,10 @@ DIRECTION_ACTIONS = {
 
 LOCATION_RELATIONS = ['at', 'in', 'on']
 
+def simple_direction(direction):
+    if direction.endswith('_of'):
+        return direction[:-3]
+    return direction
 
 def map_action_to_direction(action):
     for key, val in DIRECTION_ACTIONS.items():
@@ -141,14 +145,31 @@ def add_attributes_for_type(entity, twvartype):
     attrib_list = get_attributes_for_type(twvartype)
     for attrib in attrib_list:
         entity.add_attribute(attrib)
+# GVS 11.dec.2020 added:
+        if attrib == Container:
+            entity.convert_to_container()
+
+            # entity.state.add_state_variable('openable', 'is_open', '')
+            # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
+            # entity.state.close()  # ?default to closed
+        elif attrib == Support:
+            entity.convert_to_support()
+
     if twvartype == 'd':  # DOOR   Hard-coded specific knowlege about doors (they can potentially be opened)
         if not entity.state.openable:
             entity.state.add_state_variable('openable', 'is_open', '')
             # Indeterminate value until we discover otherwise (via add_attributes_for_predicate)
-    elif twvartype in ('c', 'oven'):  # a container
-        entity.convert_to_container()
-        # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
-        entity.state.close()
+    elif twvartype == 'oven':  # a container
+        # print("ADD ATTRIBS FOR OVEN", entity.state)
+        if not entity.state.openable:
+            # print("----WAS NOT OPENABLE")
+            entity.state.add_state_variable('openable', 'is_open', '')
+        elif not entity.state._has_prop('is_open'):
+            # print("-----NEED TO ADD is_open")
+            # we want to default to closed only once, when creating the entity
+            entity.state.add_state_variable('openable', 'is_open', '')
+    #     entity.convert_to_container()
+    #     # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
 
 def add_attributes_for_predicate(entity, predicate, entity2=None, groundtruth=False):
     attrib_list = get_attributes_for_predicate(predicate, entity2, groundtruth=groundtruth)
@@ -300,6 +321,7 @@ class MentionIndex:
          In case of an overlap with other mentions
           (which should be either a full inclusion or a superset),
          the shorter span is removed from the index and the longer is kept"""
+        # print(f"add_mention({name}, {span}")
         if self.is_subspan_of_existing(span, name=name):
             return None
         else:
@@ -326,24 +348,137 @@ class MentionIndex:
             pass
         return facts_list
 
-    def sort_entity_list_by_first_mention(self, entities):   # returns sorted list of entity
+    def sort_entity_list_by_first_mention(self, entities):   # returns sorted list of entity names (or entities)
         zip_list = []
         # print("PRE: sort_entity_list:", self.mentions)
         for entity in entities:
             if isinstance(entity, Entity):
                 name = entity.name
-            else:    # assuming it's just the name string
+            else:    # we can also sort name strings
                 name = str(entity)
 
             mention_start = self.get_first_mention(name)
             if mention_start >= 0:
                 zip_list.append((mention_start, entity))
             else:
-                print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND", entity)
+                print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND", entity, entity.parent, entity.location)
+                assert False
         # print("POST: sort_entity_list:", self.mentions)
         zip_list = sorted(zip_list)
         sorted_list = [entity for (start, entity) in zip_list]
         return sorted_list
+
+
+END_OF_LIST = ';'
+START_OF_LIST = ':'
+ITEM_SEPARATOR = ','
+LINE_SEPARATOR = '\n'
+
+
+# NOTE: Here's a stove. [...] But the thing is empty. [misleading] (no clue here that stove is a support, not a container)
+# on fridge <:> nothing <;>  in oven <:> nothing <;> on table <:> cookbook <;>  on counter <:> red potato <;> on stove: nothing.
+# You carry: nothing.
+
+#   # on floor: nothing. )
+def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tracker=None):
+    """ Generate a concise (and easily parseable) text of the objects currently observable in the specified room.
+         if optional obs_descr string is given, tries to match the order in which entities are mentioned.
+     """
+    entity_list = list(loc.entities)  # will append to and then sort a copy of the list
+
+    # TODO: similarly for exits
+    # print(f"entity_list = {entity_list}")
+    for entity in loc.entities:  # build index: iterate through original list (plus subentities)
+        if mention_tracker:
+            mention_tracker.index_mentions(entity.name)
+        # print(f"subentities of {entity.name} => {entity.entities}")
+        for subentity in entity.entities:
+            if subentity not in entity_list:
+                entity_list.append(subentity)  # keep track of all encountered entities & subentities
+            if mention_tracker:
+                mention_tracker.index_mentions(subentity.name)
+    # print(f"Inventory: {self.inventory.entities}")
+    for entity in inventory_items:
+        if mention_tracker:
+            mention_tracker.index_mentions(entity.name)
+    # TODO: ?add non-door exits...
+    non_door_entities = []
+    door_entities = []
+    for entity in entity_list:
+        if not entity.is_a(DOOR) and not entity.is_a(PERSON) and \
+            not entity.parent.is_a(INVENTORY):  # filter out doors, the Player, items in inventory
+                non_door_entities.append(entity)
+        else:
+            door_entities.append(entity)
+    on_floor_entities = []
+    # filter out portable entities that are on the floor, into a separate list...
+    for entity in non_door_entities:
+        if Portable in entity.attributes and entity.parent == loc:
+            on_floor_entities.append(entity)
+    for entity in on_floor_entities:
+        non_door_entities.remove(entity)
+
+    if mention_tracker:
+        non_door_entities = mention_tracker.sort_entity_list_by_first_mention(non_door_entities)
+        # inventory_items = mention_tracker.sort_entity_list_by_first_mention(inventory_items)
+        on_floor_entities = mention_tracker.sort_entity_list_by_first_mention(on_floor_entities)
+
+    idx = 0
+    obs_descr = ""   #"You see:"+LINE_SEPARATOR
+    while idx < len(non_door_entities):
+        descr_str, idx = _format_entity_descr(non_door_entities, idx)
+        obs_descr += descr_str + LINE_SEPARATOR
+    if exits_descr:
+        obs_descr += LINE_SEPARATOR + exits_descr
+
+    if len(inventory_items):
+        inventory_descr = "Carrying: " + f"{ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
+        obs_descr += LINE_SEPARATOR + inventory_descr + END_OF_LIST
+    if on_floor_entities:
+        onground_descr = f"On floor: {[entity.name for entity in on_floor_entities]}"
+        obs_descr += LINE_SEPARATOR + onground_descr
+    return obs_descr
+
+
+def _format_entity_name(entity):
+    out_str = f"{entity.name}"
+    if entity.state:
+        state_descr = entity.state.format_descr()
+        if state_descr:
+            out_str += state_descr
+    return out_str
+
+def _format_entity_descr(entity_list, idx):
+    entity = entity_list[idx]
+    idx += 1
+    if entity.is_container:
+        descr_str = f"IN {_format_entity_name(entity)}{START_OF_LIST} "
+        held_entities = entity.entities
+    elif entity.is_support:
+        descr_str = f"ON {_format_entity_name(entity)}{START_OF_LIST} "
+        held_entities = entity.entities
+    else:
+        descr_str = f"{_format_entity_name(entity)}"
+        return descr_str, idx
+
+    if entity.is_container and entity.state.openable \
+            and entity.state._has_prop('is_open') and not entity.state.is_open:
+        if not entity.has_been_opened:             # if we've never looked inside
+            descr_str += f"unknown {END_OF_LIST}"  # then we don't know what's in there
+    elif not held_entities or len(held_entities) == 0:
+        descr_str += f"nothing {END_OF_LIST}"
+    else:
+        first = True
+        while idx < len(entity_list) and entity_list[idx] in held_entities:
+            if not first:
+                descr_str += f" {ITEM_SEPARATOR} "
+            first = False
+            descr_str += entity_list[idx].name
+            idx += 1
+        descr_str += f" {END_OF_LIST}"
+    return descr_str, idx
+
+
 
 class KnowledgeGraph:
     """
@@ -418,59 +553,16 @@ class KnowledgeGraph:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
 
-    def describe_visible_objects(self, loc, mention_tracker=None):
-        """ Generate a concise (and easily parseable) text of the objects currently observable in the specified room.
-             if optional obs_descr string is given, tries to match the order in which entities are mentioned.
-         """
-        entity_list = list(loc.entities)  # using a copy of the list
-
-#TODO: similarly for exits
-        for entity in entity_list:
-            if mention_tracker:
-                mention_tracker.index_mentions(entity.name)
-            for subentity in entity.entities:
-                entity_list.append(subentity)
-                if mention_tracker:
-                    mention_tracker.index_mentions(subentity.name)
-            for entity in self.inventory.entities:
-                if mention_tracker:
-                    mention_tracker.index_mentions(entity.name)
-        #TODO: ?add non-door exits...
-        non_door_entities = []
-        door_entities = []
-        for entity in entity_list:
-            if not entity.is_a(DOOR):
-                non_door_entities.append(entity)
-            else:
-                door_entities.append(entity)
-        if mention_tracker:
-            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(non_door_entities)
-        else:
-            sorted_entity_list = non_door_entities
-        obs_descr = f"You see {[entity.name for entity in sorted_entity_list]}"
-        if mention_tracker:
-            sorted_entity_list = mention_tracker.sort_entity_list_by_first_mention(door_entities)
-        else:
-            sorted_entity_list = door_entities
-        obs_descr += f"\nDoors: {sorted_entity_list}"
-        return obs_descr
 
     def describe_exits(self, loc, mention_tracker=None):
         # assert False, "Not Yet Implemented"
-        obs_descr = "\nExits: NOT YET IMPLEMENTED\n"
-        return obs_descr
-
-    def describe_items_on_floor(self, loc, mention_tracker=None):
-        # assert False, "Not Yet Implemented"
-        obs_descr = "\nItems on Floor: NOT YET IMPLEMENTED\n"
-        return obs_descr
-
-    def describe_inventory(self, mention_tracker=None):
-        # assert False, "Not Yet Implemented"
+        outgoing_directions = self.connections.outgoing_directions(loc)
         if mention_tracker:
-            obs_descr = f"You carry: {list(self.inventory.entities)}"
-        else:
-            obs_descr = f"{self.inventory.to_string()}"
+            outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
+        obs_descr = "\nExits:\n"
+        for direction in outgoing_directions:
+            con = self.connections.connection_for_direction(loc, direction)
+            obs_descr += con.to_string(options='kg-descr') + LINE_SEPARATOR
         return obs_descr
 
 
@@ -485,13 +577,19 @@ class KnowledgeGraph:
             return "-= Unknown Location =-"
         #else:   # we've got a genuine Room object
         room_descr = f"-= {loc.name} =-\n"
-        if loc == self.player_location:
-            room_descr += f"You are_in: {loc.name}\n"
+        # if loc == self.player_location:
+        #     room_descr += f"You are_in: {loc.name}\n"
         mention_tracker = None if not obs_descr else MentionIndex(obs_descr)
-        room_descr += self.describe_visible_objects(loc, mention_tracker=mention_tracker)
-        room_descr += self.describe_exits(loc, mention_tracker=mention_tracker)
-        room_descr += self.describe_items_on_floor(loc, mention_tracker=mention_tracker)
-        room_descr += self.describe_inventory(mention_tracker=mention_tracker)
+        if mention_tracker:
+            mention_tracker.index_mentions('north')  # describe_exits will need these to sort exits
+            mention_tracker.index_mentions('east')
+            mention_tracker.index_mentions('south')
+            mention_tracker.index_mentions('west')
+
+        inventory_items = list(self.inventory.entities)  # pass a copy, for safey
+        exits_descr = self.describe_exits(loc, mention_tracker=mention_tracker)
+        room_descr += describe_visible_objects(loc, inventory_items,
+                                               exits_descr=exits_descr,  mention_tracker=mention_tracker)
         return room_descr
 
     @property
@@ -523,15 +621,17 @@ class KnowledgeGraph:
     def set_player_location(self, new_location):
         """ Changes player location and broadcasts a LocationChangedEvent. """
         prev_location = self._player.location
+        # print(f"set_player_location: {prev_location} {self._player.location} {new_location}", prev_location.entities)
         if new_location == prev_location:
             return False
         if new_location:
             newly_discovered = new_location.visit()
             if newly_discovered and self._debug:
                 print(f"visit() DISCOVERED {self}")
-            if not Location.is_unknown(prev_location):  # Don't bother broadcasting spawn location
-                self.broadcast_event(LocationChangedEvent(new_location))
-        self._player.location = new_location
+            # if not Location.is_unknown(prev_location):  # Don't bother broadcasting spawn location
+            #     self.broadcast_event(LocationChangedEvent(new_location))
+            #IMPORTANT: this is the correct way to set location for an entity
+            new_location.add_entity(self._player)  #THIS IS WRONG: player.location = new_location
         return True
 
     @property
@@ -713,6 +813,11 @@ class KnowledgeGraph:
                             print(f"\tMOVED entity: {entity} to {loc}")
 
     def get_entity(self, name, entitytype=None):
+        if isinstance(name, Entity):    # shortcut search by name if we already have an entity
+            entity = name
+            name = entity.name
+            if entitytype is None or entity._type == entitytype:
+                return entity
         entities = self.entities_with_name(name, entitytype=entitytype)
         if entities:
             if len(entities) > 1:
@@ -954,7 +1059,7 @@ class KnowledgeGraph:
                 self.maybe_move_entity(obj, locations=locs)
             else:
                 self.warn(f"-- ADD FACTS: unexpected location for at(o,l): {f}")
-            # add_attributes_for_type(obj, o.type)
+            add_attributes_for_type(obj, o.type)
 
         #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
         # and similarly, that "in" relations are not nested.
@@ -1000,8 +1105,28 @@ class KnowledgeGraph:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
                 self.warn("add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
+        if prev_action:
+            self.special_openclose_oven(prev_action)
         if self._debug:
             print(f"---------------- update FACTS end -------------------")
+
+    def special_openclose_oven(self, prev_action):
+        if isinstance(prev_action, Action):
+            prev_action_words = prev_action.text().split()
+        else:
+            prev_action_words = prev_action.split()
+        if prev_action_words[0] in ['open', 'close'] and 'oven' in prev_action_words:
+            if self._debug:
+                print(f"SPECIAL CASE FOR prev_action: {prev_action_words}")
+            oven = self.player_location.get_entity_by_name('oven')
+            if oven:
+                if prev_action_words[0] == 'open':
+                    oven.open()
+                elif prev_action_words[0] == 'close':
+                    oven.close()
+
+
+
 
 
 class ConnectionGraph:
@@ -1104,6 +1229,14 @@ class ConnectionGraph:
         else:
             return []
 
+    def outgoing_directions(self, location):
+        return list(map(simple_direction, self._out_graph[location].keys()))
+
+    def connection_for_direction(self, location, direction):   # returns None if no exit that direction
+        if not direction.endswith('_of'):
+            direction = direction+'_of'    # convert e.g. north => north_of
+        return self._out_graph[location].get(direction, None)
+
     def navigate(self, location, nav_action):
         """Returns the destination that is reached by performing nav_action
         from location.
@@ -1156,17 +1289,25 @@ class ConnectionGraph:
         return self.to_string()
 
 
-def _format_doorinfo(doorentity):
+def _format_doorinfo(doorentity, options=None):
     if doorentity is None:
         return ''
+    if options == 'kg-descr' or options == 'parsed-obs':
+        if doorentity.state.openable and not doorentity.state.is_open:
+            return "{} +closed".format(doorentity.name)
+        return "{} + open".format(doorentity.name)
+    #else:
     if doorentity.state.openable and not doorentity.state.is_open:
-        return ":{}(closed)".format(doorentity.name)
-    return ":{}(open)".format(doorentity.name)
+        return "{}(closed)".format(doorentity.name)
+    return "{}(open)".format(doorentity.name)
 
 
-def _format_location(location):
+def _format_location(location, options=None):
     if not location:
         return ''
+    if options == 'kg-descr' or options == 'parsed-obs':
+        return "UNKNOWN" if Location.is_unknown(location) else location.name
+
     return ":{}[{}]".format('', location.name)
 
 
@@ -1225,8 +1366,16 @@ class Connection:
         #     print(f"ConnectionGraph updated {self} {updated} from {other}")
         return self
 
-    def to_string(self, prefix=''):
-        return prefix + "{} --({}{})--> {}".format(_format_location(self.from_location),
+    def to_string(self, prefix='', options=None):
+        if options == 'kg-descr':       # info known by current (non-GT) knowledge graph
+            return prefix + "{}: {} -> {}".format(self.action.verb,
+                    _format_doorinfo(self.doorway, options=options),
+                    _format_location(self.to_location, options=options))
+        elif options == 'parsed-obs':   # info directly discernible from 'look' command
+            return prefix + "{}: {}".format(self.action.verb,
+                    _format_doorinfo(self.doorway, options=options))
+        # else:
+        return prefix + "{} --({}:{})--> {}".format(_format_location(self.from_location),
                                                    self.action.verb,
                                                    _format_doorinfo(self.doorway),
                                                    _format_location(self.to_location))

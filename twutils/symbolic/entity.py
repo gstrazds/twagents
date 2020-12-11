@@ -116,6 +116,10 @@ class Entity:
         return self._entities
 
     @property
+    def is_empty(self):   # should work for rooms/locations as well as for containers and supporters
+        return len(self.entities) == 0
+
+    @property
     def parent(self):   # for building compositional hierarchy
         return None     # implemented by subclasses
 
@@ -161,10 +165,14 @@ class Location(Entity):
     #     assert self._visit_count > 0 unless kg.groundtruth
 
     def visit(self):
-        newly_discovered = self._visit_count == 0 or not self._discovered
+        newly_discovered = self.unvisited
         self._visit_count += 1
         self._discovered = True
         return newly_discovered
+
+    @property
+    def unvisited(self):
+        return self._visit_count == 0 or not self._discovered
 
     @property
     def location(self):
@@ -209,6 +217,8 @@ class Location(Entity):
             self._entities.remove(entity)
         else:
             print("***WARNING*** Location.del_entity could not find entity {}".format(entity.name))
+            print(self, entity, self._entities)
+            # assert False
             # logger.warning("WARNING Location.del_entity could not find entity {}".format(entity.name))
 
     def has_entity(self, entity):
@@ -398,6 +408,13 @@ class Thing(Entity):
     def is_container(self) -> bool:
         return self._container is not None
 
+    @property
+    def has_been_opened(self):
+        if self.is_container:
+            return not self._container.unvisited
+        else:   # TODO: ?maybe more logic for doors
+            return True
+
     def convert_to_container(self):
         if not self.is_container:
             self._container = Location(name=f"in_{self.name}", parent=self, entitytype=CONTAINED_LOCATION)
@@ -490,7 +507,7 @@ class Thing(Entity):
     def parent(self):
         # if hasattr(self, "_parent"):   # in we have composite objects
         #     return self._parent
-        return self._current_loc
+        return self._current_loc   # for porable objects, this might be a _container or a _supporting_surface
 
     @property
     def state(self):

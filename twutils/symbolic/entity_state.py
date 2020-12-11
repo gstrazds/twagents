@@ -72,11 +72,11 @@ class EntityState:
             if self._has_prop(stateprop):
                 print(f"WARNING: {self} already {metaprop}: {stateprop}={self._get_state_val(stateprop)}")
                 if initial_value != self._get_state_val(stateprop):
-                    if initial_value:   # Don't set it if it is indeterminate
-                        print(
-                            f"WARNING: overriding:{self._get_state_val(stateprop)}"
-                            " in add_state_variable({metaprop}) {stateprop}={initial_value}")
-                        self._set_state_val(stateprop, initial_value)
+                    #if initial_value:   # Don't set it if it is indeterminate
+                    print(
+                        f"WARNING: overriding:{self._get_state_val(stateprop)}"+
+                        f" in add_state_variable({metaprop}) {stateprop}={initial_value}")
+            self._set_state_val(stateprop, initial_value)
         else:
             EntityState._meta_properties[metaprop] = stateprop
             EntityState._state_properties[stateprop] = metaprop
@@ -152,3 +152,19 @@ class EntityState:
     def __str__(self):
         return str(self._state_values)
 
+    def format_descr(self):
+        out_str = ""
+        # for s in ['is_cooked', 'is_cut']:
+        #     state_val = self._get_state_val(s):
+        #     if state_val:
+        #         out_str += f" +{state_val}"
+        if self.cookable:
+            out_str += f" +{self.is_cooked}"
+        if self.cuttable:
+            cut_state = self.is_cut
+            if cut_state:
+                out_str += f" +{cut_state}"
+        if self.openable:
+            open_state = "open" if self.is_open else "closed"
+            out_str += f" +{open_state}"
+        return out_str
