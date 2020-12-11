@@ -275,10 +275,10 @@ class QaitEnvWrapper(gym.Wrapper):
             # FIXME: initialization HACK for MEAL
             kg = tw_game_oracle.gi.kg
             meal = kg.create_new_object('meal', MEAL)
-            meal.location = kg._nowhere  # the meal doesn't yet exist in the world
+            kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
             gt = tw_game_oracle.gi.gt
             meal = gt.create_new_object('meal', MEAL)
-            meal.location = gt._nowhere  # the meal doesn't yet exist in the world
+            gt._nowhere.add_entity(meal)  #meal.location = gt._nowhere  # the meal doesn't yet exist in the world
         else:
             assert idx < len(self.tw_oracles)
             if not is_first_episode:

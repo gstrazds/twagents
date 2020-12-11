@@ -55,11 +55,11 @@ class WordVocab:
             words = f.read().split("\n")
             #assume that vocab file contains unique words,
             filtered_words = [w.lower() for w in words if w.strip()]
-            filtered_words = [filter(lambda w: w.startswith('#<') or w in _lowercase_special, filtered_words)]
+            filtered_words = list(filter(lambda w: not w.startswith('#<') and w not in _lowercase_special, filtered_words))
         self.word_vocab.extend(filtered_words)
         self._word2id = {}
         # self.id2word = []  # same as self.word_vocab
-
+        print("-----------------------------WORD_VOCAB:", self.word_vocab)
         for i, w in enumerate(self.word_vocab):
             # if not w.strip():
             #     assert f"[{i}] Expected all words/lines in vocab file to be non-empty!"
