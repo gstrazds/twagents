@@ -4,7 +4,8 @@ from .action import Action
 
 
 class Preconditions:
-    def __init__(self):
+    def __init__(self, task=None):
+        self._task = task
         self.required_inventory = []  # *all* of these items must be in Inventory for this task to succeed
         self.required_objects = []    # non-takeable objects: need to be near *one* of these
         self.required_locations = []   # need to be at one of these locations
@@ -65,7 +66,7 @@ class Preconditions:
         else:
             print("WARNING: Preconditions.check_current_state(kg==None)")
             here = None
-        missing = Preconditions()
+        missing = Preconditions(task=self._task)
         if self.required_objects:
             for name in list(self.required_objects): # NOTE: we copy the list to ensure safe removal while iterating
                 if kg and kg.location_of_entity_with_name(name) == here:
@@ -93,26 +94,34 @@ class Preconditions:
             missing.required_locations += self.required_locations
         # all(map(lambda t: t.is_done, self.prereq_tasks))
         for t in self.required_tasks:
-            if not t.check_postconditions(kg) or not t.is_done or t.has_failed:
+            if t.has_failed:
+                print(f"{self._task} Preconditions<{self}> required task has failed: {t}: WE ARE DOOMED TO FAIL!")
+                if self._task:
+                    self._task._failed = True
+                    self._task._done = True
+                break
+            elif not t.check_postconditions(kg) or not t.is_done: # or t.has_failed:
                 missing.required_tasks.append(t)
         return missing
 
 
 class Task:
     """ Base class for Tasks. """
-    def __init__(self, description='', use_groundtruth=False):
+    def __init__(self, description='', parent_task=None, use_groundtruth=False):
         self._done = False
         self._failed = False
         self.use_groundtruth = use_groundtruth
         if not description:
             description = "{classname}".format(classname=type(self).__name__)
         self.description = description
-        self.prereq = Preconditions()
-        self.missing = Preconditions()
+        self.prereq = Preconditions(task=self)
+        self.missing = Preconditions(task=self)
         self._postcondition_checks = []  # closures, invoked with one arg = KnowledgeGraph
         self._action_generator = None  # generator: current state of self._generate_actions()
         self._task_exec = None   # when a task is activated, it gets a pointer to the TaskExecutor
         self._children = []   # keep track of subtasks that need to be revoked if this task fails or is revoked
+        self._parent_task = parent_task
+        self._do_only_once = False
 
     def _knowledge_graph(self, gi):
         if self.use_groundtruth:
@@ -148,11 +157,17 @@ class Task:
         return self._done
 
     def reset(self):
+        if self._do_only_once:
+            print(f"{self} NOT RESETTING because do_only_once=True")
+            return
         self._done = False
         self._failed = False
         self._action_generator = None
 
     def reset_all(self):
+        if self._do_only_once:
+            print(f"{self} NOT RESETTING because do_only_once=True")
+            return
         for t in self._children:
             t.reset()
         self.reset()

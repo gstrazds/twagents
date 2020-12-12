@@ -34,13 +34,14 @@ class SequentialActionsTask(Task):
         """
         ignored = yield   # required handshake
         while self._current_idx < len(self.actions) and not self._failed:
-            result = yield self.actions[self._current_idx]
+            act = self.actions[self._current_idx]
             self._current_idx += 1
-            if self.check_result(result, kg):
-                if self._current_idx >= len(self.actions):
-                    self._done = True
-            else:
+            if self._current_idx >= len(self.actions):
+                self._done = True
+            result = yield act
+            if not self.check_result(result, kg):
                 self._failed = True
+        self._done = True
         return None
 
 

@@ -23,6 +23,9 @@ def _check_preconditions(task: Task, gi: GameInstance) -> bool:
     #         print(f"task {task}: all preconditions {task.prereq} SATISFIED")
     return all_satisfied
 
+
+FAILSAFE_LIMIT = 100
+
 class TaskExecutor(DecisionModule):
     """
     The TaskExecutor module sequences and executes Tasks.
@@ -37,6 +40,7 @@ class TaskExecutor(DecisionModule):
         self.task_queue = []  # tasks waiting to begin
         self.completed_tasks = []
         self._debug_print = False
+        self._failsafe_countdown = FAILSAFE_LIMIT
         # self._action_generator = None
 
     def print_state(self):
@@ -61,7 +65,15 @@ class TaskExecutor(DecisionModule):
             all_satisfied = active_task.missing.is_empty
         return all_satisfied
 
-    def _activate_next_task(self):
+    def _activate_next_task(self, restart_failsafe=False):
+        if restart_failsafe:
+            print("********* RESET FAILSAFE COUNTDOWN!")
+            self._failsafe_countdown = FAILSAFE_LIMIT
+        self._failsafe_countdown -= 1
+        if self._failsafe_countdown < 0:
+            print(self._failsafe_countdown, "!!!!! FAILSAFE COUNTDOWN exhausted skipping activate_next_task")
+            # DEBUGGING, but didn't really help
+            # return False
         gi = self._gi
         # assert self._action_generator is None, "Shouldn't be called if a task is already active"
         if not self.task_stack:
@@ -69,6 +81,11 @@ class TaskExecutor(DecisionModule):
                 next_task = self.task_queue.pop(0)
                 self.push_task(next_task)
         while self.task_stack:
+            self._failsafe_countdown -= 1
+            if self._failsafe_countdown < 0:
+                print(self._failsafe_countdown, "FAILSAFE COUNTDOWN exhausted aborting activate_next_task")
+                # DEBUGGING an issue, but the failsafe countdown didn't really help
+                # return False
             # self._action_generator = self.task_stack[-1].generate_actions(gi)
             activating_task = self.task_stack[-1]
             if not activating_task.is_done and not activating_task.is_active:
@@ -81,7 +98,7 @@ class TaskExecutor(DecisionModule):
                 continue   # loop to get next potentially active task
             if not _check_preconditions(activating_task, gi):
                 # print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
-                self.handle_missing_preconditions(activating_task.missing,
+                self.handle_missing_preconditions(activating_task.missing, activating_task,
                                                   use_groundtruth=activating_task.use_groundtruth)
                 kg = _get_kg_for_task(activating_task, gi)
                 activating_task.deactivate(kg)
@@ -93,7 +110,7 @@ class TaskExecutor(DecisionModule):
         if True or not self._active:
             if self._debug_print:
                 print("TaskExecutor: ACTIVATING?...", end='')
-            self._activate_next_task()
+            self._activate_next_task(restart_failsafe=True)
             if self._debug_print:
                 print("Activation Prechecks...")
             self.remove_completed_tasks()
@@ -187,32 +204,65 @@ class TaskExecutor(DecisionModule):
                     t.reset_all()
             # task.deactivate()
         # self._action_generator = None
+        if popped.has_failed:
+            if popped._parent_task:
+                self._propogate_failure(popped._parent_task, failed_task=popped)
         return popped
 
-    def start_prereq_task(self, pretask) -> bool:
+    def start_prereq_task(self, pretask, parent_task) -> bool:
         # gi = self._gi
-        print("start_prereq_task:", pretask)
+        print("start_prereq_task:", pretask, "parent_task:", parent_task)
+        if pretask._parent_task and parent_task:
+            assert pretask._parent_task == parent_task
+        if not pretask._parent_task:
+            pretask._parent_task = parent_task   # keep track of this so the whole chain can fail if a prereq task fails
         # assert pretask not in self.task_stack
+        _failsafe_ok = True
         if pretask in self.task_queue:
             # required task is already queued: activate it now
             print(f"...removing prereq task {pretask} from task_queue...")
             next_task = self.task_queue.pop(self.task_queue.index(pretask))
+            _failsafe_ok = False
         else:
             next_task = pretask
         if next_task in self.task_stack:
             print(f"WARNING: {next_task} was already in the task stack: pop & re-push")
             popped = self.pop_task(task=next_task)
-        if next_task.is_done or next_task.has_failed:
+            _failsafe_ok = False
+        if next_task.is_done \
+                and not next_task.has_failed:    #GVS 2020-12-12 used to be "or next_task.has_failed:
+            _failsafe_ok = False
             next_task.reset_all()  # try again
-        self.push_task(next_task)
-        return self._activate_next_task()
+        if next_task.has_failed:
+            _failsafe_ok = False
+            self._propogate_failure(parent_task, failed_task=next_task)
+        else:
+            self.push_task(next_task)
+        return self._activate_next_task(restart_failsafe=_failsafe_ok)
 
-    def handle_missing_preconditions(self, missing: Preconditions, use_groundtruth=False):
+    def _propogate_failure(self, parent_task, failed_task):
+        if parent_task:
+            print(f"Propogating failure to ancestor task {parent_task} of failed prereq task: ", failed_task)
+            while parent_task:
+                parent_task._failed = True
+                parent_task = parent_task._parent_task
+        self.remove_completed_tasks()
+
+
+    def handle_missing_preconditions(self, missing: Preconditions, parent_task, use_groundtruth=False):
         gi = self._gi
         if not gi:
             kg = None
         else:
             kg = gi.gt if use_groundtruth else gi.kg
+        if missing._task is None:
+            print("WARNING: fixup for Preconditions without self._task", parent_task, missing)
+            missing._task = parent_task
+        elif missing._task != parent_task:
+            assert False, f"MISMATCH for parent_task:{parent_task} in Preconditions:{missing} {missing._task}"
+        if parent_task and parent_task.has_failed:
+            print("CANCELLING handle_missing_preconditions for failed task:", parent_task)
+
         if missing.required_inventory:
             # need_to_get.extend(missing.required_inventory)
             gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
@@ -256,7 +306,7 @@ class TaskExecutor(DecisionModule):
             #TODO: or else, activate them all but using a ParallelTasks context (which is not yet implemented)
             for task in reversed(missing.required_tasks):
                 # print(f"handle precondition: {task}")
-                self.start_prereq_task(task)
+                self.start_prereq_task(task, parent_task)
 
     def rescind_broadcasted_preconditions(self, task):
         gi = self._gi
@@ -275,7 +325,7 @@ class TaskExecutor(DecisionModule):
         if isinstance(event, NeedToDo):
             print("TaskExecutor PROCESS EVENT: ", event)
             self._gi = gi
-            self.start_prereq_task(event.task)
+            self.start_prereq_task(event.task, None)
             self.activate(gi)
 
     def take_control(self, gi: GameInstance):
@@ -291,30 +341,32 @@ class TaskExecutor(DecisionModule):
         if not self._active:
             self._eagerness = 0.0
             return None  #ends the generator
-        self._activate_next_task()
+        self._activate_next_task(restart_failsafe=True)
         # assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
         failed_counter = 0
         while self.task_stack and self.task_stack[-1].is_active:
             # try:
             active_task = self.task_stack[-1]
             if active_task.has_postcondition_checks:
+                if active_task.is_done or active_task.has_failed:
+                    print(f"------ SKIPPING postcondition checks for {active_task} -------------")
                 kg = _get_kg_for_task(active_task, gi)
                 active_task.check_postconditions(kg, deactivate_ifdone=True)
             # self.remove_completed_tasks()
             prereqs_satisfied = False
-            if not active_task.is_done:
+            if not active_task.is_done and not active_task.has_failed:
                 prereqs_satisfied = _check_preconditions(active_task, gi)
             else:
                 self.rescind_broadcasted_preconditions(active_task)
                 self.remove_completed_tasks()
-                self._activate_next_task()
+                self._activate_next_task(restart_failsafe=False)
                 continue
 
             if prereqs_satisfied: # or active_task.is_done:
                 kg = _get_kg_for_task(active_task, gi)
                 next_action = active_task.get_next_action(observation, kg)  # ?get next action from DONE task?
             else:
-                self.handle_missing_preconditions(active_task.missing,
+                self.handle_missing_preconditions(active_task.missing, active_task,
                                                   use_groundtruth=active_task.use_groundtruth)
                 next_action = None
 
@@ -339,7 +391,7 @@ class TaskExecutor(DecisionModule):
                     self.rescind_broadcasted_preconditions(t)
                     t.deactivate(kg)
                     self.completed_tasks.append(t)
-                    self._activate_next_task()
+                    self._activate_next_task(restart_failsafe=(not t.has_failed))
                 else:
                     yield None
                     failed_counter += 1

@@ -127,6 +127,7 @@ class PathTask(SequentialTasks):
             if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
                 return super().activate(kg, exec)
             else:
+                # self._failed = True  # this happens in set_goal()
                 self.deactivate(kg)
                 self._done = True
                 return None
@@ -235,7 +236,7 @@ class FindTask(Task):
                 if go_somewhere_new.has_failed:
                     self._done = True
                 else:
-                    self._task_exec.start_prereq_task(go_somewhere_new)
+                    self._task_exec.start_prereq_task(go_somewhere_new, self)
         return None
 
 
@@ -277,7 +278,7 @@ class GoToTask(Task):
                 pathtask = PathTask(self._objname, use_groundtruth=self.use_groundtruth)
                 self._children.append(pathtask)
             if not pathtask.has_failed and not pathtask.is_active:
-                self._task_exec.start_prereq_task(pathtask)
+                self._task_exec.start_prereq_task(pathtask, self)
         self._done = True
         return None
 

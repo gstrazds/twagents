@@ -1,5 +1,5 @@
 from ..action import Action, SingleAction, StandaloneAction, PrepareMeal, Eat, NoOp, Drop
-from ..event import NeedToDo
+# from ..event import NeedToDo
 # from ..game import GameInstance
 from ..knowledge_graph import KnowledgeGraph
 from ..task import SequentialTasks
@@ -117,7 +117,9 @@ class RecipeReaderTask(SingleActionTask):
                 continue    # ignore this one, try to convert next step
             elif act == PrepareMeal:
                 prep = task  #SingleActionTask(PrepareMeal, use_groundtruth=self.use_groundtruth)
+                prep._do_only_once = True
                 eat = SingleActionTask(StandaloneAction("eat meal"), use_groundtruth=self.use_groundtruth)
+                eat._do_only_once = True
                 eat.prereq.required_tasks.append(prep)
             else:
                 actions.append((act, instr))
