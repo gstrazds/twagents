@@ -134,6 +134,12 @@ class EntityState:
     # @property
     # def cookable(self):
 
+    @property
+    def is_raw(self):
+        if self.cookable and self.cooked_state == '':
+            return True
+        return False
+
     def cook(self, cooked_state='cooked'):
         return self._set_state_val('is_cooked', cooked_state)
 
@@ -158,8 +164,15 @@ class EntityState:
         #     state_val = self._get_state_val(s):
         #     if state_val:
         #         out_str += f" +{state_val}"
+        # cookable/raw is handled specially
         if self.cookable:
-            out_str += f" +{self.is_cooked}"
+            cooked_state = self.is_cooked
+            if cooked_state == '':
+                cooked_state = 'raw'
+            elif cooked_state == 'cooked':  # generic value from 'cooked(x)' Propositions [logical inverse of 'raw(x)']
+                cooked_state = ''
+            if cooked_state:
+               out_str += f" +{cooked_state}"
         if self.cuttable:
             cut_state = self.is_cut
             if cut_state:

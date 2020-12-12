@@ -66,6 +66,8 @@ class Entity:
         self._description = description
         self._type        = entitytype
         self._discovered = False
+        self._state       = EntityState()
+        self._attributes  = []
         self._entities = ()  # an empty tuple
 
     @property
@@ -122,6 +124,21 @@ class Entity:
     @property
     def parent(self):   # for building compositional hierarchy
         return None     # implemented by subclasses
+
+    @property
+    def attributes(self):
+        return self._attributes
+
+    def add_attribute(self, attribute) -> bool:
+        if attribute not in self._attributes:
+            self._attributes.append(attribute)
+            return True
+        return False
+
+    def del_attribute(self, attribute):
+        if attribute in self._attributes:
+            self._attributes.remove(attribute)
+
 
 class Location(Entity):
     """
@@ -376,14 +393,11 @@ class Thing(Entity):
         # self._names       = [name]  # List of names for the entity
         # self._description = description
         self._action_records = {} # verb : (p_valid, result_text)
-        self._state       = EntityState()
-        self._attributes  = []
         self._init_loc    = None
         self._current_loc = None   # location where this entity can currently be found
         # self._entities    = []
         self._container   = None   # if not None, a location holding objects contained by this entity
         self._supporting_surface = None   # if not None, a location with objects supported by/on this entity
-        self._type        = entitytype
         # if location is not None:
         #     self.location = location
 
@@ -462,20 +476,6 @@ class Thing(Entity):
         return False
 
     @property
-    def attributes(self):
-        return self._attributes
-
-    def add_attribute(self, attribute) -> bool:
-        if attribute not in self._attributes:
-            self._attributes.append(attribute)
-            return True
-        return False
-
-    def del_attribute(self, attribute):
-        if attribute in self._attributes:
-            self._attributes.remove(attribute)
-
-    @property
     def location(self):
         return self._current_loc
 
@@ -507,7 +507,7 @@ class Thing(Entity):
     def parent(self):
         # if hasattr(self, "_parent"):   # in we have composite objects
         #     return self._parent
-        return self._current_loc   # for porable objects, this might be a _container or a _supporting_surface
+        return self._current_loc   # for portable objects, this might be a _container or a _supporting_surface
 
     @property
     def state(self):

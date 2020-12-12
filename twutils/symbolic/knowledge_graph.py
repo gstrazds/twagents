@@ -148,7 +148,6 @@ def add_attributes_for_type(entity, twvartype):
 # GVS 11.dec.2020 added:
         if attrib == Container:
             entity.convert_to_container()
-
             # entity.state.add_state_variable('openable', 'is_open', '')
             # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
             # entity.state.close()  # ?default to closed
@@ -473,7 +472,7 @@ def _format_entity_descr(entity_list, idx):
             if not first:
                 descr_str += f" {ITEM_SEPARATOR} "
             first = False
-            descr_str += entity_list[idx].name
+            descr_str += _format_entity_name(entity_list[idx])
             idx += 1
         descr_str += f" {END_OF_LIST}"
     return descr_str, idx
@@ -839,7 +838,7 @@ class KnowledgeGraph:
         self._update_entity_index(new_entity)
         return new_entity
 
-    def add_obj_to_obj(self, fact, rel=None):
+    def add_obj_to_obj(self, fact, maybe_new_entities_list, rel=None):
         assert rel == fact.name
         # rel = fact.name
         o = fact.arguments[0]
@@ -855,6 +854,7 @@ class KnowledgeGraph:
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
+            maybe_new_entities_list.append(obj)
             if not self.groundtruth:
                 if self._debug:
                     print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
@@ -873,7 +873,7 @@ class KnowledgeGraph:
             holder.add_entity(obj, self, rel=rel)
         return obj, holder
 
-    def add_obj_to_inventory(self, fact):
+    def add_obj_to_inventory(self, fact, maybe_new_entities_list):
         # rel = fact.name
         o = fact.arguments[0]
         h = fact.arguments[1]
@@ -887,6 +887,7 @@ class KnowledgeGraph:
         obj = self.get_entity(o.name, entitytype=entitytype)
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
+            maybe_new_entities_list.append(obj)
             if self._debug:
                 print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
         self.maybe_move_entity(obj, locations=loc_list)
@@ -905,6 +906,8 @@ class KnowledgeGraph:
         on_facts = []
         in_facts = []
         inventory_facts = []
+        inventory_items = []
+        maybe_new_entities = []
         other_facts = []
         for fact in obs_facts:
             a0 = fact.arguments[0]
@@ -914,6 +917,8 @@ class KnowledgeGraph:
             elif fact.name == 'at':
                 if a0.type == 'P' and a1.type == 'r':
                     player_loc = self.get_location(a1.name, create_if_notfound=True)
+                    if player_loc not in maybe_new_entities:
+                        maybe_new_entities.append(player_loc)
                 else:
                     at_facts.append(fact)
             elif fact.name == 'on':
@@ -928,7 +933,11 @@ class KnowledgeGraph:
                     # During this initial pass we create locations and connections among them
                     # print('++CONNECTION:', fact)
                     loc0 = self.get_location(a0.name, create_if_notfound=True)
+                    if loc0 not in maybe_new_entities:
+                        maybe_new_entities.append(loc0)
                     loc1 = self.get_location(a1.name, create_if_notfound=True)
+                    if loc1 not in maybe_new_entities:
+                        maybe_new_entities.append(loc1)
                     # door_name = find_door(gt_facts, a1, a0)
                     # if door_name:
                     #     door = self._get_gt_entity(door_name, entitytype=DOOR, locations=[loc1, loc0], create_if_notfound=True)
@@ -986,6 +995,7 @@ class KnowledgeGraph:
                 door = self.get_entity(d.name, entitytype=DOOR)
                 if not door:
                     door = self.create_new_object(d.name, DOOR)  #, locations=door_locations)
+                    maybe_new_entities.append(door)
                 self.maybe_move_entity(door, locations=door_locations)
             if fact.name in DIRECTION_ACTIONS:
                 direction = fact.name
@@ -1041,7 +1051,8 @@ class KnowledgeGraph:
                                 self.add_connection(new_connection, with_inverse=True)
                 # if not Location.is_unknown(player_loc):
         for fact in at_facts:
-            # print("DEBUG at_fact", fact)
+            if self._debug:
+                print("DEBUG at_fact:", fact)
             o = fact.arguments[0]
             r = fact.arguments[1]
             loc = self.get_location(r.name, create_if_notfound=False)
@@ -1056,10 +1067,12 @@ class KnowledgeGraph:
                 obj = self.get_entity(o.name, entitytype=entitytype)
                 if not obj:
                     obj = self.create_new_object(o.name, entitytype)  #, locations=locs)
+                    #add_attributes_for_type(obj, o.type)   # done by create_new_object
+                    maybe_new_entities.append(obj)
                 self.maybe_move_entity(obj, locations=locs)
             else:
                 self.warn(f"-- ADD FACTS: unexpected location for at(o,l): {f}")
-            add_attributes_for_type(obj, o.type)
+            # add_attributes_for_type(obj, o.type)  # GVS 2020-12-12 This was redundant here, and potentially dangerous
 
         #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
         # and similarly, that "in" relations are not nested.
@@ -1067,16 +1080,23 @@ class KnowledgeGraph:
         #(currently assumes only one level: container or holder is immobile, previously identified "at" a place)
 
         for fact in on_facts:
-            # print("DEBUG on_fact", fact)
-            o1, o2 = self.add_obj_to_obj(fact, rel='on')
+            if self._debug:
+                print("DEBUG on_fact:", fact)
+            o1, o2 = self.add_obj_to_obj(fact, maybe_new_entities, rel='on')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'on', o2, groundtruth=self.groundtruth)
         for fact in in_facts:
-            o1, o2 = self.add_obj_to_obj(fact, rel='in')
+            if self._debug:
+                print("DEBUG in_fact:", fact)
+            o1, o2 = self.add_obj_to_obj(fact, maybe_new_entities, rel='in')
             if o1 and o2:
                 add_attributes_for_predicate(o1, 'in', o2, groundtruth=self.groundtruth)
         for fact in inventory_facts:
-            o1 = self.add_obj_to_inventory(fact)
+            if self._debug:
+                print("DEBUG inventory fact:", fact)
+            o1 = self.add_obj_to_inventory(fact, maybe_new_entities)
+            if o1 not in inventory_items:
+                inventory_items.append(o1)
 
         for fact in other_facts:
             predicate = fact.name
@@ -1096,6 +1116,8 @@ class KnowledgeGraph:
                 a1 = fact.arguments[1]
             else:
                 a1 = None
+            if self._debug:
+                print("DEBUG other fact:", fact)
             o1 = self.get_entity(a0.name, entitytype=entity_type_for_twvar(a0.type))
             if a1:
                 o2 = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
@@ -1107,8 +1129,30 @@ class KnowledgeGraph:
                 self.warn("add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
         if prev_action:
             self.special_openclose_oven(prev_action)
+        for obj in maybe_new_entities:
+            if Cookable in obj.attributes:
+                if not obj.state.cookable:
+                    if self._debug:
+                        print(f"update_facts: Setting raw({obj.name})")
+                    obj.state.not_cooked()  # a cookable (food) item, but we didn't see a cooked(x) Proposition => raw(x)
+        self.handle_gone_from_inventory(inventory_items)
         if self._debug:
             print(f"---------------- update FACTS end -------------------")
+
+    def handle_gone_from_inventory(self, in_inventory_items, prev_action=None):
+        # if self._debug:
+        #     for item in in_inventory_items:
+        #         print("update_facts -- in inventory:", item)
+        gone_items = []
+        for item in self.inventory:   # at this point we should have seen an 'at' fact for every item in our inventory
+            if item not in in_inventory_items:
+                # assume it was consumed by the previous action
+                gone_items.append(item)
+
+        if self._debug:
+            print("update_facts -- disappeared from inventory:", gone_items)
+        for item in gone_items:
+            self._nowhere.add_entity(item)   # move it from inventory to NOWHERE (non-existence)
 
     def special_openclose_oven(self, prev_action):
         if isinstance(prev_action, Action):
@@ -1295,7 +1339,7 @@ def _format_doorinfo(doorentity, options=None):
     if options == 'kg-descr' or options == 'parsed-obs':
         if doorentity.state.openable and not doorentity.state.is_open:
             return "{} +closed".format(doorentity.name)
-        return "{} + open".format(doorentity.name)
+        return "{} +open".format(doorentity.name)
     #else:
     if doorentity.state.openable and not doorentity.state.is_open:
         return "{}(closed)".format(doorentity.name)
