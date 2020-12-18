@@ -481,3 +481,43 @@ def parse_ftwc_recipe(recipe_str:str, format='fulltext'):
                     recipe_step = recipe_step.replace(' the ', ' ')
                 directions.append(recipe_step)
     return ingredients, directions
+
+def simplify_feedback(feedback_str: str):
+    if not feedback_str:
+        return ''
+    feedback_str = feedback_str.strip()
+    if "cook a delicious meal" in feedback_str and "cookbook in the kitchen" in feedback_str:
+        feedback_str = "You should : find kitchen , read cookbook , eat meal ."
+    elif feedback_str.endswith(" and look around"):  # this is a preprocessed feedback msg from QaitGymEnvWrapper
+        feedback_str = feedback_str[:-16]+"."   # remove " and look around" (because it's redundant)
+    elif feedback_str.endswith(" and look around"):  # this is a preprocessed feedback msg from QaitGymEnvWrapper
+        feedback_str = feedback_str[:-16]+"."   # remove " and look around" (because it's redundant)
+    elif "all following ingredients and follow the directions to prepare" in feedback_str:
+        ingredients, directions = parse_ftwc_recipe(feedback_str)
+        if ingredients or directions:
+            feedback_str = "You read the recipe ---------"
+            if ingredients:
+                feedback_str += f" Acquire : " + " , ".join(ingredients) + " ;"
+            if directions:
+                feedback_str += f" Do : " + " , ".join(directions) + " ;"
+    elif "our score has" in feedback_str:  # strip out useless lines about 'score has gone up by one point"
+        feedback_lines = feedback_str.split('\n')
+        output_lines = []
+        for line in feedback_lines:
+            line = line.strip()
+            if "score has " in line:
+                continue
+            if "ou scored " in line:  # You scored x out of a possible y ...
+                continue
+            if "*** the end ***" in line.lower():
+                continue
+            if "would you like to quit" in line.lower():
+                continue
+            if line:
+                if line.endswith(" Not bad."):  # You eat the meal. Not bad.
+                    line = line[0:-9]
+                elif "dding the meal to your " in line:  # Adding the meal to your inventory.
+                    line = "You prepare the meal."
+                output_lines.append(line)
+        feedback_str = "\n".join(output_lines)
+    return feedback_str

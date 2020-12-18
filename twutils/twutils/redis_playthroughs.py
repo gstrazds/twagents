@@ -16,7 +16,7 @@ from rejson import Client, Path                 # https://github.com/RedisJSON/r
 
 
 from twutils.file_helpers import count_iter_items, parse_gameid, split_gamename
-from twutils.twlogic import filter_observables
+from twutils.twlogic import filter_observables, parse_ftwc_recipe, simplify_feedback
 from twutils.playthroughs import *
 
 from ftwc.wrappers import QaitGym
@@ -581,12 +581,14 @@ def export_playthru(gn, destdir='.', redis=None):
     #_rj = Client(host='localhost', port=6379, decode_responses=True)
 
     playthru = get_playthrough_json(gn, redis=redis)
-    pthru_out = ''
+    pthru_all = ''
     kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
     num_files = 0
     for i, stepdata in enumerate(playthru):
         obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'
         prev_action = stepdata['prev_action']
+        if prev_action and " the " in prev_action:
+            prev_action = prev_action.replace(" the ", " ")
         observed_facts = stepdata[obs_facts_key]
         # print( "---==================================================================---")
         # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
@@ -607,19 +609,24 @@ def export_playthru(gn, destdir='.', redis=None):
             os.makedirs(xdir)
         # print(f"[{i}] {gn} .....")
         outstr = f"\n>>>[ {prev_action} ]<<<\n"
-        pthru_out += outstr
+        pthru = outstr
+        # pthru_out += outstr
         feedback = stepdata['feedback']
         if feedback and prev_action != 'start':
             outstr += feedback
-            feedback = feedback.strip()
-            pthru_out += feedback + '\n'
-        pthru_out += kg_desc + '\n\n'
+            # feedback = feedback.strip()
+        pthru += simplify_feedback(feedback) + '\n'
+        pthru += kg_desc + '\n'
         outstr += '\n' + stepdata['obs']
         with open(xdir+f'/_step_{i:02d}.txt', 'w') as outfile:
             outfile.write(outstr)
             num_files += 1
+        pthru_all += pthru
+        with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
+            outfile.write(pthru)
+            num_files += 1
     with open(destdir+f'/{gn}.pthru', 'w') as outfile:
-        outfile.write(pthru_out)
+        outfile.write(pthru_all)
         num_files += 1
     return num_files
 
