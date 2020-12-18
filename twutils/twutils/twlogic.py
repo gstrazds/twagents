@@ -93,15 +93,21 @@ def add_extra_door_facts(world, world_facts, local_facts=None, where_fact=None):
             #         local_facts.append(locked_fact)
 
 
+
+def reconstitute_facts(facts_list):
+    if not isinstance(facts_list[0], Proposition):   # maybe serialized list of facts
+        # world_facts0 = world_facts.copy()
+        facts_list = [Proposition.deserialize(fact_json) for fact_json in facts_list]
+        # print("Deserialized:\n", facts_list, "\n===>\n", facts_list)
+    return facts_list
+
+
 def filter_observables(world_facts: List[Proposition], verbose=False, game=None):
     fixups = defaultdict(set)
     if not world_facts:
         return None
+    world_facts = reconstitute_facts(world_facts)
 
-    if not isinstance(world_facts[0], Proposition):   # maybe serialized list of facts
-        # world_facts0 = world_facts.copy()
-        world_facts = [Proposition.deserialize(fact_json) for fact_json in world_facts]
-        # print("Deserialized:\n", world_facts0, "\n===>\n", world_facts)
     # print("WORLD FACTS:")
     for fact in world_facts:
         # print('\t', fact)
@@ -439,4 +445,39 @@ def game_object_adjs(game: Game) -> List[str]:
 # game.extras["object_locations"] = object_locations
 # game.extras["object_attributes"] = object_attributes
 
+def parse_ftwc_recipe(recipe_str:str, format='fulltext'):
+    # parse the observation string (from a successful 'read cookbook' action)
+    recipe_lines = recipe_str.split('\n')
+    recipe_lines = list(map(lambda line: line.strip(), recipe_lines))
+    recipe_lines = list(map(lambda line: line.lower(), recipe_lines))
+    ingredients = []
+    directions = []
+    has_ingredients = False
+    start_of_ingredients = 0
+    start_of_directions: int = len(recipe_lines) + 1000   # default: past the end of data
+    # try:
+    #     start_of_ingredients = recipe_lines.index("Ingredients:")
+    #     start_of_ingredients += 1
+    # except ValueError:
+    #     print("RecipeReader failed to find Ingredients in:", recipe_str)
+    #     start_of_ingredients = 0
+    for i, line in enumerate(recipe_lines[start_of_ingredients:]):
+        if line.startswith("ingredients"):
+            has_ingredients = True
+            start_of_ingredients = i + 1
+            break
+    for i, ingredient in enumerate(recipe_lines[start_of_ingredients:]):
+        if ingredient.startswith("directions"):
+            start_of_directions = start_of_ingredients + i + 1
+            break  # end of Ingredients list
+        if has_ingredients and ingredient:
+            ingredients.append(ingredient)
 
+    if start_of_directions < len(recipe_lines):
+        # assert recipe_lines[start_of_directions - 1] == 'Directions:'
+        for recipe_step in recipe_lines[start_of_directions:]:
+            if recipe_step:
+                if ' the ' in recipe_step:
+                    recipe_step = recipe_step.replace(' the ', ' ')
+                directions.append(recipe_step)
+    return ingredients, directions

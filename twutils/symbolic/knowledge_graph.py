@@ -360,8 +360,12 @@ class MentionIndex:
             if mention_start >= 0:
                 zip_list.append((mention_start, entity))
             else:
-                print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND", entity, entity.parent, entity.location)
-                assert False
+                if isinstance(entity, Entity):
+                    print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND", entity, entity.parent, entity.location)
+                    # assert False
+                else:
+                    print("WARNING: SORT ENTITY LIST BY MENTION DIDN'T FIND str:", entity)
+                zip_list.append((100000+len(zip_list), entity))
         # print("POST: sort_entity_list:", self.mentions)
         zip_list = sorted(zip_list)
         sorted_list = [entity for (start, entity) in zip_list]
@@ -379,18 +383,19 @@ LINE_SEPARATOR = '\n'
 # You carry: nothing.
 
 #   # on floor: nothing. )
-def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tracker=None):
+def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tracker=None, groundtruth=False):
     """ Generate a concise (and easily parseable) text of the objects currently observable in the specified room.
          if optional obs_descr string is given, tries to match the order in which entities are mentioned.
      """
-    entity_list = list(loc.entities)  # will append to and then sort a copy of the list
+    entity_list = []  # will append to and then sort a copy of the list
 
     # TODO: similarly for exits
     # print(f"entity_list = {entity_list}")
     for entity in loc.entities:  # build index: iterate through original list (plus subentities)
+        entity_list.append(entity)
         if mention_tracker:
             mention_tracker.index_mentions(entity.name)
-        # print(f"subentities of {entity.name} => {entity.entities}")
+        # print(f"subentites of {entity} = {entity.entities}")
         for subentity in entity.entities:
             if subentity not in entity_list:
                 entity_list.append(subentity)  # keep track of all encountered entities & subentities
@@ -421,50 +426,60 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
         non_door_entities = mention_tracker.sort_entity_list_by_first_mention(non_door_entities)
         # inventory_items = mention_tracker.sort_entity_list_by_first_mention(inventory_items)
         on_floor_entities = mention_tracker.sort_entity_list_by_first_mention(on_floor_entities)
+    # else:  # should already be sorted by containment hierarchy...
+    #     print("non_door_entities:", non_door_entities)
+    #     print("on_floor_entities:", on_floor_entities)
+    #     non_door_entities = sort_entity_list_by_parent(loc, non_door_entities)
+    #     on_floor_entities = sort_entity_list_by_parent(loc, on_floor_entities)
 
     idx = 0
     obs_descr = ""   #"You see:"+LINE_SEPARATOR
     while idx < len(non_door_entities):
-        descr_str, idx = _format_entity_descr(non_door_entities, idx)
+        descr_str, idx = _format_entity_descr(non_door_entities, idx, groundtruth=groundtruth)
         obs_descr += descr_str + LINE_SEPARATOR
     if exits_descr:
         obs_descr += LINE_SEPARATOR + exits_descr
 
     if len(inventory_items):
-        inventory_descr = "Carrying: " + f"{ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
-        obs_descr += LINE_SEPARATOR + inventory_descr + END_OF_LIST
+        inventory_descr = f"++Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
+        obs_descr += LINE_SEPARATOR + inventory_descr + ' '+END_OF_LIST
     if on_floor_entities:
-        onground_descr = f"On floor: {[entity.name for entity in on_floor_entities]}"
-        obs_descr += LINE_SEPARATOR + onground_descr
+        onground_descr = f"On floor {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in on_floor_entities])
+        obs_descr += LINE_SEPARATOR + onground_descr + ' '+END_OF_LIST
     return obs_descr
 
 
 def _format_entity_name(entity):
-    out_str = f"{entity.name}"
+    out_str = ""
     if entity.state:
         state_descr = entity.state.format_descr()
         if state_descr:
             out_str += state_descr
+    out_str += f"{entity.name}"
     return out_str
 
-def _format_entity_descr(entity_list, idx):
+def _format_entity_descr(entity_list, idx, groundtruth=False):
     entity = entity_list[idx]
     idx += 1
     if entity.is_container:
-        descr_str = f"IN {_format_entity_name(entity)}{START_OF_LIST} "
+        descr_str = f"IN {_format_entity_name(entity)} {START_OF_LIST} "
         held_entities = entity.entities
     elif entity.is_support:
-        descr_str = f"ON {_format_entity_name(entity)}{START_OF_LIST} "
+        descr_str = f"ON {_format_entity_name(entity)} {START_OF_LIST} "
         held_entities = entity.entities
     else:
         descr_str = f"{_format_entity_name(entity)}"
         return descr_str, idx
 
-    if entity.is_container and entity.state.openable \
-            and entity.state._has_prop('is_open') and not entity.state.is_open:
-        if not entity.has_been_opened:             # if we've never looked inside
+    if not groundtruth and entity.is_container \
+        and entity.state.openable \
+        and entity.state._has_prop('is_open') \
+        and not entity.state.is_open \
+        and not entity.has_been_opened:             # if we've never looked inside
             descr_str += f"unknown {END_OF_LIST}"  # then we don't know what's in there
-    elif not held_entities or len(held_entities) == 0:
+            return descr_str, idx
+
+    if not held_entities or len(held_entities) == 0:
         descr_str += f"nothing {END_OF_LIST}"
     else:
         first = True
@@ -487,6 +502,7 @@ class KnowledgeGraph:
     def __init__(self, event_stream, groundtruth=False, logger=None, debug=True):
         self._logger = logger
         self._debug = debug
+        self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
         self._unknown_location   = UnknownLocation()
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
         self._player             = Person(name="You", description="The Protagonist")
@@ -552,32 +568,24 @@ class KnowledgeGraph:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
 
-
     def describe_exits(self, loc, mention_tracker=None):
         # assert False, "Not Yet Implemented"
         outgoing_directions = self.connections.outgoing_directions(loc)
+        if not outgoing_directions:
+            return ""
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
-        obs_descr = "\nExits:\n"
+        obs_descr = "\n---Exits---\n"
         for direction in outgoing_directions:
             con = self.connections.connection_for_direction(loc, direction)
-            obs_descr += con.to_string(options='kg-descr') + LINE_SEPARATOR
+            obs_descr += con.to_string(options=self._formatting_options) + LINE_SEPARATOR
+        obs_descr += "------\n"
         return obs_descr
-
 
     def describe_room(self, roomname, obs_descr=None):
         """ Generate a concise (and easily parseable) text description of the room and what's currently observable there.
             if optional obs_descr string is given, tries to match the order in which entities are mentioned.
         """
-        loc = self.get_location(roomname)
-        if not loc or (not loc.is_a(ROOM) and loc.is_a(ROOM) is not None):  # is_a can return None if entitytype is unset
-            return "-= Unknown Location =-"
-        elif loc == self._unknown_location:
-            return "-= Unknown Location =-"
-        #else:   # we've got a genuine Room object
-        room_descr = f"-= {loc.name} =-\n"
-        # if loc == self.player_location:
-        #     room_descr += f"You are_in: {loc.name}\n"
         mention_tracker = None if not obs_descr else MentionIndex(obs_descr)
         if mention_tracker:
             mention_tracker.index_mentions('north')  # describe_exits will need these to sort exits
@@ -585,10 +593,23 @@ class KnowledgeGraph:
             mention_tracker.index_mentions('south')
             mention_tracker.index_mentions('west')
 
-        inventory_items = list(self.inventory.entities)  # pass a copy, for safey
+        loc = self.get_location(roomname)
+        if not loc or (not loc.is_a(ROOM) and loc.is_a(ROOM) is not None):  # is_a can return None if entitytype is unset
+            return "-= Unknown Location =-"
+        elif loc == self._unknown_location:
+            return "-= Unknown Location =-"
+        #else:   # we've got a genuine Room object
+        room_descr = f"-= {loc.name} =-\n"
+
+        # if loc == self.player_location:
+        #     room_descr += f"You are_in: {loc.name}\n"
+        if loc == self.player_location:
+            inventory_items = list(self.inventory.entities)  # pass a copy, for safey
+        else:
+            inventory_items = []
         exits_descr = self.describe_exits(loc, mention_tracker=mention_tracker)
-        room_descr += describe_visible_objects(loc, inventory_items,
-                                               exits_descr=exits_descr,  mention_tracker=mention_tracker)
+        room_descr += describe_visible_objects(loc, inventory_items, exits_descr=exits_descr,
+                                               mention_tracker=mention_tracker, groundtruth=self.groundtruth)
         return room_descr
 
     @property
@@ -893,7 +914,7 @@ class KnowledgeGraph:
         self.maybe_move_entity(obj, locations=loc_list)
         # DEBUGGING: redundant SANITY CHECK
         if not self.inventory.get_entity_by_name(obj.name):
-            self.warn(obj.name, "NOT IN INVENTORY", self.inventory.entities)
+            self.warn(f"{obj.name} NOT IN INVENTORY {self.inventory.entities}")
             assert False
         return obj
 
@@ -1126,7 +1147,7 @@ class KnowledgeGraph:
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
-                self.warn("add_attributes_for_predicate", predicate, "didnt find an entity corresponding to", a0)
+                self.warn(f"add_attributes_for_predicate {predicate}, didnt find an entity corresponding to {a0}")
         if prev_action:
             self.special_openclose_oven(prev_action)
         for obj in maybe_new_entities:
@@ -1274,6 +1295,8 @@ class ConnectionGraph:
             return []
 
     def outgoing_directions(self, location):
+        if location not in self._out_graph:
+            return []
         return list(map(simple_direction, self._out_graph[location].keys()))
 
     def connection_for_direction(self, location, direction):   # returns None if no exit that direction
@@ -1338,19 +1361,19 @@ def _format_doorinfo(doorentity, options=None):
         return ''
     if options == 'kg-descr' or options == 'parsed-obs':
         if doorentity.state.openable and not doorentity.state.is_open:
-            return "{} +closed".format(doorentity.name)
-        return "{} +open".format(doorentity.name)
+            return f" : +closed {doorentity.name}"
+        return f" : +open {doorentity.name}"
     #else:
     if doorentity.state.openable and not doorentity.state.is_open:
-        return "{}(closed)".format(doorentity.name)
-    return "{}(open)".format(doorentity.name)
+        return f"{doorentity.name}(closed)"
+    return f"{doorentity.name}(open)"
 
 
 def _format_location(location, options=None):
     if not location:
         return ''
     if options == 'kg-descr' or options == 'parsed-obs':
-        return "UNKNOWN" if Location.is_unknown(location) else location.name
+        return "unknown" if Location.is_unknown(location) else location.name
 
     return ":{}[{}]".format('', location.name)
 
@@ -1412,11 +1435,11 @@ class Connection:
 
     def to_string(self, prefix='', options=None):
         if options == 'kg-descr':       # info known by current (non-GT) knowledge graph
-            return prefix + "{}: {} -> {}".format(self.action.verb,
+            return prefix + "{}{} -> {} ;".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options),
                     _format_location(self.to_location, options=options))
         elif options == 'parsed-obs':   # info directly discernible from 'look' command
-            return prefix + "{}: {}".format(self.action.verb,
+            return prefix + "{}{} ;".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options))
         # else:
         return prefix + "{} --({}:{})--> {}".format(_format_location(self.from_location),

@@ -1,5 +1,6 @@
 # misc temp files
 foo
+tmp/
 
 # console output files
 out/
@@ -14,6 +15,7 @@ saved_models/
 # pytorch lightning and Hydra-config output dirs
 outputs/
 multirun/
+playthru_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

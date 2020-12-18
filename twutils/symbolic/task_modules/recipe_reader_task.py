@@ -6,7 +6,7 @@ from ..task import SequentialTasks
 from ..task_modules import SingleActionTask
 from ..task_modules.acquire_task import TakeItemTask
 from ..task_modules.navigation_task import GoToTask
-from twutils.twlogic import adapt_tw_instr, CUT_WITH, COOK_WITH
+from twutils.twlogic import adapt_tw_instr, parse_ftwc_recipe, CUT_WITH, COOK_WITH
 
 
 class RecipeReaderTask(SingleActionTask):
@@ -158,22 +158,60 @@ class RecipeReaderTask(SingleActionTask):
         cookbook = kg.get_entity('cookbook')
         response = yield self.action  #SingleAction('examine', cookbook)
         # parse the response
-        recipe_lines = response.split('\n')
-        recipe_lines = list(map(lambda line: line.strip(), recipe_lines))
-        ingredients = []
-        directions = []
-        try:
-            start_of_ingredients = recipe_lines.index("Ingredients:")
-            start_of_ingredients += 1
-        except ValueError:
-            print("RecipeReader failed to find Ingredients in:", response)
+        ingredients, directions = parse_ftwc_recipe(response, format='fulltext')
+        # recipe_lines = response.split('\n')
+        # recipe_lines = list(map(lambda line: line.strip(), recipe_lines))
+        # ingredients = []
+        # directions = []
+        # try:
+        #     start_of_ingredients = recipe_lines.index("Ingredients:")
+        #     start_of_ingredients += 1
+        # except ValueError:
+        #     print("RecipeReader failed to find Ingredients in:", response)
+        #     self._failed = True
+        #     return None
+        # for i, ingredient in enumerate(recipe_lines[start_of_ingredients:]):
+        #     if ingredient.startswith("Directions"):
+        #         break     # end of Ingredients list
+        #     if ingredient:
+        #         ingredients.append(ingredient)
+        # if ingredients:
+        #     unneeded_inventory = []  # inventory items that are not listed as ingredients
+        #     already_in_inventory = []  #ingredients that we already have
+        #     for entity in kg.inventory.entities:
+        #         is_in_ingredients = False
+        #         for ingredient in ingredients:
+        #             if entity.has_name(ingredient):
+        #                 already_in_inventory.append(ingredient)
+        #                 is_in_ingredients = True
+        #                 continue  # check next entity
+        #         if not is_in_ingredients:
+        #             unneeded_inventory.append(entity)
+        #
+        #     self.ingredients = ingredients
+        #     for entity in unneeded_inventory:
+        #         response = yield Drop(entity)
+
+        # start_of_directions: int = start_of_ingredients + i + 1
+        # if start_of_directions < len(recipe_lines):
+        #     assert recipe_lines[start_of_directions-1] == 'Directions:'
+        #     for recipe_step in recipe_lines[start_of_directions:]:
+        #         if recipe_step:
+        #             directions.append(recipe_step)
+        #     if directions:
+        #         self.recipe_steps = directions
+        #         main_task = self.convert_instructions_to_tasks(kg)
+        #         if main_task and self._task_exec:
+        #             # kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
+        #             self._task_exec.queue_task(main_task)
+
+        self.ingredients = ingredients
+        self.recipe_steps = directions
+        if not self.ingredients and not self.directions:
+            print(f"RECIPE READER FAILED to parse recipe: {response}")
             self._failed = True
+            self._done = True
             return None
-        for i, ingredient in enumerate(recipe_lines[start_of_ingredients:]):
-            if ingredient.startswith("Directions"):
-                break     # end of Ingredients list
-            if ingredient:
-                ingredients.append(ingredient)
         if ingredients:
             unneeded_inventory = []  # inventory items that are not listed as ingredients
             already_in_inventory = []  #ingredients that we already have
@@ -186,28 +224,13 @@ class RecipeReaderTask(SingleActionTask):
                         continue  # check next entity
                 if not is_in_ingredients:
                     unneeded_inventory.append(entity)
-
-            self.ingredients = ingredients
             for entity in unneeded_inventory:
                 response = yield Drop(entity)
-
-            # if False:  # if Tasks have appropr prereqs, the following should no longer be necessary
-            #     for entity_name in already_in_inventory:
-            #         ingredients.remove(entity_name)
-            #     gi.event_stream.push(NeedToAcquire(objnames=ingredients, groundtruth=True))
-
-        start_of_directions: int = start_of_ingredients + i + 1
-        if start_of_directions < len(recipe_lines):
-            assert recipe_lines[start_of_directions-1] == 'Directions:'
-            for recipe_step in recipe_lines[start_of_directions:]:
-                if recipe_step:
-                    directions.append(recipe_step)
-            if directions:
-                self.recipe_steps = directions
-                main_task = self.convert_instructions_to_tasks(kg)
-                if main_task and self._task_exec:
-                    # kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
-                    self._task_exec.queue_task(main_task)
+        if directions:
+            main_task = self.convert_instructions_to_tasks(kg)
+            if main_task and self._task_exec:
+                # kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
+                self._task_exec.queue_task(main_task)
         self.deactivate(kg)
         self._done = True
         return None

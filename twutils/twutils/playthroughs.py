@@ -15,6 +15,10 @@ REDIS_FTWC_TEST = f'{REDIS_FTWCv2019}:test-games'
 
 REDIS_FTWC_PLAYTHROUGHS = f'{REDIS_FTWCv2019}:playthroughs'
 
+REDIS_FTWC_SKILLS_MAP = f"{REDIS_FTWCv2019}:skills:"  # REDIS_FTWC_SKILLS_MAP+{skillname} is a Redis SET of game names
+REDIS_FTWC_NSTEPS_MAP = f"{REDIS_FTWC_PLAYTHROUGHS}:nsteps"  # Redis hash. mapping gn -> # playthrough steps
+REDIS_FTWC_NSTEPS_INDEX = f"{REDIS_FTWC_PLAYTHROUGHS}:nsteps:"  # +{steps} is a Redis SET of gns
+
 DEFAULT_PTHRU_SEED = 42
 
 def playthrough_id(objective_name='eatmeal', seed=None):

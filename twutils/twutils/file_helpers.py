@@ -13,7 +13,7 @@ def count_iter_items(iterable):
 def reformat_go_skill(sk):
     if sk.startswith("go"):
         n = int(sk[2:])
-        return f"go{n:2d}"
+        return f"go{n:02d}"
     else:
         return sk
 
@@ -33,7 +33,7 @@ def parse_gameid(game_name: str) -> str:
         guid = guid.split('.')[0]
         guid = "{}..{}".format(guid[0:4], guid[-4:])
         segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', 0, '*', '*', '*', '*')
+        r, t, g, k, c, o, d = ('0', '0', 0, '_', '_', '_', '_')
         for seg in segments:
             if seg.startswith('recipe'):
                 r = seg[len('recipe'):]

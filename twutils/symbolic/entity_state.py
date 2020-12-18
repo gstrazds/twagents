@@ -172,12 +172,12 @@ class EntityState:
             elif cooked_state == 'cooked':  # generic value from 'cooked(x)' Propositions [logical inverse of 'raw(x)']
                 cooked_state = ''
             if cooked_state:
-               out_str += f" +{cooked_state}"
+               out_str += f"+{cooked_state} "
         if self.cuttable:
             cut_state = self.is_cut
             if cut_state:
-                out_str += f" +{cut_state}"
+                out_str += f"+{cut_state} "
         if self.openable:
             open_state = "open" if self.is_open else "closed"
-            out_str += f" +{open_state}"
+            out_str += f"+{open_state} "
         return out_str

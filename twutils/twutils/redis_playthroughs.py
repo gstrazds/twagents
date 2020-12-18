@@ -41,16 +41,6 @@ print(f"RANDOM SEED for playthroughs: {DEFAULT_PTHRU_SEED}")
 print(f"\t\tDefault playthrough ID = :{playthrough_id()}")
 
 
-training_files = os.listdir(TW_TRAINING_DIR)
-# directory contains 3 files per game: *.json, *.ulx, *.z8 
-print("Total training files = ", count_iter_items(training_files))
-suffixes = ['.json', '.z8', '.ulx']
-for suffix in suffixes:
-    training_games = list(filter(lambda fname: fname.endswith(suffix), training_files))
-    print("number of {} files in {} = {}".format(suffix, TW_TRAINING_DIR, len(training_games)))
-game_names_ = [s.split('.')[0] for s in training_games]
-
-
 def reformat_go_skill( sk ):
     if sk.startswith("go"):
         n = int(sk[2:])
@@ -98,48 +88,40 @@ def parse_gameid(game_name: str) -> str:
     return shortcode
 
 
-# In[9]:
+def _collect_gamenames(games_dir=TW_TRAINING_DIR):
+    training_files = os.listdir()
+    # directory contains 3 files per game: *.json, *.ulx, *.z8
+    print("Total training files = ", count_iter_items(training_files))
+    suffixes = ['.json', '.z8', '.ulx']
+    for suffix in suffixes:
+        training_games = list(filter(lambda fname: fname.endswith(suffix), training_files))
+        print("number of {} files in {} = {}".format(suffix, TW_TRAINING_DIR, len(training_games)))
+    game_names_ = [s.split('.')[0] for s in training_games]
 
+    # remove the 'tw-cooking-' prefix
+    if game_names_ and game_names_[0].startswith('tw-cooking-'):
+        game_names = list(map(lambda gn: gn[11:], game_names_))
+        games = defaultdict(list)
+        for gn in game_names:
+            skills, gid = gn.split('-')
+            if not gid:
+                print("SPLIT FAILURE:", gn)
+            else:
+                games[gid].append(gn) #defaultdict initializes with empty list
 
-# print("Num training tw-cooking = ",
-#       count_iter_items(filter(lambda gn: gn.startswith('tw-cooking-'), game_names_)))
-
-# for gn in game_names_:
-#     assert gn.split('-')[2:] == gn[11:].split('-'), str()
-
-game_names = list(map(lambda gn: gn[11:], game_names_))
-# print(len(game_names), game_names[0:2])
-
-games = defaultdict(list)
-for gn in game_names:
-    skills, gid = gn.split('-')
-    if not gid:
-        print("SPLIT FAILURE:", gn)
+        print("Number of training games", len(training_games))
+        print("Number of unique IDs", len(games))
+        print()
+        total = 0
+        for n in [1, 2, 3, 4, 5]:
+            c = count_iter_items(filter(lambda g: len(g) == n, games.values()))
+            print("IDs with {} entries: {}".format(n, c))
+            total += n * c
+        print("Total =", total)
+        assert total == len(game_names)
     else:
-        games[gid].append(gn) #defaultdict initializes with empty list
-
-
-# In[10]:
-
-
-print("Number of training games", len(training_games))
-print("Number of unique IDs", len(games))
-print()
-total = 0
-for n in [1,2,3,4,5]:
-    c = count_iter_items(filter(lambda g: len(g)==n, games.values()))
-    print("IDs with {} entries: {}".format(n, c))
-    total += n*c
-print("Total =", total)
-assert total == len(game_names)
-
-
-# In[11]:
-
-for list3 in filter(lambda g: len(g)==3, games.values()):  #game seeds with 3 games
-    for gn in list3:
-        print(split_gamename(gn))
-
+        game_names = game_names_
+    return game_names
 
 
 
@@ -557,6 +539,91 @@ def get_playthrough_json(
     return step_array
 
 
+def get_playthrough_nsteps(
+        gamename,
+        redis=None,  # redis server: expected to be a RedisJSON client connection
+        ptid=playthrough_id(),  # default playthrough, can optionally specify
+        redisbasekey=REDIS_FTWC_PLAYTHROUGHS, randseed=DEFAULT_PTHRU_SEED):
+
+    if redis is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        assert isinstance(redis, Client)
+        _rj = redis
+    nsteps = _rj.jsonobjlen(f'{redisbasekey}:{gamename}', Path(f".{ptid}"))
+    if redis is None:
+        _rj.close()
+    return nsteps
+    # if stepkeys:
+    #     for k in stepkeys:
+    #         assert k.startswith("step_")
+    #     return len(stepkeys)
+    # return 0
+
+
+from textworld.logic import Proposition  #, Variable, Signature, State
+from symbolic.knowledge_graph import KnowledgeGraph
+
+def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
+    if not isinstance(facts_list[0], Proposition):   # maybe serialized list of facts
+        # world_facts0 = world_facts.copy()
+        facts_list = [Proposition.deserialize(fact_json) for fact_json in facts_list]
+
+    if kg is None:
+        kg = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+    kg.update_facts(facts_list, prev_action=prev_action)
+    #return str(kg)
+    return kg.describe_room(kg.player_location.name, obs_descr=obs_descr)
+
+def export_playthru(gn, destdir='.', redis=None):
+    # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
+    # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
+    #_rj = Client(host='localhost', port=6379, decode_responses=True)
+
+    playthru = get_playthrough_json(gn, redis=redis)
+    pthru_out = ''
+    kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+    num_files = 0
+    for i, stepdata in enumerate(playthru):
+        obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'
+        prev_action = stepdata['prev_action']
+        observed_facts = stepdata[obs_facts_key]
+        # print( "---==================================================================---")
+        # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
+        # print(f"     ++++ DID:",      prev_action)
+        # print(f"     ++++ FEEDBACK:", stepdata['feedback'])
+        # print(f" ++++++++ OBS +++++++++++++++++++++++++++++++++++++++++:\n{stepdata['obs']}")
+        # print( " ......................................................")
+        # print(f"     ++++ DESCR:", stepdata['description'])
+        # print(f"     ++++ CARRYING:", stepdata['inventory'])
+        # print(f"     ---- CAN TRY:",  stepdata['possible_actions'])
+        # print(f"     >>>> NEXT_ACT:", stepdata['next_action'])
+        # #print(f"     **** FACTS:",    stepdata[obs_facts_key])
+        # print( "========= KG_VISIBLE ====================================================")
+        kg_desc = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
+
+        xdir = destdir + '/' + gn
+        if not os.path.exists(xdir):
+            os.makedirs(xdir)
+        # print(f"[{i}] {gn} .....")
+        outstr = f"\n>>>[ {prev_action} ]<<<\n"
+        pthru_out += outstr
+        feedback = stepdata['feedback']
+        if feedback and prev_action != 'start':
+            outstr += feedback
+            feedback = feedback.strip()
+            pthru_out += feedback + '\n'
+        pthru_out += kg_desc + '\n\n'
+        outstr += '\n' + stepdata['obs']
+        with open(xdir+f'/_step_{i:02d}.txt', 'w') as outfile:
+            outfile.write(outstr)
+            num_files += 1
+    with open(destdir+f'/{gn}.pthru', 'w') as outfile:
+        outfile.write(pthru_out)
+        num_files += 1
+    return num_files
+
+
 if __name__ == "__main__":
     import argparse
     from tqdm import tqdm
@@ -567,6 +634,12 @@ if __name__ == "__main__":
     def main(args):
         rj = Client(host='localhost', port=6379, decode_responses=True)  # redisJSON API
         total_redis_ops = 0
+        total_files = 0
+        if args.export_files:
+            print("Exporting playthough data from Redis to files")
+        else:
+            print("Importing playrhroughs to Redis...")
+
         if not args.which:
             assert False, "Expected which= one of [train, valid, test, miniset]"
             exit(1)
@@ -577,17 +650,23 @@ if __name__ == "__main__":
             #gamenames = list(gamenames)[0:3]   # just the first 3
             gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']
         for i, gname in enumerate(tqdm(gamenames)):
-            print(f"[{i}] BEGIN PLAYTHOUGH: {gname}")
-            num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj, do_write=args.do_write)
-            print(f"[{i}] PLAYTHOUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
-            total_redis_ops += redis_ops
+            if not args.export_files:
+                print(f"[{i}] BEGIN PLAYTHOUGH: {gname}")
+                num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj, do_write=args.do_write)
+                print(f"[{i}] PLAYTHOUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
+                total_redis_ops += redis_ops
+            else:
+                destdir = f'./playthru_data/{args.which}'
+                total_files += export_playthru(gname, destdir=destdir, redis=rj)
         print("Total redis writes:", total_redis_ops)
-        if args.do_write:
+        print("Total files exported:", total_files)
+        if args.do_write and not args.export_files:
             rj.save()
         rj.close()
 
     parser = argparse.ArgumentParser(description="Import playthrough data to redis")
     parser.add_argument("which", choices=('train', 'valid', 'test', 'miniset'))
+    parser.add_argument("--export_files", action='store_true')
     parser.add_argument("--do_write", action='store_true')
     args = parser.parse_args()
     main(args)
