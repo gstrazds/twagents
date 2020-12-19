@@ -288,11 +288,12 @@ class MentionIndex:
                         print(f"New span for [{name}]{span} is included in [{k}]{span0}")
                         return True
                     if _my_len <= _span_len(span0):
-                        print(f"WARNING: ignoring SHORTER new span for [{name}]{span} OVERLAPS [{k}]{span0}")
+                        if span[0] < span0[0] or span[1] > span0[1]:
+                            print(f"!!! WARNING: ignoring SHORTER new span for [{name}]{span} OVERLAPS [{k}]{span0}")
                         return True
                     else:  # _my_len > _span_len(span0):
-                        print(f"WARNING!!! LONGER new span for [{name}]{span} OVERLAPS [{k}]{span0} => will unindex [{k}]{span0}")
-                        # continue
+                        #print(f"WARNING!!! LONGER new span for [{name}]{span} OVERLAPS [{k}]{span0} => will unindex [{k}]{span0}")
+                        pass
         return False
 
     def remove_subspans_of(self, span, name=None):

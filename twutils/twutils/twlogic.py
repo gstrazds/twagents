@@ -482,24 +482,24 @@ def parse_ftwc_recipe(recipe_str:str, format='fulltext'):
                 directions.append(recipe_step)
     return ingredients, directions
 
+COMMAND_TOKEN = "---------"
+
 def simplify_feedback(feedback_str: str):
     if not feedback_str:
         return ''
     feedback_str = feedback_str.strip()
     if "cook a delicious meal" in feedback_str and "cookbook in the kitchen" in feedback_str:
-        feedback_str = "You should : find kitchen , read cookbook , eat meal ."
-    elif feedback_str.endswith(" and look around"):  # this is a preprocessed feedback msg from QaitGymEnvWrapper
-        feedback_str = feedback_str[:-16]+"."   # remove " and look around" (because it's redundant)
+        feedback_str = f"{COMMAND_TOKEN} Do : find kitchen , read cookbook , eat meal ."
     elif feedback_str.endswith(" and look around"):  # this is a preprocessed feedback msg from QaitGymEnvWrapper
         feedback_str = feedback_str[:-16]+"."   # remove " and look around" (because it's redundant)
     elif "all following ingredients and follow the directions to prepare" in feedback_str:
         ingredients, directions = parse_ftwc_recipe(feedback_str)
         if ingredients or directions:
-            feedback_str = "You read the recipe ---------"
+            feedback_str = "You read the recipe"
             if ingredients:
-                feedback_str += f" Acquire : " + " , ".join(ingredients) + " ;"
+                feedback_str += f" {COMMAND_TOKEN} Acquire : " + " , ".join(ingredients) + " ;"
             if directions:
-                feedback_str += f" Do : " + " , ".join(directions) + " ;"
+                feedback_str += f" {COMMAND_TOKEN} Do : " + " , ".join(directions) + " ;"
     elif "our score has" in feedback_str:  # strip out useless lines about 'score has gone up by one point"
         feedback_lines = feedback_str.split('\n')
         output_lines = []
