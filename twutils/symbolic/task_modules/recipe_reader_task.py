@@ -207,7 +207,7 @@ class RecipeReaderTask(SingleActionTask):
 
         self.ingredients = ingredients
         self.recipe_steps = directions
-        if not self.ingredients and not self.directions:
+        if not self.ingredients and not self.recipe_steps:
             print(f"RECIPE READER FAILED to parse recipe: {response}")
             self._failed = True
             self._done = True
