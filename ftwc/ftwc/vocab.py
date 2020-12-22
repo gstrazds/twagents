@@ -59,7 +59,7 @@ class WordVocab:
         self.word_vocab.extend(filtered_words)
         self._word2id = {}
         # self.id2word = []  # same as self.word_vocab
-        print("-----------------------------WORD_VOCAB:", self.word_vocab)
+        # print("-----------------------------WORD_VOCAB:", self.word_vocab)
         for i, w in enumerate(self.word_vocab):
             # if not w.strip():
             #     assert f"[{i}] Expected all words/lines in vocab file to be non-empty!"

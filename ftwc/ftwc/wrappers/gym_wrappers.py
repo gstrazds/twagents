@@ -330,8 +330,7 @@ class QaitEnvWrapper(gym.Wrapper):
             ).strip()
         else:
             obstxt2 = obstxt.strip()
-        print("--- current step: {} -- NAIL[{}]: observation=[{}]".format(
-            tw_oracle.step_num, idx, obstxt2))
+        print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt2}]")
         if 'inventory' in infos:
             print("\tINVENTORY:", infos['inventory'][idx])
         if 'game_id' in infos:
@@ -365,7 +364,7 @@ class QaitEnvWrapper(gym.Wrapper):
         #         tw_oracle.task_exec.queue_task(task)
 
         actiontxt = tw_oracle.choose_next_action(obstxt2, observable_facts=observable_facts)
-        print("QGYM[{}] choose_next_action -> {}".format(idx, actiontxt))
+        print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] choose_next_action -> {actiontxt}")
         return actiontxt
 
 
