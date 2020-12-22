@@ -450,7 +450,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
 #     print("--------------------------- Oracle Next Action: -----------------\n", infos['tw_o_step'][0])
 #     #print()
 #     print("--------------------------- Facts: ------------------------------\n", infos['facts'][0])
-    return redis_ops
+    return redis_ops, step_json
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
@@ -474,7 +474,6 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     if not os.path.exists(_gamefile):
         _gamefile = f"{gamedir}/{gamename}.ulx"
 
-    num_steps = 0
     redis_ops = 0
 
     ptid = playthrough_id(seed=randseed)  # playtrough ID (which of potentially several different) for this gamename
@@ -492,11 +491,12 @@ def save_playthrough_to_redis(gamename, gamedir=None,
                 return num_steps, redis_ops
 
 
+    num_steps = 0
     _dones = [0]
     _rewards = [0]
     next_cmds = ['start']
     gymenv, _obs, _infos = start_game_for_playthrough(_gamefile)
-    redis_ops = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
+    redis_ops, _ = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
                                     redisbasekey=redisbasekey,
                                     ptid=ptid,
                                     redis=redis,
@@ -506,7 +506,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
         num_steps += 1
         _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
-        redis_ops = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
+        redis_ops, _ = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
                                             redisbasekey=redisbasekey,
                                             ptid=ptid,
                                             redis=redis,
@@ -585,43 +585,21 @@ def export_playthru(gn, destdir='.', redis=None):
     kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
     num_files = 0
     for i, stepdata in enumerate(playthru):
-        obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'
         prev_action = stepdata['prev_action']
         if prev_action and " the " in prev_action:
             prev_action = prev_action.replace(" the ", " ")
-        observed_facts = stepdata[obs_facts_key]
-        # print( "---==================================================================---")
-        # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
-        # print(f"     ++++ DID:",      prev_action)
-        # print(f"     ++++ FEEDBACK:", stepdata['feedback'])
-        # print(f" ++++++++ OBS +++++++++++++++++++++++++++++++++++++++++:\n{stepdata['obs']}")
-        # print( " ......................................................")
-        # print(f"     ++++ DESCR:", stepdata['description'])
-        # print(f"     ++++ CARRYING:", stepdata['inventory'])
-        # print(f"     ---- CAN TRY:",  stepdata['possible_actions'])
-        # print(f"     >>>> NEXT_ACT:", stepdata['next_action'])
-        # #print(f"     **** FACTS:",    stepdata[obs_facts_key])
-        # print( "========= KG_VISIBLE ====================================================")
-        kg_desc = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
+            stepdata['prev_action'] = prev_action
 
+        kg_descr = get_kg_descr(kg_accum, stepdata)
+        outstr, pthru = format_playthrough_step(kg_descr, stepdata)
+
+        pthru_all += pthru
         xdir = destdir + '/' + gn
         if not os.path.exists(xdir):
             os.makedirs(xdir)
-        # print(f"[{i}] {gn} .....")
-        outstr = f"\n>>>[ {prev_action} ]<<<\n"
-        pthru = outstr
-        # pthru_out += outstr
-        feedback = stepdata['feedback']
-        if feedback and prev_action != 'start':
-            outstr += feedback
-            # feedback = feedback.strip()
-        pthru += simplify_feedback(feedback) + '\n'
-        pthru += kg_desc + '\n'
-        outstr += '\n' + stepdata['obs']
         with open(xdir+f'/_step_{i:02d}.txt', 'w') as outfile:
             outfile.write(outstr)
             num_files += 1
-        pthru_all += pthru
         with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
             outfile.write(pthru)
             num_files += 1
@@ -629,6 +607,41 @@ def export_playthru(gn, destdir='.', redis=None):
         outfile.write(pthru_all)
         num_files += 1
     return num_files
+
+
+def get_kg_descr(kg_accum, stepdata):
+    obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'
+    prev_action = stepdata['prev_action']
+    observed_facts = stepdata[obs_facts_key]
+    # print( "---==================================================================---")
+    # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
+    # print(f"     ++++ DID:",      prev_action)
+    # print(f"     ++++ FEEDBACK:", stepdata['feedback'])
+    # print(f" ++++++++ OBS +++++++++++++++++++++++++++++++++++++++++:\n{stepdata['obs']}")
+    # print( " ......................................................")
+    # print(f"     ++++ DESCR:", stepdata['description'])
+    # print(f"     ++++ CARRYING:", stepdata['inventory'])
+    # print(f"     ---- CAN TRY:",  stepdata['possible_actions'])
+    # print(f"     >>>> NEXT_ACT:", stepdata['next_action'])
+    # #print(f"     **** FACTS:",    stepdata[obs_facts_key])
+    # print( "========= KG_VISIBLE ====================================================")
+    kg_descr = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
+    return kg_descr
+
+def format_playthrough_step(kg_descr, stepdata):
+    prev_action = stepdata['prev_action']
+    # print(f"[{i}] {gn} .....")
+    outstr = f"\n>>>[ {prev_action} ]<<<\n"
+    pthru = outstr
+    # pthru_out += outstr
+    feedback = stepdata['feedback']
+    if feedback and prev_action != 'start':
+        outstr += feedback
+        # feedback = feedback.strip()
+    pthru += simplify_feedback(feedback) + '\n'
+    pthru += kg_descr + '\n'
+    outstr += '\n' + stepdata['obs']
+    return outstr, pthru
 
 
 if __name__ == "__main__":
