@@ -185,6 +185,11 @@ class TextGameAgent:
         return next_action
 
     def choose_next_action(self, observation, observable_facts=None, prev_action=None):
+        self.update_kg(observation, observable_facts=observable_facts, prev_action=prev_action)
+        return self.select_next_action(observation, external_next_action=None)
+
+    def update_kg(self, observation, observable_facts=None, prev_action=None):
+
         if prev_action and self._last_action:
             if prev_action != self._last_action.text() and \
                     not self._last_action.text().startswith("answer:"):
@@ -219,10 +224,13 @@ class TextGameAgent:
 
         self.consume_event_stream()
 
-        if not self.active_module:
-            self.elect_new_active_module()
-
-        next_action = self.generate_next_action(observation)
+    def select_next_action(self, observation, external_next_action=None):
+        if external_next_action:
+            next_action = StandaloneAction(external_next_action)
+        else:
+            if not self.active_module:
+                self.elect_new_active_module()
+            next_action = self.generate_next_action(observation)
         self._last_action = next_action
         self.step_num += 1
         return next_action.text()

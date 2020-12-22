@@ -500,7 +500,7 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False, logger=None, debug=True):
+    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False):
         self._logger = logger
         self._debug = debug
         self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
@@ -576,6 +576,7 @@ class KnowledgeGraph:
             return ""
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
+# TODO: change ---Exits---, because tokenizer splits it into 3 tokens
         obs_descr = "---Exits---\n"
         for direction in outgoing_directions:
             con = self.connections.connection_for_direction(loc, direction)
