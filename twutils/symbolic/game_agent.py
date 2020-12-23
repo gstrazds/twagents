@@ -214,12 +214,13 @@ class TextGameAgent:
         if self.first_step:
             self.dbg("[game_agent] {}".format(observation))
             self.first_step = False
-
             # if not self.gi.kg.player_location:
             #     assert False, "This code is no longer used"
             #     loc = Location(description=observation)
             #     ev = self.gi.kg.add_location(loc)
             #     self.gi.kg.set_player_location(loc)
+
+        self.step_num += 1
 
         self.consume_event_stream()
 
@@ -231,7 +232,6 @@ class TextGameAgent:
                 self.elect_new_active_module()
             next_action = self.generate_next_action(observation)
         self._last_action = next_action
-        self.step_num += 1
         return next_action.text()
 
     def observe(self, reward, new_obs, done, prev_action=None, idx=None):
