@@ -374,9 +374,9 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 
 
 MAX_PLAYTHROUGH_STEPS = 100
-def start_game_for_playthrough(gamefile):
+def start_game_for_playthrough(gamefile, passive_oracle_mode=False):
     _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
-    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED)
+    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED, passive_oracle_mode=passive_oracle_mode)
     _qgym_env = _qgym_.make_batch_env([gamefile],
                                    _word_vocab,  # vocab not really needed by Oracle, just for gym.space
                                    request_infos=textworld.EnvInfos(
@@ -416,6 +416,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
     world_facts_serialized = [ f.serialize() for f in world_facts ]
     observable_facts_serialized = [ f.serialize() for f in observable_facts ]
     step_key = _format_stepkey(step_num)
+    oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
     step_json = {
              step_key: {
             'reward': rewards[0],
@@ -427,7 +428,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
             'description': infos['description'][0],
             'inventory': infos['inventory'][0],
             'prev_action': cmds[0],
-            'next_action': infos['tw_o_step'][0],
+            'next_action': oracle_action,
             'possible_actions': infos['admissible_commands'][0],
             'obs_facts': observable_facts_serialized,
             #'GT_FACTS': world_facts_serialized,

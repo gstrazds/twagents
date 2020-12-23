@@ -363,8 +363,8 @@ class QaitEnvWrapper(gym.Wrapper):
         else:
             observable_facts = None
         if prev_action != "do nothing":
-            # prev_action=None -> uses oracle._last_action from oracle.observe()
-            tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=None)
+            # if prev_action=None -> uses oracle._last_action from oracle.observe()
+            tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
         if self.passive_oracle_mode:
             print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] passive oracle mode")
