@@ -214,13 +214,12 @@ class TextGameAgent:
         if self.first_step:
             self.dbg("[game_agent] {}".format(observation))
             self.first_step = False
-            #GVS# return 'look' # Do a look to get rid of intro text
 
-            if not self.gi.kg.player_location:
-                assert False, "This code is no longer used"
-                loc = Location(description=observation)
-                ev = self.gi.kg.add_location(loc)
-                self.gi.kg.set_player_location(loc)
+            # if not self.gi.kg.player_location:
+            #     assert False, "This code is no longer used"
+            #     loc = Location(description=observation)
+            #     ev = self.gi.kg.add_location(loc)
+            #     self.gi.kg.set_player_location(loc)
 
         self.consume_event_stream()
 
@@ -248,8 +247,9 @@ class TextGameAgent:
         else:
             idx = self._idx
         if prev_action and self._last_action:
-            if prev_action != self._last_action.text():
-                print(f"WARNING: prev_action:{prev_action} should== self._last_action:{self._last_action}")
+            if prev_action.lower() != self._last_action.text().lower():
+                print(f"WARNING: observe() explicit prev_action:'{prev_action}' replacing self._last_action:{self._last_action}")
+                self._last_action = StandaloneAction(prev_action)
         if not prev_action and self._last_action:
             prev_action = self._last_action.text()
         if prev_action:
@@ -259,11 +259,6 @@ class TextGameAgent:
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
         print(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Reward: {reward}")
 
-    def finalize(self):
-        # with open(self.logpath+'.kng', 'w') as f:
-        #     f.write(str(self.knowledge_graph)+'\n\n')
-        pass
-
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # Reinitialize, build complete GT KG from scratch each time
@@ -271,5 +266,10 @@ class TextGameAgent:
         #TODO (Disabled ground truth)
         # self.gi.gt.update_facts(gt_facts)
         self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
+
+    def finalize(self):
+        # with open(self.logpath+'.kng', 'w') as f:
+        #     f.write(str(self.knowledge_graph)+'\n\n')
+        pass
 
 

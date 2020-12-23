@@ -245,21 +245,23 @@ class QaitEnvWrapper(gym.Wrapper):
                 if commands and commands[idx] == 'do nothing':
                     pass
                 else:
-                    oracle.observe(rewards[idx], obs[idx], dones[idx], prev_action=None, idx=idx)  #UNNEEDED, causes problems: prev_action=commands[idx]
+                    oracle.observe(rewards[idx], obs[idx], dones[idx], prev_action=commands[idx], idx=idx)  #??causes problems: prev_action=commands[idx]
                     # populate oracle recommended action
                 infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
         return obs, rewards, dones, infos
 
     def _compute_oracle_action(self, idx, infos, obs, dones=None, verbose=False):
-        if 'tw_o_step' not in infos:
-            assert idx == 0, \
-                f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-            infos['tw_o_step'] = ['fake action'] * len(obs)  # will be replaced before anyone sees these
-        if dones and dones[idx]:  # agent idx has already terminated, don't invoke it again
-            actiontxt = 'do nothing'
-        else:
-            actiontxt = self.invoke_oracle(idx, obs[idx], infos, verbose=verbose)
-        infos['tw_o_step'][idx] = actiontxt
+        is_done = dones and dones[idx] # agent idx has already terminated, don't invoke it again
+        # if is_done:
+        #     # actiontxt = 'do nothing'
+        # else:
+        actiontxt = self.invoke_oracle(idx, obs[idx], infos, is_done, verbose=verbose)
+        if actiontxt:
+            if 'tw_o_step' not in infos:
+                assert idx == 0, \
+                    f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
+                infos['tw_o_step'] = ['fake action'] * len(obs)  # will be replaced before anyone sees these
+            infos['tw_o_step'][idx] = actiontxt
         return infos
 
     def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True):
@@ -320,7 +322,9 @@ class QaitEnvWrapper(gym.Wrapper):
                  enumerate(zip(self.game_ids, self.tw_oracles))])
             print(f"_end_episode[{self.episode_counter}] <Step {self.tw_oracles[0].step_num}> {all_endactions}")
 
-    def invoke_oracle(self, idx, obstxt, infos, verbose=False) -> str:
+    def invoke_oracle(self, idx, obstxt, infos, is_done, verbose=False) -> str:
+        if is_done:
+            return "do nothing"
         assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
         tw_oracle = self.tw_oracles[idx]
         # simplify the observation text if it includes notification about incremented score
@@ -331,10 +335,10 @@ class QaitEnvWrapper(gym.Wrapper):
         else:
             obstxt2 = obstxt.strip()
         print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt2}]")
-        if 'inventory' in infos:
-            print("\tINVENTORY:", infos['inventory'][idx])
-        if 'game_id' in infos:
-            print("infos[game_id]=", infos['game_id'][idx])
+        # if 'inventory' in infos:
+        #     print("\tINVENTORY:", infos['inventory'][idx])
+        # if 'game_id' in infos:
+        #     print("infos[game_id]=", infos['game_id'][idx])
         if 'facts' in infos:
 
             world_facts = infos['facts'][idx]
