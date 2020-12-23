@@ -185,11 +185,11 @@ class TextGameAgent:
         return next_action
 
     def choose_next_action(self, observation, observable_facts=None, prev_action=None):
+        print("DEPRECATION WARNING: game_agent.choose_next_action()")
         self.update_kg(observation, observable_facts=observable_facts, prev_action=prev_action)
         return self.select_next_action(observation, external_next_action=None)
 
     def update_kg(self, observation, observable_facts=None, prev_action=None):
-
         if prev_action and self._last_action:
             if prev_action != self._last_action.text() and \
                     not self._last_action.text().startswith("answer:"):

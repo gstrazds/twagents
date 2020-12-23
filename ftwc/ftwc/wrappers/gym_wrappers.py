@@ -188,7 +188,7 @@ def get_game_id_from_infos(infos, idx):
 
 
 class QaitEnvWrapper(gym.Wrapper):
-    def __init__(self, env, random_seed=None, **kwargs):
+    def __init__(self, env, random_seed=None, passive_oracle_mode=False, **kwargs):
         super().__init__(env, **kwargs)
         #print("QaitEnvWrapper.__init__", self.env, self.unwrapped)
         if random_seed is None:
@@ -196,6 +196,7 @@ class QaitEnvWrapper(gym.Wrapper):
         self.random_seed = random_seed
         self.game_ids = []
         self.tw_oracles = []
+        self.passive_oracle_mode = passive_oracle_mode
         self.episode_counter = -1
 
     # def _get_gameid(self, idx):
@@ -242,29 +243,31 @@ class QaitEnvWrapper(gym.Wrapper):
         if self.tw_oracles:
             assert len(self.tw_oracles) == len(obs)
             for idx, oracle in enumerate(self.tw_oracles):
-                if commands and commands[idx] == 'do nothing':
+                prev_action = commands[idx] if commands else None
+                if prev_action == 'do nothing':
                     pass
                 else:
-                    oracle.observe(rewards[idx], obs[idx], dones[idx], prev_action=commands[idx], idx=idx)  #??causes problems: prev_action=commands[idx]
+                    oracle.observe(rewards[idx], obs[idx], dones[idx],
+                                   prev_action=prev_action, idx=idx)
                     # populate oracle recommended action
-                infos = self._compute_oracle_action(idx, infos, obs, dones=dones, verbose=False)
+                infos = self._update_oracle(oracle, idx, infos, obs[idx], batch_size=len(obs),
+                                            is_done=dones[idx], prev_action=prev_action, verbose=False)
         return obs, rewards, dones, infos
 
-    def _compute_oracle_action(self, idx, infos, obs, dones=None, verbose=False):
-        is_done = dones and dones[idx] # agent idx has already terminated, don't invoke it again
-        # if is_done:
+    def _update_oracle(self, oracle, idx, infos, obstxt, batch_size=1, is_done=False, prev_action=None, verbose=False):
+        # if is_done:   # if agent idx has already terminated, don't invoke it again
         #     # actiontxt = 'do nothing'
         # else:
-        actiontxt = self.invoke_oracle(idx, obs[idx], infos, is_done, verbose=verbose)
+        actiontxt = self.invoke_oracle(oracle, idx, obstxt, infos, is_done, prev_action=prev_action, verbose=verbose)
         if actiontxt:
             if 'tw_o_step' not in infos:
                 assert idx == 0, \
                     f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-                infos['tw_o_step'] = ['fake action'] * len(obs)  # will be replaced before anyone sees these
+                infos['tw_o_step'] = ['fake action'] * batch_size  # will be replaced before anyone sees these
             infos['tw_o_step'][idx] = actiontxt
         return infos
 
-    def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True):
+    def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True, objective='eat meal'):
         if idx == len(self.tw_oracles):
             tw_game_oracle = TextGameAgent(
                 self.random_seed + idx,  # seed
@@ -274,26 +277,28 @@ class QaitEnvWrapper(gym.Wrapper):
                 game=None  # TODO: infos['game'][idx]  # for better logging
             )
             self.tw_oracles.append(tw_game_oracle)
-            # FIXME: initialization HACK for MEAL
-            kg = tw_game_oracle.gi.kg
-            meal = kg.create_new_object('meal', MEAL)
-            kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
-            gt = tw_game_oracle.gi.gt
-            meal = gt.create_new_object('meal', MEAL)
-            gt._nowhere.add_entity(meal)  #meal.location = gt._nowhere  # the meal doesn't yet exist in the world
         else:
             assert idx < len(self.tw_oracles)
             if not is_first_episode:
                 if need_to_forget:
                     self.tw_oracles[idx].setup_logging(game_id, idx)
                 self.tw_oracles[idx].reset(forget_everything=need_to_forget)
-        tw_o = self.tw_oracles[idx]
-        assert tw_o.step_num == 0
-        _use_groundtruth = False
-        task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
-                     RecipeReaderTask(use_groundtruth=_use_groundtruth)]
-        for task in task_list:
-            tw_o.task_exec.queue_task(task)
+        if objective == 'eat meal':
+            tw_o = self.tw_oracles[idx]
+            assert tw_o.step_num == 0
+            _gi = tw_o.gi
+            # FIXME: initialization HACK for MEAL
+            if not _gi.kg.get_entity('meal'):
+                meal = _gi.kg.create_new_object('meal', MEAL)
+                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
+            if not _gi.gt.get_entity('meal'):
+                meal = _gi.gt.create_new_object('meal', MEAL)
+                _gi.gt._nowhere.add_entity(meal)
+            _use_groundtruth = False
+            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
+                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
+            for task in task_list:
+                tw_o.task_exec.queue_task(task)
 
     def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
@@ -311,7 +316,8 @@ class QaitEnvWrapper(gym.Wrapper):
                     self.game_ids.append(game_id)
             self._init_oracle(game_id, idx, need_to_forget=need_to_forget, is_first_episode=(episode_counter == 0))
             # populate oracle recommended action
-            infos = self._compute_oracle_action(idx, infos, obs, dones=None, verbose=True)
+            infos = self._update_oracle(self.tw_oracles[idx], idx, infos, obs[idx],
+                                        batch_size=batch_size, is_done=False, verbose=True)
         return obs, infos
 
     def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback
@@ -322,27 +328,26 @@ class QaitEnvWrapper(gym.Wrapper):
                  enumerate(zip(self.game_ids, self.tw_oracles))])
             print(f"_end_episode[{self.episode_counter}] <Step {self.tw_oracles[0].step_num}> {all_endactions}")
 
-    def invoke_oracle(self, idx, obstxt, infos, is_done, verbose=False) -> str:
-        if is_done:
-            return "do nothing"
+    def invoke_oracle(self, tw_oracle, idx, obstxt, infos, is_done, prev_action=None, verbose=False) -> str:
         assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
-        tw_oracle = self.tw_oracles[idx]
+        assert tw_oracle == self.tw_oracles[idx]
         # simplify the observation text if it includes notification about incremented score
-        if "Your score has just" in obstxt:
-            obstxt2 = '\n'.join(
-                [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
-            ).strip()
-        else:
-            obstxt2 = obstxt.strip()
-        print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt2}]")
+        if obstxt:
+            if "Your score has just" in obstxt:
+                obstxt = '\n'.join(
+                    [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
+                ).strip()
+            else:
+                obstxt = obstxt.strip()
+        # print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt}]")
         # if 'inventory' in infos:
         #     print("\tINVENTORY:", infos['inventory'][idx])
         # if 'game_id' in infos:
         #     print("infos[game_id]=", infos['game_id'][idx])
-        if 'facts' in infos:
+
+        if 'facts' in infos and prev_action != "do nothing":
 
             world_facts = infos['facts'][idx]
-
             # if world_facts:   # facts can be a list of Proposition or serialized (json) Propositions
             #     if isinstance(world_facts[0], textworld.logic.Proposition):
             #         world_facts = [f.serialize() for f in world_facts]
@@ -357,26 +362,28 @@ class QaitEnvWrapper(gym.Wrapper):
                 # print_fact(game, fact)
         else:
             observable_facts = None
+        if prev_action != "do nothing":
+            # prev_action=None -> uses oracle._last_action from oracle.observe()
+            tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=None)
 
-        # if step == 0:    # moved to on_episode_start()
-        #     # CHANGED: supply an initial task (read cookbook[prereq location=kitchen]) instead of nav location
-        #     # agent.gi.event_stream.push(NeedToDo(RecipeReaderTask(use_groundtruth=agent.gt_nav.use_groundtruth)))
-        #     use_groundtruth = False
-        #     task_list = [ExploreHereTask(use_groundtruth=use_groundtruth),
-        #                  RecipeReaderTask(use_groundtruth=use_groundtruth)]
-        #     for task in task_list:
-        #         tw_oracle.task_exec.queue_task(task)
-
-        actiontxt = tw_oracle.choose_next_action(obstxt2, observable_facts=observable_facts)
-        print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] choose_next_action -> {actiontxt}")
+        if self.passive_oracle_mode:
+            print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] passive oracle mode")
+            return None
+        if is_done:
+            actiontxt = "do nothing"
+        else:
+            actiontxt = tw_oracle.select_next_action(obstxt, external_next_action=None)
+            # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
+            print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] choose_next_action -> {actiontxt}")
         return actiontxt
 
 
 class QaitGym:
-    def __init__(self, base_vocab=None, random_seed=42, **kwargs):
+    def __init__(self, base_vocab=None, random_seed=42, passive_oracle_mode=False, **kwargs):
         super().__init__(**kwargs)
         self.base_vocab = base_vocab
         self.random_seed = random_seed
+        self.passive_oracle_mode=passive_oracle_mode
         if base_vocab is not None:
             self._action_space = MultiWordSpace(max_length=5, vocab=self.base_vocab, cmd_phrases=True)
             self._obs_space = MultiWordSpace(max_length=WordVocab.MAX_NUM_OBS_TOKENS, vocab=self.base_vocab)
@@ -445,8 +452,8 @@ class QaitGym:
         else:
             print("WARNING: skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
 
-        gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed)
-        env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
+        gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed, passive_oracle_mode=self.passive_oracle_mode)
+        # env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
         # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
 
