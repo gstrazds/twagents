@@ -475,7 +475,8 @@ def _format_entity_descr(entity_list, idx, groundtruth=False):
         and entity.state.openable \
         and entity.state._has_prop('is_open') \
         and not entity.state.is_open \
-        and not entity.has_been_opened:             # if we've never looked inside
+        and (not entity.has_been_opened or self._formatting_options == 'parsed-obs'):
+            # if we've never looked inside or we're not using Oracle knowledge about what we've already seen)
             descr_str += f"unknown {END_OF_LIST}"  # then we don't know what's in there
             return descr_str, idx
 
@@ -567,6 +568,13 @@ class KnowledgeGraph:
                     for con in outgoing:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
+
+    def set_formatting_options(self, formatting_options:str):
+        """ options that control some nuances of the output from describe_room(), describe_exits(), etc """
+        assert formatting_options == 'parsed-obs' or formatting_options == 'kg-descr', formatting_options
+        prev_options = self._formatting_options
+        self._formatting_options = formatting_options
+        return prev_options
 
     def describe_exits(self, loc, mention_tracker=None):
         # assert False, "Not Yet Implemented"

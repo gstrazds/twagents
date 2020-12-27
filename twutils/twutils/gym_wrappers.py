@@ -43,9 +43,16 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
 def normalize_feedback_vs_obs_description(act:str, obs:str, feedback:str, description:str):
     obs = obs.strip()
     new_feedback = None
-    if act == None:   # when resetting the game
+    if act == None or act == 'start':   # when resetting the game
         if obs == description and obs == feedback:
             new_feedback = 'You look around'
+        elif feedback:
+            clean_feedback = feedback.strip()
+            clean_descr = description.strip()
+            # print("clean_feedback", clean_feedback)
+            # print("clean_descr", clean_descr)
+            if clean_feedback.endswith(clean_descr):
+                new_feedback = clean_feedback[0:-len(clean_descr)]  # chop off the redundant tail end
 
     elif obs != description.strip():
         # print("ConsistentFeedbackWrapper: obs != description")
@@ -87,7 +94,7 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
         observation, infos = self.env.reset(**kwargs)
         for idx, obs in enumerate(observation):
             new_feedback = normalize_feedback_vs_obs_description(None,
-                    obs, infos['description'][idx], infos['feedback'][idx])
+                    obs, infos['feedback'][idx], infos['description'][idx])
         if new_feedback:
             print(f"MODIFYING infos['feedback'] : '{new_feedback}' <-- orig: {infos['feedback'][idx]}")
             infos['feedback'][idx] = new_feedback
@@ -101,7 +108,7 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
         assert 'description' in infos, f"infos should include description {infos.keys()}"
         for idx, obs in enumerate(observation):
             new_feedback = normalize_feedback_vs_obs_description(action[idx],
-                    obs, infos['description'][idx], infos['feedback'][idx])
+                    obs, infos['feedback'][idx], infos['description'][idx])
             if new_feedback:
                 print(f"ConsistenFeedbackWrapper MODIFYING infos['feedback'] : '{new_feedback}' <-- orig:", infos['feedback'][idx])
                 infos['feedback'][idx] = new_feedback

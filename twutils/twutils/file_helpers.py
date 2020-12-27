@@ -19,9 +19,20 @@ def reformat_go_skill(sk):
 
 
 def split_gamename(gname):
-    skills, gid = gname.split('-')
+    pieces = gname.split('-')
+    if len(pieces) >= 4 and pieces[0] == 'tw' and pieces[1] == 'cooking':
+        skills = pieces[2]
+        gid = pieces[3]
+    else:
+        skills = pieces[0]
+        gid = pieces[1]
     sklist = skills.split('+')
-    return gid, [reformat_go_skill(sk) for sk in sklist]
+    return gid, [ reformat_go_skill(sk) for sk in sklist ]
+
+# def split_gamename(gname):
+#     skills, gid = gname.split('-')
+#     sklist = skills.split('+')
+#     return gid, [reformat_go_skill(sk) for sk in sklist]
 
 
 def parse_gameid(game_name: str) -> str:

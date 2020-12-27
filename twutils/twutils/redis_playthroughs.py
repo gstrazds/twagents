@@ -17,6 +17,7 @@ from rejson import Client, Path                 # https://github.com/RedisJSON/r
 
 from twutils.file_helpers import count_iter_items, parse_gameid, split_gamename
 from twutils.twlogic import filter_observables, parse_ftwc_recipe, simplify_feedback
+from twutils.gym_wrappers import normalize_feedback_vs_obs_description
 from twutils.playthroughs import *
 
 from ftwc.wrappers import QaitGym
@@ -40,19 +41,6 @@ print()
 print(f"RANDOM SEED for playthroughs: {DEFAULT_PTHRU_SEED}")
 print(f"\t\tDefault playthrough ID = :{playthrough_id()}")
 
-
-def reformat_go_skill( sk ):
-    if sk.startswith("go"):
-        n = int(sk[2:])
-        return f"go{n:2d}"
-    else:
-        return sk
-
-def split_gamename(gname):
-    skills, gid = gname.split('-')
-    sklist = skills.split('+')
-    return gid, [ reformat_go_skill(sk) for sk in sklist ]
- 
 
 def parse_gameid(game_name: str) -> str:
     
@@ -290,7 +278,83 @@ def add_gamenames_to_redis(rediskey, listofnames):
 #         print("number of {} files in {} = {}".format(suffix, _dir, len(_games)))
 #     _game_names_ = [s.split('.')[0] for s in _games]
 #     add_gamenames_to_redis(rediskey, _game_names_)
-    
+
+
+def create_ftwc_skills_map(redserv=None):
+    """ after all game names have been added to redis, we map skills to game names"""
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        _rj = redserv
+    skills_index = {}  # maps skillname to a set of game names
+    all_mapped_skills = set()  # all game names that are in the skills map
+    for setkey in (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST):
+        game_names = _rj.smembers(setkey)
+        print(f"{setkey} has {len(game_names)} members")
+
+        for g in game_names:
+            gid, sklist = split_gamename(g)
+            # print(g, gid, sklist)
+            for skill in sklist:
+                if skill not in skills_index:
+                    skills_index[skill] = set()
+
+                skills_index[skill].add(g)
+                _rj.sadd(REDIS_FTWC_SKILLS_MAP+skill, g)
+
+    # print(len(skills_index), skills_index.keys())
+    # for key in skills_index.keys():
+    #     print(key, len(skills_index[key]))
+    #     all_mapped_skills = all_mapped_skills.union(skills_index[key])
+
+
+    skillsmap_keys = _rj.keys(REDIS_FTWC_SKILLS_MAP + "*")
+
+    for k in skillsmap_keys:
+        print(k, _rj.scard(k))
+        all_mapped_skills = all_mapped_skills.union(_rj.smembers(k))
+
+    print(f"TOTAL # of game files for which skills have been mapped: {len(all_mapped_skills)}")
+    if redserv is None:
+        _rj.close()
+
+#
+def create_ftwc_nsteps_map(redserv=None):
+    """ after all playthroughs have been save to redis, index number of steps <-> game names """
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        _rj = redserv
+
+    for key in _rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*"):
+        print("Will delete:", key)
+        _rj.delete(key)
+    print(_rj.hlen(REDIS_FTWC_NSTEPS_MAP))
+    _rj.delete(REDIS_FTWC_NSTEPS_MAP)
+
+    for setkey in (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST):
+        game_names_ = _rj.smembers(setkey)
+        for _gn in game_names_:
+            nsteps = retrieve_playthrough_nsteps(_gn, redis=_rj)
+            if nsteps > 0:
+                print(nsteps, _gn)
+                _rj.hset(REDIS_FTWC_NSTEPS_MAP, _gn, nsteps)
+                _rj.sadd(f"{REDIS_FTWC_NSTEPS_INDEX}{nsteps}", _gn)
+
+    print(len(_rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*")), _rj.hlen(REDIS_FTWC_NSTEPS_MAP))
+    total = 0
+    sort_list = []
+    for key in _rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*"):
+        nsteps = int(key.split(':')[-1])
+        num_games = _rj.scard(key)
+        total += num_games
+        sort_list.append( (nsteps, num_games, key) )
+        # print(key,  "has", num_games, "game names")
+    sort_list.sort()
+    for nsteps, num_games, setkey in sort_list:
+        print(f"[{nsteps}]\t {num_games}\t {setkey}")
+    if redserv is None:
+        _rj.close()
 
 
 def extracted_data_to_redis(game_names=None, xtract_dir=XTRACT_DIR, redis=None):
@@ -486,6 +550,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         _gamefile = f"{gamedir}/{gamename}.ulx"
 
     redis_ops = 0
+    num_steps = 0
 
     ptid = playthrough_id(seed=randseed)  # playtrough ID (which of potentially several different) for this gamename
 
@@ -501,8 +566,6 @@ def save_playthrough_to_redis(gamename, gamedir=None,
                 print(f"SKIPPED EXISTING playthrough {gamename}")
                 return num_steps, redis_ops
 
-
-    num_steps = 0
     _dones = [0]
     _rewards = [0]
     next_cmds = ['start']
@@ -604,8 +667,14 @@ def export_playthru(gn, destdir='.', redis=None):
             stepdata['prev_action'] = prev_action
 
         kg_descr = get_kg_descr(kg_accum, stepdata)
+        prev_options = kg_accum.set_formatting_options('parsed-obs')
+        assert prev_options == 'kg-descr', prev_options
+        kg_descr_without_oracle = get_kg_descr(kg_accum, stepdata)
+        kg_accum.set_formatting_options(prev_options)
+
         # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
         outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
+        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
 
         pthru_all += pthru
         xdir = destdir + '/' + gn
@@ -616,6 +685,9 @@ def export_playthru(gn, destdir='.', redis=None):
             num_files += 1
         with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
             outfile.write(pthru)
+            num_files += 1
+        with open(xdir + f'/step_{i:02d}.othru', 'w') as outfile:
+            outfile.write(pthru0)
             num_files += 1
     with open(destdir+f'/{gn}.pthru', 'w') as outfile:
         outfile.write(pthru_all)
@@ -645,26 +717,28 @@ def get_kg_descr(kg_accum, stepdata):
 
 def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
+    prev_action = stepdata['prev_action']
     if simplify_raw_obs_feedback:
         new_feedback = normalize_feedback_vs_obs_description(prev_action,
                                                              stepdata['obs'],
-                                                             stepdata['description'],
-                                                             stepdata['feedback'])
+                                                             stepdata['feedback'],
+                                                             stepdata['description'])
         if new_feedback:
-            print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
+            # print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
             feedback = new_feedback
 
-    prev_action = stepdata['prev_action']
-    # print(f"[{i}] {gn} .....")
+   # print(f"[{i}] {gn} .....")
     outstr = f"\n>>>[ {prev_action} ]<<<\n"
     pthru = outstr
     # pthru_out += outstr
-    if feedback and prev_action != 'start':
+    if feedback: #and prev_action != 'start':
         outstr += feedback
         # feedback = feedback.strip()
     pthru += simplify_feedback(feedback) + '\n'
     pthru += kg_descr + '\n'
-    outstr += '\n' + stepdata['obs']
+    # outstr += '\n' + stepdata['obs']
+    outstr += '\n' + stepdata['description']
+    outstr += '\n\n' + stepdata['inventory'] + '\n'
     return outstr, pthru
 
 
@@ -695,9 +769,9 @@ if __name__ == "__main__":
             gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']
         for i, gname in enumerate(tqdm(gamenames)):
             if not args.export_files:
-                print(f"[{i}] BEGIN PLAYTHOUGH: {gname}")
+                print(f"[{i}] BEGIN PLAYTHROUGH: {gname}")
                 num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj, do_write=args.do_write)
-                print(f"[{i}] PLAYTHOUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
+                print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
                 total_redis_ops += redis_ops
             else:
                 destdir = f'./playthru_data/{args.which}'
