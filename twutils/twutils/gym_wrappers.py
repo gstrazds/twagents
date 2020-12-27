@@ -3,6 +3,9 @@ import gym
 # import numpy as np
 
 class ScoreToRewardWrapper(gym.RewardWrapper):
+    """ Converts returned cumulative score into per-step incrmenttal reward.
+    Compatible only with vector envs (TW gym env wrapper produces such by default)
+    """
     def __init__(self, env):
         super().__init__(env)
         self._prev_score = []
@@ -37,7 +40,43 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
         return tuple(_reward)
 
 
+def normalize_feedback_vs_obs_description(act:str, obs:str, feedback:str, description:str):
+    obs = obs.strip()
+    new_feedback = None
+    if act == None:   # when resetting the game
+        if obs == description and obs == feedback:
+            new_feedback = 'You look around'
+
+    elif obs != description.strip():
+        # print("ConsistentFeedbackWrapper: obs != description")
+        # print(f"<<{obs}>>")
+        # print(f">>{infos['description']}<<")
+        pass
+    elif obs != feedback.strip():
+        # print("ConsistentFeedbackWrapper: obs != feedback")
+        # print(f"<<{obs}>>")
+        # print(f">>{infos['feedback']}<<")
+        pass
+    else:
+        if act.startswith("go "):
+            new_feedback = f'You {act} and look around'
+        elif act in ['east', 'west', 'north', 'south']:
+            new_feedback = f'You go {act} and look around'
+        elif act.startswith('examine') or act.startswith('look at') or act.startswith('read'):
+            new_feedback = f'You {act}'
+        elif act.startswith("open "):
+            new_feedback = f'You {act}'
+        else:
+            # print(f"ConsistentFeedbackWrapper ignoring act=|{act}|")
+            pass
+    return new_feedback
+
+
 class ConsistentFeedbackWrapper(gym.Wrapper):
+    """ Simplifies/normalizes the strings returned in infos['feedback'].
+    Compatible only with vector envs (TW gym env wrapper produces such by default)
+    """
+
     def __init__(self, env):
         super().__init__(env)
 
@@ -47,9 +86,11 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
     def reset(self, **kwargs):
         observation, infos = self.env.reset(**kwargs)
         for idx, obs in enumerate(observation):
-            if obs == infos['description'][idx] and obs == infos['feedback'][idx]:
-                print("MODIFYING infos['feedback'] : 'You look around' <-- orig:", infos['feedback'][idx])
-                infos['feedback']['idx'] = 'You look around'
+            new_feedback = normalize_feedback_vs_obs_description(None,
+                    obs, infos['description'][idx], infos['feedback'][idx])
+        if new_feedback:
+            print(f"MODIFYING infos['feedback'] : '{new_feedback}' <-- orig: {infos['feedback'][idx]}")
+            infos['feedback'][idx] = new_feedback
         return observation, infos
 
     def step(self, action):
@@ -59,31 +100,8 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
         assert 'feedback' in infos, f"infos should include feedback {infos.keys()}"
         assert 'description' in infos, f"infos should include description {infos.keys()}"
         for idx, obs in enumerate(observation):
-            obs = obs.strip()
-            new_feedback = None
-            if obs != infos['description'][idx].strip():
-                #print("ConsistentFeedbackWrapper: obs != description")
-                #print(f"<<{obs}>>")
-                #print(f">>{infos['description']}<<")
-                pass
-            elif obs != infos['feedback'][idx].strip():
-                #print("ConsistentFeedbackWrapper: obs != feedback")
-                # print(f"<<{obs}>>")
-                # print(f">>{infos['feedback']}<<")
-                pass
-            else:
-                act = action[idx]
-                if act.startswith("go "):
-                    new_feedback = f'You {act} and look around'
-                elif act in ['east', 'west', 'north', 'south']:
-                    new_feedback = f'You go {act} and look around'
-                elif act.startswith('examine') or act.startswith('look at') or act.startswith('read'):
-                    new_feedback = f'You {act}'
-                elif act.startswith("open "):
-                    new_feedback = f'You {act}'
-                else:
-                    #print(f"ConsistentFeedbackWrapper ignoring act=|{act}|")
-                    pass
+            new_feedback = normalize_feedback_vs_obs_description(action[idx],
+                    obs, infos['description'][idx], infos['feedback'][idx])
             if new_feedback:
                 print(f"ConsistenFeedbackWrapper MODIFYING infos['feedback'] : '{new_feedback}' <-- orig:", infos['feedback'][idx])
                 infos['feedback'][idx] = new_feedback
@@ -94,4 +112,3 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
                 #      f" ----- infos[feedback]: {infos['feedback'][idx]}\n"
                 #      f" ----- infos[description] {infos['description'][idx]}")
         return observation, reward, done, infos
-

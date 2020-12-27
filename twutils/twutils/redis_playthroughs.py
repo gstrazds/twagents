@@ -374,9 +374,14 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 
 
 MAX_PLAYTHROUGH_STEPS = 100
-def start_game_for_playthrough(gamefile, passive_oracle_mode=False):
+def start_game_for_playthrough(gamefile,
+                               raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
+                               passive_oracle_mode=False  # if True, don't predict next action
+                               ):  #
     _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
-    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED, passive_oracle_mode=passive_oracle_mode)
+    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED,
+                     raw_obs_feedback=raw_obs_feedback,
+                     passive_oracle_mode=passive_oracle_mode)
     _qgym_env = _qgym_.make_batch_env([gamefile],
                                    _word_vocab,  # vocab not really needed by Oracle, just for gym.space
                                    request_infos=textworld.EnvInfos(
@@ -411,31 +416,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
                               redisbasekey=REDIS_FTWC_PLAYTHROUGHS, ptid=f'eatmeal_42',
                               do_write=False, redis=None, redis_ops=0):
     print(f"{'++' if do_write else '..'} step:[{step_num}] save_playthrough_step_info: {gamename} ({ptid})")
-    world_facts = infos['facts'][0]
-    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0])
-    world_facts_serialized = [ f.serialize() for f in world_facts ]
-    observable_facts_serialized = [ f.serialize() for f in observable_facts ]
-    step_key = _format_stepkey(step_num)
-    oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
-    step_json = {
-             step_key: {
-            'reward': rewards[0],
-            'score': infos['game_score'][0],
-            'done': dones[0],
-            'player_location': player_room.name,
-            'obs': obs[0],
-            'feedback': infos['feedback'][0],
-            'description': infos['description'][0],
-            'inventory': infos['inventory'][0],
-            'prev_action': cmds[0],
-            'next_action': oracle_action,
-            'possible_actions': infos['admissible_commands'][0],
-            'obs_facts': observable_facts_serialized,
-            #'GT_FACTS': world_facts_serialized,
-        }
-    }
-    if step_num == 0 or dones[0]:  # at start of game or game over
-        step_json[_format_stepkey(step_num)]['GT_FACTS'] = world_facts_serialized
+    step_json = playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num)
 
     if do_write:
         step_key = list(step_json.keys())[0]  # get the first (and only) key
@@ -452,6 +433,35 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
 #     #print()
 #     print("--------------------------- Facts: ------------------------------\n", infos['facts'][0])
     return redis_ops, step_json
+
+
+def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
+    world_facts = infos['facts'][0]
+    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0])
+    world_facts_serialized = [f.serialize() for f in world_facts]
+    observable_facts_serialized = [f.serialize() for f in observable_facts]
+    step_key = _format_stepkey(step_num)
+    oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
+    step_json = {
+        step_key: {
+            'reward': rewards[0],
+            'score': infos['game_score'][0],
+            'done': dones[0],
+            'player_location': player_room.name,
+            'obs': obs[0],
+            'feedback': infos['feedback'][0],
+            'description': infos['description'][0],
+            'inventory': infos['inventory'][0],
+            'prev_action': cmds[0],
+            'next_action': oracle_action,
+            'possible_actions': infos['admissible_commands'][0],
+            'obs_facts': observable_facts_serialized,
+            # 'GT_FACTS': world_facts_serialized,
+        }
+    }
+    if step_num == 0 or dones[0]:  # at start of game or game over
+        step_json[_format_stepkey(step_num)]['GT_FACTS'] = world_facts_serialized
+    return step_json
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
@@ -518,7 +528,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     return num_steps, redis_ops
 
 
-def get_playthrough_json(
+def retrieve_playthrough_json(
         gamename,
         redis=None,  # redis server: expected to be a RedisJSON client connection
         ptid=playthrough_id(),  # default playthrough, can optionally specify
@@ -540,7 +550,7 @@ def get_playthrough_json(
     return step_array
 
 
-def get_playthrough_nsteps(
+def retrieve_playthrough_nsteps(
         gamename,
         redis=None,  # redis server: expected to be a RedisJSON client connection
         ptid=playthrough_id(),  # default playthrough, can optionally specify
@@ -577,11 +587,13 @@ def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
     return kg.describe_room(kg.player_location.name, obs_descr=obs_descr)
 
 def export_playthru(gn, destdir='.', redis=None):
+
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
     #_rj = Client(host='localhost', port=6379, decode_responses=True)
 
-    playthru = get_playthrough_json(gn, redis=redis)
+    playthru = retrieve_playthrough_json(gn, redis=redis)
+    # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
     pthru_all = ''
     kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
     num_files = 0
@@ -592,7 +604,8 @@ def export_playthru(gn, destdir='.', redis=None):
             stepdata['prev_action'] = prev_action
 
         kg_descr = get_kg_descr(kg_accum, stepdata)
-        outstr, pthru = format_playthrough_step(kg_descr, stepdata)
+        # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
+        outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
 
         pthru_all += pthru
         xdir = destdir + '/' + gn
@@ -611,7 +624,8 @@ def export_playthru(gn, destdir='.', redis=None):
 
 
 def get_kg_descr(kg_accum, stepdata):
-    obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'
+    obs_facts_key = 'obs_facts'
+    # obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'  # TODO: delete this line
     prev_action = stepdata['prev_action']
     observed_facts = stepdata[obs_facts_key]
     # print( "---==================================================================---")
@@ -629,13 +643,22 @@ def get_kg_descr(kg_accum, stepdata):
     kg_descr = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
     return kg_descr
 
-def format_playthrough_step(kg_descr, stepdata):
+def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
+    feedback = stepdata['feedback']
+    if simplify_raw_obs_feedback:
+        new_feedback = normalize_feedback_vs_obs_description(prev_action,
+                                                             stepdata['obs'],
+                                                             stepdata['description'],
+                                                             stepdata['feedback'])
+        if new_feedback:
+            print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
+            feedback = new_feedback
+
     prev_action = stepdata['prev_action']
     # print(f"[{i}] {gn} .....")
     outstr = f"\n>>>[ {prev_action} ]<<<\n"
     pthru = outstr
     # pthru_out += outstr
-    feedback = stepdata['feedback']
     if feedback and prev_action != 'start':
         outstr += feedback
         # feedback = feedback.strip()

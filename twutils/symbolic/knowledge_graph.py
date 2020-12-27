@@ -440,13 +440,12 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
         obs_descr += descr_str + LINE_SEPARATOR
     if exits_descr:
         obs_descr += LINE_SEPARATOR + exits_descr
-
-    if len(inventory_items):
-        inventory_descr = f"Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
-        obs_descr += LINE_SEPARATOR + inventory_descr + ' '+END_OF_LIST
     if on_floor_entities:
         onground_descr = f"ON floor {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in on_floor_entities])
         obs_descr += LINE_SEPARATOR + onground_descr + ' '+END_OF_LIST
+    if len(inventory_items):
+        inventory_descr = f"Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
+        obs_descr += LINE_SEPARATOR + inventory_descr + ' '+END_OF_LIST
     return obs_descr
 
 
@@ -576,8 +575,8 @@ class KnowledgeGraph:
             return ""
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
-# TODO: change ---Exits---, because tokenizer splits it into 3 tokens
-        obs_descr = "---Exits---\n"
+# NOTE 2020-12-24: changed ---Exits--- => Exits, because tokenizer splits it into 3 tokens
+        obs_descr = "Exits\n"
         for direction in outgoing_directions:
             con = self.connections.connection_for_direction(loc, direction)
             obs_descr += con.to_string(options=self._formatting_options) + LINE_SEPARATOR

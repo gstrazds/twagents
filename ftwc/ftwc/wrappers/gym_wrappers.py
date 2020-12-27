@@ -379,10 +379,14 @@ class QaitEnvWrapper(gym.Wrapper):
 
 
 class QaitGym:
-    def __init__(self, base_vocab=None, random_seed=42, passive_oracle_mode=False, **kwargs):
+    def __init__(self, base_vocab=None, random_seed=42,
+                 raw_obs_feedback=False,  # if true, don't apply ConsistentFeedbackWrapper
+                 passive_oracle_mode=False,
+                 **kwargs):
         super().__init__(**kwargs)
         self.base_vocab = base_vocab
         self.random_seed = random_seed
+        self.raw_obs_feedback_mode = raw_obs_feedback
         self.passive_oracle_mode=passive_oracle_mode
         if base_vocab is not None:
             self._action_space = MultiWordSpace(max_length=5, vocab=self.base_vocab, cmd_phrases=True)
@@ -447,10 +451,13 @@ class QaitGym:
         ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
         base_env = gym.make(batch_env_id)
         wrapped_env = ScoreToRewardWrapper(base_env)
-        if request_infos and request_infos.feedback:
+        if request_infos and request_infos.feedback and not self.raw_obs_feedback_mode:
             wrapped_env = ConsistentFeedbackWrapper(wrapped_env)
         else:
-            print("WARNING: skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
+            if request_infos and request_infos.feedback:
+                print("QaitGym.raw_obs_feedback_mode -- Skipping ConsistentFeedbackWrapper")
+            else:
+                print("WARNING: QaitGym -- Skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
 
         gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed, passive_oracle_mode=self.passive_oracle_mode)
         # env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
