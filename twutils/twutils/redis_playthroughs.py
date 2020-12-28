@@ -4,7 +4,6 @@ import os
 
 from typing import List, Dict, Optional, Any
 
-
 import textworld
 import textworld.gym
 import gym
@@ -356,6 +355,23 @@ def create_ftwc_nsteps_map(redserv=None):
     if redserv is None:
         _rj.close()
 
+def select_games_for_mingpt(redserv=None):
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        _rj = redserv
+    # for n in range(70):
+    # rkey = f"{REDIS_FTWC_NSTEPS_INDEX}{n}"
+    #     if rj.exists(rkey):
+    #         n_nsteps = rj.scard(f"{REDIS_FTWC_NSTEPS_INDEX}{n}")
+    #         n_nodrop = rj.sdiff(f"{REDIS_FTWC_NSTEPS_INDEX}{n}", "ftwc:cog2019:skills:drop")
+    # #         maxtoks, mintoks = get_max_token_length(n_nodrop)
+    #         if n <= 32 and len(n_nodrop):
+    #             rj.sadd(REDIS_MINGPT_ALL, *n_nodrop)
+    #         print(f"{n:2d}:__{n_nsteps:3d}__{len(n_nodrop):3d}") #" {maxtoks:4d} {mintoks:4d}")
+
+    if redserv is None:
+        _rj.close()
 
 def extracted_data_to_redis(game_names=None, xtract_dir=XTRACT_DIR, redis=None):
 
@@ -534,14 +550,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
 
     if gamedir is None:
         if redis:
-            if redis.sismember(REDIS_FTWC_TRAINING, gamename):
-                gamedir = TW_TRAINING_DIR
-            elif redis.sismember(REDIS_FTWC_VALID, gamename):
-                gamedir = TW_VALIDATION_DIR
-            elif redis.sismember(REDIS_FTWC_TEST, gamename):
-                gamedir = TW_TEST_DIR
-            else:
-                assert False, f"unknown directory for gamename={gamename}"
+            gamedir = get_dir_for_game(redis, gamename)
         else:
             gamedir=TW_TRAINING_DIR   # best guess, we'll see later if it's there or not
 
@@ -590,6 +599,37 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     print(f"----------------- {gamename} playthrough steps: {num_steps}  Redis writes {redis_ops} ----------------")
     return num_steps, redis_ops
 
+
+def get_dir_for_game(redserv, gamename):
+    if redserv.sismember(REDIS_FTWC_TRAINING, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_TRAINING_DIR')
+    elif redserv.sismember(REDIS_FTWC_VALID, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_VALIDATION_DIR')
+    elif redserv.sismember(REDIS_FTWC_TEST, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_TEST_DIR')
+    else:
+        print(f"WARNINIG: unknown directory for gamename={gamename}")
+        return None
+    return gamedir
+
+def get_dir_for_pthru(redserv, gamename):
+    if redserv.sismember(REDIS_MINGPT_TRAINING, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_TRAIN_DIR')
+    elif redserv.sismember(REDIS_MINGPT_VALID, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_VALID_DIR')
+    elif redserv.sismember(REDIS_MINGPT_TEST, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_TEST_DIR')
+
+    elif redserv.sismember(REDIS_FTWC_TRAINING, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_TRAIN_PTHRUS')
+    elif redserv.sismember(REDIS_FTWC_VALID, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_VALID_PTHRUS')
+    elif redserv.sismember(REDIS_FTWC_TEST, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_TEST_PTHRUS')
+    else:
+        print(f"WARNINIG: unknown directory for gamename={gamename}")
+        return None
+    return gamedir
 
 def retrieve_playthrough_json(
         gamename,
