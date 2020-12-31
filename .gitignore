@@ -1,6 +1,7 @@
 # misc temp files
 foo
 tmp/
+tmp_*
 
 # console output files
 out/
