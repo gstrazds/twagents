@@ -15,132 +15,16 @@ from rejson import Client, Path                 # https://github.com/RedisJSON/r
 
 
 from twutils.file_helpers import count_iter_items, parse_gameid, split_gamename
-from twutils.twlogic import filter_observables, parse_ftwc_recipe, simplify_feedback
+from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description
+from twutils.redis_ids import *
 from twutils.playthroughs import *
 
-from ftwc.wrappers import QaitGym
-from ftwc.vocab import WordVocab
 
+# default values, can be overriden by config or cmd line args
 TW_DATA_BASEDIR = '/home/guntis/work/github/0_magd3/CodaLab/'
 Z8_MAP_DIR = TW_DATA_BASEDIR + 'z8_maps'
 XTRACT_DIR = TW_DATA_BASEDIR + 'extracted_data'
-
-# print(f"REDIS_FTWCv0 = {REDIS_FTWCv0}")
-# print(f"REDIS_FTWCv2019 = {REDIS_FTWCv2019}")
-# print(f"REDIS_EXTRACTED_DATA = {REDIS_EXTRACTED_DATA}")
-# print(f"REDIS_FTWCv0_TRAINING_GAMES = {REDIS_FTWCv0_TRAINING_GAMES}")
-# print(f"REDIS_FTWCv2019_TRAINING_GAMES = {REDIS_FTWCv2019_TRAINING_GAMES}")
-# print(f"REDIS_FTWC_TRAINING = {REDIS_FTWC_TRAINING}")
-# print("\t\t:[", REDIS_FTWCv0_TRAINING_GAMES, REDIS_FTWCv2019_TRAINING_GAMES, "]")
-# print(f"REDIS_FTWC_VALID = {REDIS_FTWC_VALID}")
-# print(f"REDIS_FTWC_TEST = {REDIS_FTWC_TEST}")
-# print(f"REDIS_FTWC_PLAYTHROUGHS = {REDIS_FTWC_PLAYTHROUGHS}")
-# print()
-# print(f"RANDOM SEED for playthroughs: {DEFAULT_PTHRU_SEED}")
-# print(f"\t\tDefault playthrough ID = :{playthrough_id()}")
-
-
-def parse_gameid(game_name: str) -> str:
-    
-    game_id = game_name[11:] if game_name.startswith("tw-cooking-") else game_name
-        
-    segments = game_id.split('-')
-    if len(segments) >= 2:
-        code, guid = segments[0:2]
-        guid = guid.split('.')[0]
-        guid = "{}..{}".format(guid[0:4],guid[-4:])
-        segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', 0, '*', '*', '*', '*')
-        for seg in segments:
-            if seg.startswith('recipe'):
-                r = seg[len('recipe'):]
-            elif seg.startswith('go'):
-                g = int(seg[len('go'):])
-            elif seg.startswith('take'):
-                t = seg[len('take'):]
-            elif seg == 'cook':
-                k = 'k'
-            elif seg == 'cut':
-                c = 'c'
-            elif seg == 'open':
-                o = 'o'
-            elif seg == 'drop':
-                d = 'd'
-            else:
-                assert False, "unparsable game_id: {}".format(game_id)
-        shortcode = "r{}t{}{}{}{}{}g{:02d}-{}".format(r,t,k,c,o,d,g,guid)
-    else:
-        shortcode = game_id
-    return shortcode
-
-
-def _collect_gamenames(games_dir=TW_TRAINING_DIR):
-    training_files = os.listdir()
-    # directory contains 3 files per game: *.json, *.ulx, *.z8
-    print("Total training files = ", count_iter_items(training_files))
-    suffixes = ['.json', '.z8', '.ulx']
-    for suffix in suffixes:
-        training_games = list(filter(lambda fname: fname.endswith(suffix), training_files))
-        print("number of {} files in {} = {}".format(suffix, TW_TRAINING_DIR, len(training_games)))
-    game_names_ = [s.split('.')[0] for s in training_games]
-
-    # remove the 'tw-cooking-' prefix
-    if game_names_ and game_names_[0].startswith('tw-cooking-'):
-        game_names = list(map(lambda gn: gn[11:], game_names_))
-        games = defaultdict(list)
-        for gn in game_names:
-            skills, gid = gn.split('-')
-            if not gid:
-                print("SPLIT FAILURE:", gn)
-            else:
-                games[gid].append(gn) #defaultdict initializes with empty list
-
-        print("Number of training games", len(training_games))
-        print("Number of unique IDs", len(games))
-        print()
-        total = 0
-        for n in [1, 2, 3, 4, 5]:
-            c = count_iter_items(filter(lambda g: len(g) == n, games.values()))
-            print("IDs with {} entries: {}".format(n, c))
-            total += n * c
-        print("Total =", total)
-        assert total == len(game_names)
-    else:
-        game_names = game_names_
-    return game_names
-
-
-
-cooking_adjs = ['raw', 'diced', 'fried', 'chopped', 'grilled',
-                'baked', 'broiled', 'boiled', 'roasted', 'toasted']
-
-#remove (closed), (locked), (open) if 
-def remove_parenthetical_state(line):
-    splitline = line.split(' (')
-    if len(splitline) > 1 and line[-1] == ')':
-        return splitline[0]
-    #else:
-    return line
-
-# removes "a|an|some" and also decreases indentation by 2 spaces
-def remove_prewords(item):
-#     print("remove_prewords <{}> -> ".format(item), end='')
-    item2 = item.strip()
-    indent = item.find(item2)
-    out_indent = 0
-    if indent >= 2:
-        out_indent = indent - 2  # decrease indentation
-    if item2.startswith("a "):
-         item2= item2[2:]
-    elif item2.startswith("an "):
-        item2 = item2[3:]
-    elif item2.startswith("some "):
-        item2 = item2[5:]
-    item2 = item2.rjust(len(item2)+out_indent)
-#     print("<{}>".format(item2))
-    return item2, indent
-
 
 # POSTPROCESS extracted .room_state and .desc files to make sure that
 # entities are listed in the same order in the room_state list as 
@@ -170,6 +54,7 @@ def check_sort(obj_indexes, exit_indexes, bn, desc, state):
         print(state)
         return False
     return True
+
 
 def check_extracted_data(game_names=None, xtract_dir=XTRACT_DIR):
     if not game_names:
@@ -453,44 +338,6 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 
 
 
-MAX_PLAYTHROUGH_STEPS = 100
-def start_game_for_playthrough(gamefile,
-                               raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
-                               passive_oracle_mode=False  # if True, don't predict next action
-                               ):  #
-    _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
-    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED,
-                     raw_obs_feedback=raw_obs_feedback,
-                     passive_oracle_mode=passive_oracle_mode)
-    _qgym_env = _qgym_.make_batch_env([gamefile],
-                                   _word_vocab,  # vocab not really needed by Oracle, just for gym.space
-                                   request_infos=textworld.EnvInfos(
-                                        feedback=True,
-                                        description=True,
-                                        inventory=True,
-                                        location=True,
-                                        entities=True,
-                                        verbs=True,
-                                        facts=True,   # use ground truth facts about the world (since this is a training oracle)
-                                        admissible_commands=True,
-                                        game=True,
-                                        extras=["recipe", "uuid"]
-                                   ),
-                                   batch_size=1,
-                                   max_episode_steps=MAX_PLAYTHROUGH_STEPS-1)
-    obs, infos = _qgym_env.reset()
-    _word_vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
-    return _qgym_env, obs, infos
-
-
-def step_game_for_playthrough(gymenv, step_cmds:List[str]):
-    obs,rewards,dones,infos = gymenv.step(step_cmds)
-    return obs, rewards, dones, infos
-
-
-def _format_stepkey(step_num:int):
-    return f'step_{step_num:02d}'
-
 
 def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones, infos, cmds,
                               redisbasekey=REDIS_FTWC_PLAYTHROUGHS, ptid=f'eatmeal_42',
@@ -513,35 +360,6 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
 #     #print()
 #     print("--------------------------- Facts: ------------------------------\n", infos['facts'][0])
     return redis_ops, step_json
-
-
-def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
-    world_facts = infos['facts'][0]
-    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0])
-    world_facts_serialized = [f.serialize() for f in world_facts]
-    observable_facts_serialized = [f.serialize() for f in observable_facts]
-    step_key = _format_stepkey(step_num)
-    oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
-    step_json = {
-        step_key: {
-            'reward': rewards[0],
-            'score': infos['game_score'][0],
-            'done': dones[0],
-            'player_location': player_room.name,
-            'obs': obs[0],
-            'feedback': infos['feedback'][0],
-            'description': infos['description'][0],
-            'inventory': infos['inventory'][0],
-            'prev_action': cmds[0],
-            'next_action': oracle_action,
-            'possible_actions': infos['admissible_commands'][0],
-            'obs_facts': observable_facts_serialized,
-            # 'GT_FACTS': world_facts_serialized,
-        }
-    }
-    if step_num == 0 or dones[0]:  # at start of game or game over
-        step_json[_format_stepkey(step_num)]['GT_FACTS'] = world_facts_serialized
-    return step_json
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
@@ -612,6 +430,7 @@ def get_dir_for_game(redserv, gamename):
         return None
     return gamedir
 
+
 def get_dir_for_pthru(redserv, gamename):
     if redserv.sismember(REDIS_MINGPT_TRAINING, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_TRAIN_DIR')
@@ -631,6 +450,7 @@ def get_dir_for_pthru(redserv, gamename):
         return None
     return gamedir
 
+
 def retrieve_playthrough_json(
         gamename,
         redis=None,  # redis server: expected to be a RedisJSON client connection
@@ -647,7 +467,7 @@ def retrieve_playthrough_json(
         _rj.close()
     step_array = []  # convert json dict data (with redundant keys) to an array for convenience
     for i, step_key in enumerate(list(jsonobj.keys())):
-        assert step_key == _format_stepkey(i)
+        assert step_key == format_stepkey(i)   # format_stepkey() from twutils.playthroughs
         step_array.append(jsonobj[step_key])
     assert len(step_array) == len(jsonobj.keys())
     return step_array
@@ -674,20 +494,6 @@ def retrieve_playthrough_nsteps(
     #     return len(stepkeys)
     # return 0
 
-
-from textworld.logic import Proposition  #, Variable, Signature, State
-from symbolic.knowledge_graph import KnowledgeGraph
-
-def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
-    if not isinstance(facts_list[0], Proposition):   # maybe serialized list of facts
-        # world_facts0 = world_facts.copy()
-        facts_list = [Proposition.deserialize(fact_json) for fact_json in facts_list]
-
-    if kg is None:
-        kg = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
-    kg.update_facts(facts_list, prev_action=prev_action)
-    #return str(kg)
-    return kg.describe_room(kg.player_location.name, obs_descr=obs_descr)
 
 def export_playthru(gn, destdir='.', redis=None):
 
@@ -716,7 +522,7 @@ def export_playthru(gn, destdir='.', redis=None):
         outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
         _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
 
-        pthru_all += pthru
+        pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True)
         xdir = destdir + '/' + gn
         if not os.path.exists(xdir):
             os.makedirs(xdir)
@@ -733,53 +539,6 @@ def export_playthru(gn, destdir='.', redis=None):
         outfile.write(pthru_all)
         num_files += 1
     return num_files
-
-
-def get_kg_descr(kg_accum, stepdata):
-    obs_facts_key = 'obs_facts'
-    # obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'  # TODO: delete this line
-    prev_action = stepdata['prev_action']
-    observed_facts = stepdata[obs_facts_key]
-    # print( "---==================================================================---")
-    # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
-    # print(f"     ++++ DID:",      prev_action)
-    # print(f"     ++++ FEEDBACK:", stepdata['feedback'])
-    # print(f" ++++++++ OBS +++++++++++++++++++++++++++++++++++++++++:\n{stepdata['obs']}")
-    # print( " ......................................................")
-    # print(f"     ++++ DESCR:", stepdata['description'])
-    # print(f"     ++++ CARRYING:", stepdata['inventory'])
-    # print(f"     ---- CAN TRY:",  stepdata['possible_actions'])
-    # print(f"     >>>> NEXT_ACT:", stepdata['next_action'])
-    # #print(f"     **** FACTS:",    stepdata[obs_facts_key])
-    # print( "========= KG_VISIBLE ====================================================")
-    kg_descr = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
-    return kg_descr
-
-def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
-    feedback = stepdata['feedback']
-    prev_action = stepdata['prev_action']
-    if simplify_raw_obs_feedback:
-        new_feedback = normalize_feedback_vs_obs_description(prev_action,
-                                                             stepdata['obs'],
-                                                             stepdata['feedback'],
-                                                             stepdata['description'])
-        if new_feedback:
-            # print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
-            feedback = new_feedback
-
-   # print(f"[{i}] {gn} .....")
-    outstr = f"\n>>>[ {prev_action} ]<<<\n"
-    pthru = outstr
-    # pthru_out += outstr
-    if feedback: #and prev_action != 'start':
-        outstr += feedback
-        # feedback = feedback.strip()
-    pthru += simplify_feedback(feedback) + '\n'
-    pthru += kg_descr + '\n'
-    # outstr += '\n' + stepdata['obs']
-    outstr += '\n' + stepdata['description']
-    outstr += '\n\n' + stepdata['inventory'] + '\n'
-    return outstr, pthru
 
 
 if __name__ == "__main__":
