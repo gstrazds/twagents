@@ -143,10 +143,11 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 # (and it would most likely be split during tokenization)
 
 
-MAX_PLAYTHROUGH_STEPS = 100
+MAX_PLAYTHROUGH_STEPS = 60
 def start_game_for_playthrough(gamefile,
                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
-                               passive_oracle_mode=False  # if True, don't predict next action
+                               passive_oracle_mode=False,  # if True, don't predict next action
+                               max_episode_steps=MAX_PLAYTHROUGH_STEPS
                                ):  #
     _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
     _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED,
@@ -167,7 +168,7 @@ def start_game_for_playthrough(gamefile,
                                         extras=["recipe", "uuid"]
                                    ),
                                    batch_size=1,
-                                   max_episode_steps=MAX_PLAYTHROUGH_STEPS-1)
+                                   max_episode_steps=max_episode_steps)
     obs, infos = _qgym_env.reset()
     _word_vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
     return _qgym_env, obs, infos
