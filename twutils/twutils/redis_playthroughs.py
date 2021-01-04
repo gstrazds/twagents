@@ -163,8 +163,11 @@ def add_gamenames_to_redis(rediskey, listofnames):
 #     _game_names_ = [s.split('.')[0] for s in _games]
 #     add_gamenames_to_redis(rediskey, _game_names_)
 
+FTWC_GAME_SETS = (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST)
+GATA_GAME_SETS = (REDIS_GATA_TRAINING, REDIS_GATA_VALID, REDIS_GATA_TEST)
 
-def create_ftwc_skills_map(redserv=None):
+
+def create_skills_map(redserv=None, skillsmap_key=REDIS_FTWC_SKILLS_MAP, gameset_keys=FTWC_GAME_SETS):
     """ after all game names have been added to redis, we map skills to game names"""
     if redserv is None:
         _rj = Client(host='localhost', port=6379, decode_responses=True)
@@ -172,7 +175,7 @@ def create_ftwc_skills_map(redserv=None):
         _rj = redserv
     skills_index = {}  # maps skillname to a set of game names
     all_mapped_skills = set()  # all game names that are in the skills map
-    for setkey in (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST):
+    for setkey in gameset_keys:
         game_names = _rj.smembers(setkey)
         print(f"{setkey} has {len(game_names)} members")
 
@@ -184,7 +187,7 @@ def create_ftwc_skills_map(redserv=None):
                     skills_index[skill] = set()
 
                 skills_index[skill].add(g)
-                _rj.sadd(REDIS_FTWC_SKILLS_MAP+skill, g)
+                _rj.sadd(skillsmap_key+skill, g)
 
     # print(len(skills_index), skills_index.keys())
     # for key in skills_index.keys():
@@ -192,7 +195,7 @@ def create_ftwc_skills_map(redserv=None):
     #     all_mapped_skills = all_mapped_skills.union(skills_index[key])
 
 
-    skillsmap_keys = _rj.keys(REDIS_FTWC_SKILLS_MAP + "*")
+    skillsmap_keys = _rj.keys(skillsmap_key + "*")
 
     for k in skillsmap_keys:
         print(k, _rj.scard(k))
@@ -202,33 +205,101 @@ def create_ftwc_skills_map(redserv=None):
     if redserv is None:
         _rj.close()
 
-#
-def create_ftwc_nsteps_map(redserv=None):
+# create_skills_map(skillsmap_key=REDIS_FTWC_SKILLS_MAP, gameset_keys=FTWC_GAME_SETS)
+
+# create_skills_map(skillsmap_key=REDIS_GATA_SKILLS_MAP, gameset_keys=GATA_GAME_SETS)
+# gata:v1:training-games has 1000 members
+# gata:v1:valid-games has 200 members
+# gata:v1:test-games has 200 members
+# gata:v1:skills:go09 140
+# gata:v1:skills:cook 560
+# gata:v1:skills:recipe3 420
+# gata:v1:skills:take3 420
+# gata:v1:skills:take1 980
+# gata:v1:skills:go12 280
+# gata:v1:skills:go06 420
+# gata:v1:skills:cut 560
+# gata:v1:skills:open 1400
+# gata:v1:skills:recipe1 980
+# TOTAL # of game files for which skills have been mapped: 1400
+
+def count_game_files(dirpath):
+    game_names_ = []
+    all_files = os.listdir(dirpath)
+    # directory contains up to 3 files per game: *.json, *.ulx, *.z8
+    print(f"Total files in {dirpath} = {count_iter_items(all_files)}" )
+    suffixes = ['.ulx', '.z8', '.json']
+    for suffix in suffixes:
+        game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
+        if game_files:
+            print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
+            game_names_ = [s.split('.')[0] for s in game_files]
+    return game_names_
+
+def create_difficulty_map(redserv=None,
+                          difficulty_map_key=REDIS_GATA_DIFFICULTY_MAP,
+                          game_dirs=None):
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        _rj = redserv
+
+    if game_dirs is None:
+        training_dir = _rj.hget(REDIS_DIR_MAP, 'GATA_TRAINING_DIR')
+        validation_dir = _rj.hget(REDIS_DIR_MAP, 'GATA_VALIDATION_DIR')
+        test_dir = _rj.hget(REDIS_DIR_MAP, 'GATA_TEST_DIR')
+        game_dirs = (training_dir, validation_dir, test_dir)
+    print(f"create_difficulty_map({difficulty_map_key}, game_dirs={game_dirs})")
+    for game_dir in game_dirs:
+        print("create_difficulty_map -- GAME DIR:", game_dir)
+        game_names_ = []
+        for level in range(1, 11):
+            difficulty = f"difficulty_level_{level}"
+            print("\n-------------------", difficulty)
+            games_list = count_game_files(game_dir + difficulty)
+            game_names_.extend(games_list)
+            _rj.sadd(difficulty_map_key+str(level), *games_list)
+        print(f"total games in {game_dir}: {len(game_names_)} {len(set(game_names_))}")
+        assert len(game_names_) == len(set(game_names_))  # they should all be unique
+    if redserv is None:
+        _rj.close()
+
+def create_nsteps_map(redserv=None,
+                           nsteps_map_key=REDIS_FTWC_NSTEPS_MAP,
+                           nsteps_index_key=REDIS_FTWC_NSTEPS_INDEX,
+                           gameset_keys=FTWC_GAME_SETS):
     """ after all playthroughs have been save to redis, index number of steps <-> game names """
     if redserv is None:
         _rj = Client(host='localhost', port=6379, decode_responses=True)
     else:
         _rj = redserv
 
-    for key in _rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*"):
+    if nsteps_map_key == REDIS_GATA_NSTEPS_MAP:
+        redisbasekey = REDIS_GATA_PLAYTHROUGHS
+    elif nsteps_map_key == REDIS_FTWC_NSTEPS_MAP:
+        redisbasekey = REDIS_FTWC_PLAYTHROUGHS
+    else:
+        assert False, "Unknown Redis nsteps_map_key "+nsteps_map_key
+
+    for key in _rj.keys(nsteps_index_key + "*"):
         print("Will delete:", key)
         _rj.delete(key)
-    print(_rj.hlen(REDIS_FTWC_NSTEPS_MAP))
-    _rj.delete(REDIS_FTWC_NSTEPS_MAP)
+    print(_rj.hlen(nsteps_map_key))
+    _rj.delete(nsteps_map_key)
 
-    for setkey in (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST):
+    for setkey in gameset_keys:
         game_names_ = _rj.smembers(setkey)
         for _gn in game_names_:
-            nsteps = retrieve_playthrough_nsteps(_gn, redis=_rj)
+            nsteps = retrieve_playthrough_nsteps(_gn, redis=_rj, redisbasekey=redisbasekey)
             if nsteps > 0:
                 print(nsteps, _gn)
-                _rj.hset(REDIS_FTWC_NSTEPS_MAP, _gn, nsteps)
-                _rj.sadd(f"{REDIS_FTWC_NSTEPS_INDEX}{nsteps}", _gn)
+                _rj.hset(nsteps_map_key, _gn, nsteps)
+                _rj.sadd(f"{nsteps_index_key}{nsteps}", _gn)
 
-    print(len(_rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*")), _rj.hlen(REDIS_FTWC_NSTEPS_MAP))
+    print(len(_rj.keys(nsteps_index_key+"*")), _rj.hlen(nsteps_map_key))
     total = 0
     sort_list = []
-    for key in _rj.keys(f"{REDIS_FTWC_NSTEPS_INDEX}*"):
+    for key in _rj.keys(nsteps_index_key+"*"):
         nsteps = int(key.split(':')[-1])
         num_games = _rj.scard(key)
         total += num_games
@@ -239,6 +310,10 @@ def create_ftwc_nsteps_map(redserv=None):
         print(f"[{nsteps}]\t {num_games}\t {setkey}")
     if redserv is None:
         _rj.close()
+
+# NSTEPS MAPS can be created only AFTER playthrough data has been saved to Redis
+# create_nsteps_map(nsteps_map_key=REDIS_FTWC_NSTEPS_MAP, nsteps_index_key=REDIS_FTWC_NSTEPS_INDEX, gameset_keys=FTWC_GAME_SETS)
+# create_nsteps_map(nsteps_map_key=REDIS_GATA_NSTEPS_MAP, nsteps_index_key=REDIS_GATA_NSTEPS_INDEX, gameset_keys=GATA_GAME_SETS)
 
 def select_games_for_mingpt(redserv=None):
     if redserv is None:
@@ -363,7 +438,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
-                              redisbasekey=REDIS_FTWC_PLAYTHROUGHS, randseed=DEFAULT_PTHRU_SEED,
+                              redisbasekey=REDIS_FTWC_PLAYTHROUGHS, randseed=DEFAULT_PTHRU_SEED, goal_type=GOAL_MEAL,
                               do_write=False, redis=None, skip_existing=True):
 
     if gamedir is None:
@@ -379,7 +454,7 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     redis_ops = 0
     num_steps = 0
 
-    ptid = playthrough_id(seed=randseed)  # playtrough ID (which of potentially several different) for this gamename
+    ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if not redis:
         do_write = False
@@ -418,6 +493,14 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     return num_steps, redis_ops
 
 
+def get_difficulty_mapping(redserv, gamename):
+    for difficulty in range(1,11):
+        difficulty = str(difficulty)
+        if redserv.sismember(REDIS_GATA_DIFFICULTY_MAP+difficulty, gamename):
+            return difficulty
+    print("!! WARNING: not found in REDIS_GATA_DIFFICULTY_MAP:", gamename)
+    return "0"
+
 def get_dir_for_game(redserv, gamename):
     if redserv.sismember(REDIS_FTWC_TRAINING, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_TRAINING_DIR')
@@ -425,6 +508,22 @@ def get_dir_for_game(redserv, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_VALIDATION_DIR')
     elif redserv.sismember(REDIS_FTWC_TEST, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'TW_TEST_DIR')
+
+    elif redserv.sismember(REDIS_GATA_TRAINING, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_TRAINING_DIR')
+        difficulty = get_difficulty_mapping(redserv, gamename)
+        gamedir += f"difficulty_level_{difficulty}/"
+
+    elif redserv.sismember(REDIS_GATA_VALID, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_VALIDATION_DIR')
+        difficulty = get_difficulty_mapping(redserv, gamename)
+        gamedir += f"difficulty_level_{difficulty}/"
+
+    elif redserv.sismember(REDIS_GATA_TEST, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_TEST_DIR')
+        difficulty = get_difficulty_mapping(redserv, gamename)
+        gamedir += f"difficulty_level_{difficulty}/"
+
     else:
         print(f"WARNINIG: unknown directory for gamename={gamename}")
         return None
@@ -438,13 +537,19 @@ def get_dir_for_pthru(redserv, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_VALID_DIR')
     elif redserv.sismember(REDIS_MINGPT_TEST, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'MINGPT_TEST_DIR')
-
     elif redserv.sismember(REDIS_FTWC_TRAINING, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_TRAIN_PTHRUS')
     elif redserv.sismember(REDIS_FTWC_VALID, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_VALID_PTHRUS')
     elif redserv.sismember(REDIS_FTWC_TEST, gamename):
         gamedir = redserv.hget(REDIS_DIR_MAP, 'FTWC_TEST_PTHRUS')
+
+    elif redserv.sismember(REDIS_GATA_TRAINING, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_TRAIN_PTHRUS')
+    elif redserv.sismember(REDIS_GATA_VALID, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_VALID_PTHRUS')
+    elif redserv.sismember(REDIS_GATA_TEST, gamename):
+        gamedir = redserv.hget(REDIS_DIR_MAP, 'GATA_TEST_PTHRUS')
     else:
         print(f"WARNINIG: unknown directory for gamename={gamename}")
         return None
@@ -495,13 +600,13 @@ def retrieve_playthrough_nsteps(
     # return 0
 
 
-def export_playthru(gn, destdir='.', redis=None):
+def export_playthru(gn, destdir='.', redis=None, redisbasekey=REDIS_FTWC_PLAYTHROUGHS):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
     #_rj = Client(host='localhost', port=6379, decode_responses=True)
 
-    playthru = retrieve_playthrough_json(gn, redis=redis)
+    playthru = retrieve_playthrough_json(gn, redis=redis, redisbasekey=redisbasekey)
     # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
     pthru_all = ''
     kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
@@ -546,7 +651,9 @@ if __name__ == "__main__":
     from tqdm import tqdm
 
     gamesets = {'train': REDIS_FTWC_TRAINING, 'valid': REDIS_FTWC_VALID, 'test': REDIS_FTWC_TEST,
-                'miniset': REDIS_FTWC_TRAINING }
+                'miniset': REDIS_FTWC_TRAINING,
+                'gata_train': REDIS_GATA_TRAINING, 'gata_valid': REDIS_GATA_VALID, 'gata_test': REDIS_GATA_TEST,
+                }
 
     def main(args):
         rj = Client(host='localhost', port=6379, decode_responses=True)  # redisJSON API
@@ -558,9 +665,13 @@ if __name__ == "__main__":
             print("Importing playrhroughs to Redis...")
 
         if not args.which:
-            assert False, "Expected which= one of [train, valid, test, miniset]"
+            assert False, "Expected which= one of [train, valid, test, miniset, gata_train, gata_valid, gata_test]"
             exit(1)
         rediskey = gamesets[args.which]
+        if (args.which).startswith("gata_"):
+            redisbasekey = REDIS_GATA_PLAYTHROUGHS
+        else:
+            redisbasekey = REDIS_FTWC_PLAYTHROUGHS
         num_games = rj.scard(rediskey)
         gamenames = rj.smembers(rediskey)
         if args.which == 'miniset':
@@ -569,12 +680,17 @@ if __name__ == "__main__":
         for i, gname in enumerate(tqdm(gamenames)):
             if not args.export_files:
                 print(f"[{i}] BEGIN PLAYTHROUGH: {gname}")
-                num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj, do_write=args.do_write)
+                num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj,
+                                                                 redisbasekey=redisbasekey,
+                                                                 do_write=args.do_write)
                 print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
                 total_redis_ops += redis_ops
             else:
-                destdir = f'./playthru_data/{args.which}'
-                total_files += export_playthru(gname, destdir=destdir, redis=rj)
+                if (args.which).startswith("gata_"):
+                    destdir = f'./playthru_data/{args.which}'
+                else:
+                    destdir = f'./playthru_data/{args.which}'
+                total_files += export_playthru(gname, destdir=destdir, redis=rj, redisbasekey=redisbasekey)
         print("Total redis writes:", total_redis_ops)
         print("Total files exported:", total_files)
         if args.do_write and not args.export_files:
@@ -582,7 +698,7 @@ if __name__ == "__main__":
         rj.close()
 
     parser = argparse.ArgumentParser(description="Import playthrough data to redis")
-    parser.add_argument("which", choices=('train', 'valid', 'test', 'miniset'))
+    parser.add_argument("which", choices=('train', 'valid', 'test', 'miniset', 'gata_train', 'gata_valid', 'gata_test'))
     parser.add_argument("--export_files", action='store_true')
     parser.add_argument("--do_write", action='store_true')
     args = parser.parse_args()

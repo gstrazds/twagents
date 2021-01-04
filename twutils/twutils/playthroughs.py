@@ -20,14 +20,16 @@ TW_TRAINING_DIR = '/ssd2tb/ftwc/games/train/'
 # TW_VALIDATION_DIR = '/ssd2tb/ftwc/games/valid/'
 # TW_TEST_DIR = '/ssd2tb/ftwc/games/test/'
 
-DEFAULT_PTHRU_SEED = 42
-
 CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
 GAME_START_CMD = 'start'
 
+DEFAULT_PTHRU_SEED = 42
+GOAL_MEAL = 'eatmeal'
+GOAL_ANSWER_WHERE = 'whereis'
+GOAL_ANSWER_EXISTS = 'exists'
 
-def playthrough_id(objective_name='eatmeal', seed=None):
+def playthrough_id(objective_name=GOAL_MEAL, seed=None):
     if seed is None:
         seed = DEFAULT_PTHRU_SEED
     return f"{objective_name}_{seed}"
