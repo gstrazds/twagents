@@ -264,6 +264,22 @@ def create_difficulty_map(redserv=None,
     if redserv is None:
         _rj.close()
 
+def lookup_difficulty_level(gamename, redserv=None, difficulty_map_key=REDIS_GATA_DIFFICULTY_MAP):
+    # assert gamename , "Missing required argument: gamename"
+    level = -1
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        _rj = redserv
+    for i in range(1,11):
+        if _rj.sismember(difficulty_map_key+str(i), gamename):
+            level = i
+            break
+    if redserv is None:
+        _rj.close()
+    return level
+
+
 def create_nsteps_map(redserv=None,
                            nsteps_map_key=REDIS_FTWC_NSTEPS_MAP,
                            nsteps_index_key=REDIS_FTWC_NSTEPS_INDEX,
@@ -584,11 +600,6 @@ def retrieve_playthrough_nsteps(
         ptid=playthrough_id(),  # default playthrough, can optionally specify
         redisbasekey=REDIS_FTWC_PLAYTHROUGHS, randseed=DEFAULT_PTHRU_SEED):
 
-    if redis is None:
-        _rj = Client(host='localhost', port=6379, decode_responses=True)
-    else:
-        assert isinstance(redis, Client)
-        _rj = redis
     nsteps = _rj.jsonobjlen(f'{redisbasekey}:{gamename}', Path(f".{ptid}"))
     if redis is None:
         _rj.close()
@@ -598,6 +609,20 @@ def retrieve_playthrough_nsteps(
     #         assert k.startswith("step_")
     #     return len(stepkeys)
     # return 0
+
+
+def get_max_score(gn, redserv=None):
+    if redserv is None:
+        _rj = Client(host='localhost', port=6379, decode_responses=True)
+    else:
+        assert isinstance(redserv, Client)
+        _rj = redserv
+    dirpath = get_dir_for_game(_rj, gn)
+    if redserv is None:
+        _rj.close()
+    with open(f"{dirpath}/{gn}.json", "r") as f:
+        metadata = json.load(f)['metadata']
+        return int(metadata['max_score'])
 
 
 def export_playthru(gn, destdir='.', redis=None, redisbasekey=REDIS_FTWC_PLAYTHROUGHS):
