@@ -145,7 +145,7 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 # (and it would most likely be split during tokenization)
 
 
-MAX_PLAYTHROUGH_STEPS = 60
+MAX_PLAYTHROUGH_STEPS = 150
 def start_game_for_playthrough(gamefile,
                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
                                passive_oracle_mode=False,  # if True, don't predict next action
