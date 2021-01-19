@@ -263,24 +263,6 @@ class Location(Entity):
     def action_records(self):
         return self._action_records
 
-    # def add_action_record(self, action, p_valid, result_text) -> bool:
-    #     """ Records an action, the probability it succeeded, and the text response. """
-    #     if not isinstance(action, Action):
-    #         raise ValueError("Expected Action. Got {}".format(type(action)))
-    #     self._action_records[action] = (p_valid, result_text)
-    #     return True
-    #
-    # def has_action_record(self, action):
-    #     if not isinstance(action, Action):
-    #         raise ValueError("Expected Action. Got {}".format(type(action)))
-    #     return action in self._action_records
-    #
-    # def get_action_record(self, action):
-    #     """ Returns (p_valid, result_text) for an action or None if it doesn't exist. """
-    #     if not isinstance(action, Action):
-    #         raise ValueError("Expected Action. Got {}".format(type(action)))
-    #     return self.action_records[action] if self.has_action_record(action) else None
-
     def reset(self, kg):  # KnowledgeGraph):
         """ Reset to a state resembling start of game. """
         # Move all the entities back to their original locations
