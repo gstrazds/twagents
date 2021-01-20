@@ -1,6 +1,6 @@
 import random
 from ..decision_module import DecisionModule
-from ..event import NeedToDo, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
+#from ..event import NeedToDo #, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
 from ..task_modules.navigation_task import PathTask, GoToTask
@@ -26,9 +26,9 @@ def _check_preconditions(task: Task, gi: GameInstance) -> bool:
 
 FAILSAFE_LIMIT = 100
 
-class TaskExecutor(DecisionModule):
+class TaskExec(DecisionModule):
     """
-    The TaskExecutor module sequences and executes Tasks.
+    The TaskExec module sequences and executes Tasks.
     """
     def __init__(self, active=False):
         super().__init__()
@@ -94,7 +94,7 @@ class TaskExecutor(DecisionModule):
                 activating_task.activate(kg, self)
             if activating_task.is_done:
                 self.pop_task(activating_task)
-                self.rescind_broadcasted_preconditions(activating_task)
+                # self.rescind_broadcasted_preconditions(activating_task)
                 continue   # loop to get next potentially active task
             if not _check_preconditions(activating_task, gi):
                 # print(f"_activate_next_task -- {activating_task} missing preconditions:\n{activating_task.missing}")
@@ -264,8 +264,9 @@ class TaskExecutor(DecisionModule):
             print("CANCELLING handle_missing_preconditions for failed task:", parent_task)
 
         if missing.required_inventory:
-            # need_to_get.extend(missing.required_inventory)
-            gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
+            # # need_to_get.extend(missing.required_inventory)
+            #gi.event_stream.push(NeedToAcquire(missing.required_inventory, groundtruth=use_groundtruth))
+            assert False, "Task prereqs: misssing.required_inventory is no longer userd!"
         if missing.required_locations:
             locname = list(missing.required_locations)[0]
             if not use_groundtruth and kg: # and kg.location_of_entity_is_known(locname):
@@ -280,7 +281,8 @@ class TaskExecutor(DecisionModule):
                     print(kg.location_of_entity_with_name(locname), gototask)
                     missing.required_tasks.append(gototask)
             else:
-                gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
+                # gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
+                assert False, "NeedToGoTo event is no longer used!"
         # need_to_get = []
         if missing.required_objects:
             # need_to_get.append(objname)
@@ -298,7 +300,8 @@ class TaskExecutor(DecisionModule):
                     print(kg.location_of_entity_with_name(objname), pathtask)
                     missing.required_tasks.append(pathtask)
             else:
-                gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
+                # gi.event_stream.push(NeedToFind(objnames=[objname], groundtruth=use_groundtruth))
+                assert False, "NeedToFind is no longer used!"
         if missing.required_tasks:
             # for task in reversed(missing.required_tasks):  # GVS 19.01.2019 question to myself: why reversed?
             # answer re: why reversed? LIFO ordering gets reversed to FIFO when all are pushed onto task_stack
@@ -308,25 +311,27 @@ class TaskExecutor(DecisionModule):
                 # print(f"handle precondition: {task}")
                 self.start_prereq_task(task, parent_task)
 
-    def rescind_broadcasted_preconditions(self, task):
-        gi = self._gi
-        use_groundtruth = task.use_groundtruth
-        prereqs = task.prereq
-        if prereqs.required_inventory:
-            print("rescind_broadcasted_preconditions INVENTORY:", task, prereqs.required_inventory)
-            gi.event_stream.push(NoLongerNeed(prereqs.required_inventory, groundtruth=use_groundtruth))
-        if prereqs.required_objects:
-            print("rescind_broadcasted_preconditions OBJECTS:", task, prereqs.required_objects)
-            gi.event_stream.push(NoLongerNeed(objnames=prereqs.required_objects, groundtruth=use_groundtruth))
+    # def rescind_broadcasted_preconditions(self, task):
+    #     gi = self._gi
+    #     use_groundtruth = task.use_groundtruth
+    #     prereqs = task.prereq
+    #     if prereqs.required_inventory:
+    #         print("rescind_broadcasted_preconditions INVENTORY:", task, prereqs.required_inventory)
+    #         gi.event_stream.push(NoLongerNeed(prereqs.required_inventory, groundtruth=use_groundtruth))
+    #     if prereqs.required_objects:
+    #         print("rescind_broadcasted_preconditions OBJECTS:", task, prereqs.required_objects)
+    #         gi.event_stream.push(NoLongerNeed(objnames=prereqs.required_objects, groundtruth=use_groundtruth))
 
     def process_event(self, event, gi: GameInstance):
         """ Process an event from the event stream. """
-        # print("TaskExecutor PROCESS EVENT: ", event)
-        if isinstance(event, NeedToDo):
-            print("TaskExecutor PROCESS EVENT: ", event)
-            self._gi = gi
-            self.start_prereq_task(event.task, None)
-            self.activate(gi)
+        pass   # need to implement because this is an abstractmethod of DecisionModule
+    #     # print("TaskExecutor PROCESS EVENT: ", event)
+    #     if isinstance(event, NeedToDo):
+    #         print("TaskExecutor PROCESS EVENT: ", event)
+    #         assert False, "NeedToDo is no longer used"
+    #         self._gi = gi
+    #         self.start_prereq_task(event.task, None)
+    #         self.activate(gi)
 
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction
@@ -357,7 +362,7 @@ class TaskExecutor(DecisionModule):
             if not active_task.is_done and not active_task.has_failed:
                 prereqs_satisfied = _check_preconditions(active_task, gi)
             else:
-                self.rescind_broadcasted_preconditions(active_task)
+                # self.rescind_broadcasted_preconditions(active_task)
                 self.remove_completed_tasks()
                 self._activate_next_task(restart_failsafe=False)
                 continue
@@ -388,7 +393,7 @@ class TaskExecutor(DecisionModule):
                     t = self.pop_task()
                     print(f"    (popped because {t}.is_done)")
                     kg = _get_kg_for_task(t, gi)
-                    self.rescind_broadcasted_preconditions(t)
+                    # self.rescind_broadcasted_preconditions(t)
                     t.deactivate(kg)
                     self.completed_tasks.append(t)
                     self._activate_next_task(restart_failsafe=(not t.has_failed))

@@ -5,7 +5,7 @@ from typing import Tuple
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
-from symbolic.entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
+from symbolic.entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINER, SUPPORT, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
 from twutils.twlogic import reverse_direction
 from .mention_index import *
 

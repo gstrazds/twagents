@@ -1,11 +1,7 @@
 import os
 import logging
-# from symbolic.game import GameInstance
-# from symbolic import gv
-# from symbolic.decision_modules import Idler, Examiner, Interactor, Navigator, Hoarder #, YesNo, YouHaveTo, Darkness
-from symbolic.decision_modules import TaskExecutor  #, GTNavigator, GTRecipeReader, GTAcquire,   # GTEnder
+from symbolic.decision_modules import TaskExec
 from symbolic.event import GroundTruthComplete   # NewTransitionEvent
-# from symbolic.entity import Entity
 from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *
@@ -63,7 +59,7 @@ class TextGameAgent:
         self.step_num = 0
 
     def _init_modules(self):
-        self.task_exec = TaskExecutor(True)
+        self.task_exec = TaskExec(True)
         self.modules = [
                         self.task_exec,
                         # GTNavigator(False, use_groundtruth=False),

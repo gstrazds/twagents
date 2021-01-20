@@ -60,26 +60,26 @@ class TakeItemTask(Task):
         return None  # terminate generator iteration
 
 
-class AcquireTask(SequentialTasks):
-    """ locates and takes specific objects (into inventory) """
-    def __init__(self, objname=None, description=None, take=True, use_groundtruth=False):
-        assert objname, "Missing required argument: must specify the name of an object to acquire"
-        self.take_when_found = take
-
-        task_list: List[Task] = []
-        if not description:
-            description = f"AcquireTask[{objname}]"
-        super().__init__(tasks=task_list, description=None, use_groundtruth=False)
-
-    def activate(self, kg, exec):
-        print("AcquireTask.activate!!!!")
-        if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
-            return super().activate(kg, exec)
-        else:
-            self.deactivate(kg)
-            return None
-
-    @property
-    def maybe_GT(self):
-        return "GT " if self.use_groundtruth else ""
-
+# class AcquireTask(SequentialTasks):
+#     """ locates and takes specific objects (into inventory) """
+#     def __init__(self, objname=None, description=None, take=True, use_groundtruth=False):
+#         assert objname, "Missing required argument: must specify the name of an object to acquire"
+#         self.take_when_found = take
+#
+#         task_list: List[Task] = []
+#         if not description:
+#             description = f"AcquireTask[{objname}]"
+#         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
+#
+#     def activate(self, kg, exec):
+#         print("AcquireTask.activate!!!!")
+#         if self.set_goal(kg) and self.path:  # might auto self.deactivate(kg)
+#             return super().activate(kg, exec)
+#         else:
+#             self.deactivate(kg)
+#             return None
+#
+#     @property
+#     def maybe_GT(self):
+#         return "GT " if self.use_groundtruth else ""
+#

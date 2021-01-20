@@ -1,8 +1,5 @@
 from symbolic import event
 from symbolic import util
-# from symbolic import gv
-# from symbolic import action
-# from symbolic.knowledge_graph import KnowledgeGraph
 
 
 def get_unrecognized(action, response):
