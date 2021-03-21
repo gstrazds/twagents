@@ -32,6 +32,14 @@ CONTAINED_LOCATION = 'C_LOC'
 SUPPORTED_LOCATION = 'S_LOC'
 
 
+def get_doorinfo(doorentity):  # doorentity is a symbolic.entity.Door
+    if doorentity is None:
+        return '', True
+    if doorentity.state.openable and not doorentity.state.is_open:
+        return doorentity.name, False
+    return doorentity.name, True
+
+
 ConnectionRelation = namedtuple('ConnectionRelation', 'from_location, direction')
 
 
