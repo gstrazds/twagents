@@ -13,12 +13,12 @@ import redis
 from redisgraph import Node, Edge, Graph, Path  # https://github.com/RedisGraph/redisgraph-py
 from rejson import Client, Path                 # https://github.com/RedisJSON/redisjson-py
 
-
-from twutils.file_helpers import count_iter_items, parse_gameid, split_gamename
+from twutils.file_helpers import count_iter_items, split_gamename  #, parse_gameid
 from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description
 from twutils.redis_ids import *
 from twutils.playthroughs import *
+#format_stepkey, start_game_for_playthrough, playthrough_step_to_json, step_game_for_playthrough
 
 
 # default values, can be overriden by config or cmd line args
@@ -101,7 +101,8 @@ def check_extracted_data(game_names=None, xtract_dir=XTRACT_DIR):
                 entity_name = None
                 idx = -1
                 if line:
-                    if not (line.startswith('--')                              or line.startswith('*')                              or line.startswith('+')                              or line.startswith('~')                              or line.startswith('_')):
+                    if not (line.startswith('--') or line.startswith('*') or line.startswith('+') \
+                            or line.startswith('~') or line.startswith('_')):
                         entity_name = remove_parenthetical_state(line)
                         idx = desc_str.find(entity_name)
                     elif line.startswith('+ '):
@@ -463,12 +464,16 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         else:
             gamedir=TW_TRAINING_DIR   # best guess, we'll see later if it's there or not
 
-    _gamefile = f"{gamedir}/{gamename}.z8"
-    if not os.path.exists(_gamefile):
-        _gamefile = f"{gamedir}/{gamename}.ulx"
+    if gamename.endswith(".z8") or gamefile.endswith(".ulx"):
+        _gamefile = f"{gamedir}/{gamename}"
+    else:
+        _gamefile = f"{gamedir}/{gamename}.z8"
+        if not os.path.exists(_gamefile):
+            _gamefile = f"{gamedir}/{gamename}.ulx"
 
     redis_ops = 0
     num_steps = 0
+    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
 
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
@@ -488,25 +493,28 @@ def save_playthrough_to_redis(gamename, gamedir=None,
     _rewards = [0]
     next_cmds = ['start']
     gymenv, _obs, _infos = start_game_for_playthrough(_gamefile)
-    redis_ops, _ = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
+    redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
                                     redisbasekey=redisbasekey,
                                     ptid=ptid,
                                     redis=redis,
                                     do_write=do_write, redis_ops=redis_ops)
 
+    step_array.append(playthru_step_data[format_stepkey(num_steps)])
+
     next_cmds = _infos['tw_o_step']
     while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
         num_steps += 1
         _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
-        redis_ops, _ = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
+        redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
                                             redisbasekey=redisbasekey,
                                             ptid=ptid,
                                             redis=redis,
                                             do_write=do_write, redis_ops=redis_ops)
+        step_array.append(playthru_step_data[format_stepkey(num_steps)])
         next_cmds = _infos['tw_o_step']
     gymenv.close()
     print(f"----------------- {gamename} playthrough steps: {num_steps}  Redis writes {redis_ops} ----------------")
-    return num_steps, redis_ops
+    return num_steps, redis_ops, step_array
 
 
 def get_difficulty_mapping(redserv, gamename):
@@ -625,13 +633,12 @@ def get_max_score(gn, redserv=None):
         return int(metadata['max_score'])
 
 
-def export_playthru(gn, destdir='.', redis=None, redisbasekey=REDIS_FTWC_PLAYTHROUGHS):
+def export_playthru(gn, playthru, destdir='.'):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
     #_rj = Client(host='localhost', port=6379, decode_responses=True)
 
-    playthru = retrieve_playthrough_json(gn, redis=redis, redisbasekey=redisbasekey)
     # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
     pthru_all = ''
     kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
@@ -671,59 +678,138 @@ def export_playthru(gn, destdir='.', redis=None, redisbasekey=REDIS_FTWC_PLAYTHR
     return num_files
 
 
+def _list_games(games_dir='./gw_games'):
+    all_files = os.listdir(games_dir)
+    # directory contains several files per game: *.json, *.ni, *.ulx, *.z8
+    print(f"Total files in {games_dir} = ", count_iter_items(all_files))
+    suffixes = ['.json', '.ni', '.ulx', '.z8']
+    for suffix in suffixes:
+        game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
+        print("number of {} files in {} = {}".format(suffix, games_dir, len(game_files)))
+    game_names_ = [s.split('.')[0] for s in game_files]
+
+    if game_names_ and game_names_[0].startswith('tw-cooking-'):
+        # remove the 'tw-cooking-' prefix
+        # game_names = list(map(lambda gn: gn[11:], game_names_))
+        games = defaultdict(list)
+        for gn in game_names_:
+            # skills, gid = gn.split('-')
+            gid, skills = split_gamename(gn)
+            if not skills or not skills[0]:
+                print("SPLIT FAILURE:", gn)
+            else:
+                games[gid].append(gn) #defaultdict initializes with empty list
+
+        print("Number of games", len(game_names_))
+        print("Number of unique IDs", len(games))
+        print()
+        total = 0
+        for n in [1, 2, 3, 4, 5]:
+            c = count_iter_items(filter(lambda g: len(g) == n, games.values()))
+            print("IDs with {} entries: {}".format(n, c))
+            total += n * c
+        print("Total =", total)
+        assert total == len(game_names_)
+        assert total == len(game_files)
+    return game_files
+
 if __name__ == "__main__":
     import argparse
     from tqdm import tqdm
 
-    gamesets = {'train': REDIS_FTWC_TRAINING, 'valid': REDIS_FTWC_VALID, 'test': REDIS_FTWC_TEST,
+    gamesets = {'extra': None, 'train': REDIS_FTWC_TRAINING, 'valid': REDIS_FTWC_VALID, 'test': REDIS_FTWC_TEST,
                 'miniset': REDIS_FTWC_TRAINING,
                 'gata_train': REDIS_GATA_TRAINING, 'gata_valid': REDIS_GATA_VALID, 'gata_test': REDIS_GATA_TEST,
                 }
 
     def main(args):
-        rj = Client(host='localhost', port=6379, decode_responses=True)  # redisJSON API
         total_redis_ops = 0
         total_files = 0
-        if args.export_files:
-            print("Exporting playthough data from Redis to files")
+        if args.which == 'extra':
+            print("Generating playthrough data for games from", args.extra_games_dir)
+            assert args.files_only, "Extra game playthroughs currently require '--files-only' option"
+
+        if args.files_only:
+            rj = None
+            print("** Not using Redis, all output goes to file system. **")
+            if args.export_files:
+                print("++ Also saving generated playthough data to files ++")
         else:
-            print("Importing playrhroughs to Redis...")
+            rj = Client(host='localhost', port=6379, decode_responses=True)  # redisJSON API
+            if args.export_files:
+                print("Exporting generated playthough data to files")
+            else:
+                print("Importing playrhroughs to Redis...")
 
         if not args.which:
-            assert False, "Expected which= one of [train, valid, test, miniset, gata_train, gata_valid, gata_test]"
+            assert False, "Expected which= one of [extra, train, valid, test, miniset, gata_train, gata_valid, gata_test]"
             exit(1)
         rediskey = gamesets[args.which]
-        if (args.which).startswith("gata_"):
-            redisbasekey = REDIS_GATA_PLAYTHROUGHS
-        else:
-            redisbasekey = REDIS_FTWC_PLAYTHROUGHS
-        num_games = rj.scard(rediskey)
-        gamenames = rj.smembers(rediskey)
-        if args.which == 'miniset':
-            #gamenames = list(gamenames)[0:3]   # just the first 3
-            gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']
-        for i, gname in enumerate(tqdm(gamenames)):
-            if not args.export_files:
-                print(f"[{i}] BEGIN PLAYTHROUGH: {gname}")
-                num_steps, redis_ops = save_playthrough_to_redis(gname, redis=rj,
-                                                                 redisbasekey=redisbasekey,
-                                                                 do_write=args.do_write)
-                print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
-                total_redis_ops += redis_ops
+        if rediskey:
+            if (args.which).startswith("gata_"):
+                redisbasekey = REDIS_GATA_PLAYTHROUGHS
             else:
-                if (args.which).startswith("gata_"):
-                    destdir = f'./playthru_data/{args.which}'
+                redisbasekey = REDIS_FTWC_PLAYTHROUGHS
+            #num_games = rj.scard(rediskey)
+            gamenames = rj.smembers(rediskey)
+            if args.which == 'miniset':
+                # gamenames = list(gamenames)[0:3]   # just the first 3
+                gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']
+        else:
+            gamenames = _list_games(args.extra_games_dir)
+            #num_games = len(gamenames)
+            print("num_games:", len(gamenames), gamenames[0:5])
+            if args.start_idx is not None:
+                gamenames = gamenames[args.start_idx:args.start_idx+1000]
+            #small slice FOR TESTING: gamenames = gamenames[0:5]
+        if args.export_files:
+            if (args.which).startswith("gata_"):
+                destdir = f'./playthru_data/{args.which}'
+            elif args.which != 'extra':
+                destdir = f'./playthru_data/{args.which}'
+            elif args.which == 'extra':
+                destdir = f'./playthru_extra/'
+            else:
+                assert False, f"UNEXPECTED: invalid combination of args? {str(args)}"
+
+        for i, gname in enumerate(tqdm(gamenames)):
+            if args.which == 'extra':
+                print(f"[{i}] {gname}")
+                num_steps, redis_ops, playthru = save_playthrough_to_redis(gname,
+                                                                gamedir=args.extra_games_dir,
+                                                                redis=None,
+                                                                redisbasekey=None,
+                                                                do_write=False)
+                for s in playthru:
+                    print(s, '\n')
+                if args.export_files:
+                    total_files += export_playthru(gname.split('.')[0], playthru, destdir=destdir)
+            else:
+                if not args.export_files:
+                    print(f"[{i}] BEGIN PLAYTHROUGH: {gname}")
+                    num_steps, redis_ops, _ = save_playthrough_to_redis(gname, redis=rj,
+                                                                     redisbasekey=redisbasekey,
+                                                                     do_write=args.do_write)
+                    print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps} to redis: {redis_ops}")
+                    total_redis_ops += redis_ops
                 else:
-                    destdir = f'./playthru_data/{args.which}'
-                total_files += export_playthru(gname, destdir=destdir, redis=rj, redisbasekey=redisbasekey)
+                    playthru = retrieve_playthrough_json(gname, redis=redis, redisbasekey=redisbasekey)
+                    total_files += export_playthru(gname, playthru, destdir=destdir)
+
         print("Total redis writes:", total_redis_ops)
         print("Total files exported:", total_files)
-        if args.do_write and not args.export_files:
-            rj.save()
-        rj.close()
+        if rj:
+            if args.do_write and not args.export_files:
+                rj.save()
+            rj.close()
 
-    parser = argparse.ArgumentParser(description="Import playthrough data to redis")
-    parser.add_argument("which", choices=('train', 'valid', 'test', 'miniset', 'gata_train', 'gata_valid', 'gata_test'))
+    parser = argparse.ArgumentParser(description="Import or export playthrough data (to Redis or filesystem)")
+    parser.add_argument("which", choices=('extra', 'train', 'valid', 'test', 'miniset', 'gata_train', 'gata_valid', 'gata_test'))
+    parser.add_argument("--extra-games-dir", default="./tw_games/", metavar="PATH",
+                                   help="Path to directory of .z8 game files from which to generate playthrough data")
+    parser.add_argument("--files-only", action='store_true')
+    parser.add_argument("--start-idx", type=int, default=0, help="offset into the list of games")
+
     parser.add_argument("--export_files", action='store_true')
     parser.add_argument("--do_write", action='store_true')
     args = parser.parse_args()

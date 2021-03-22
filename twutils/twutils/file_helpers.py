@@ -20,12 +20,16 @@ def reformat_go_skill(sk):
 
 def split_gamename(gname):
     pieces = gname.split('-')
-    if len(pieces) >= 4 and pieces[0] == 'tw' and pieces[1] == 'cooking':
-        skills = pieces[2]
-        gid = pieces[3]
-    else:
+    if len(pieces) > 2 and pieces[0] == 'tw' and pieces[1] == 'cooking':
+        pieces = pieces[2:]
+    if len(pieces) > 1 and (pieces[0] == 'train' or pieces[0] == 'valid' or pieces[0] == 'test'):
+        pieces = pieces[1:]
+    if len(pieces) >= 2:
         skills = pieces[0]
         gid = pieces[1]
+    else:
+        skills = ""
+        gid = pieces[0]
     sklist = skills.split('+')
     return gid, [ reformat_go_skill(sk) for sk in sklist ]
 
@@ -40,6 +44,13 @@ def parse_gameid(game_name: str) -> str:
 
     segments = game_id.split('-')
     if len(segments) >= 2:
+        if len(segments) > 2:   # try chopping off the split- identifier (from TW 1.3 cooking.py generator script)
+            if segments[0] == "train" or segments[0] == "valid" or segments[0] == "test":
+                split = segments[0]+"-"
+                segments = segments[1:]
+            else:
+                print(f"WARNING: unexpected game name: {game_name}")
+                return game_id
         code, guid = segments[0:2]
         guid = guid.split('.')[0]
         guid = "{}..{}".format(guid[0:4], guid[-4:])

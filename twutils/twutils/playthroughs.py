@@ -8,7 +8,7 @@ import textworld
 import textworld.gym
 import gym
 
-from twutils.file_helpers import count_iter_items, parse_gameid, split_gamename
+from twutils.file_helpers import count_iter_items, split_gamename  # , parse_gameid
 from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
@@ -35,38 +35,36 @@ def playthrough_id(objective_name=GOAL_MEAL, seed=None):
     return f"{objective_name}_{seed}"
 
 
-def parse_gameid(game_name: str) -> str:
-    
-    game_id = game_name[11:] if game_name.startswith("tw-cooking-") else game_name
-        
-    segments = game_id.split('-')
-    if len(segments) >= 2:
-        code, guid = segments[0:2]
-        guid = guid.split('.')[0]
-        guid = "{}..{}".format(guid[0:4],guid[-4:])
-        segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', 0, '*', '*', '*', '*')
-        for seg in segments:
-            if seg.startswith('recipe'):
-                r = seg[len('recipe'):]
-            elif seg.startswith('go'):
-                g = int(seg[len('go'):])
-            elif seg.startswith('take'):
-                t = seg[len('take'):]
-            elif seg == 'cook':
-                k = 'k'
-            elif seg == 'cut':
-                c = 'c'
-            elif seg == 'open':
-                o = 'o'
-            elif seg == 'drop':
-                d = 'd'
-            else:
-                assert False, "unparsable game_id: {}".format(game_id)
-        shortcode = "r{}t{}{}{}{}{}g{:02d}-{}".format(r,t,k,c,o,d,g,guid)
-    else:
-        shortcode = game_id
-    return shortcode
+# def parse_gameid(game_name: str) -> str:
+#     game_id = game_name[11:] if game_name.startswith("tw-cooking-") else game_name
+#     segments = game_id.split('-')
+#     if len(segments) >= 2:
+#         code, guid = segments[0:2]
+#         guid = guid.split('.')[0]
+#         guid = "{}..{}".format(guid[0:4],guid[-4:])
+#         segments = code.split('+')
+#         r, t, g, k, c, o, d = ('0', '0', 0, '*', '*', '*', '*')
+#         for seg in segments:
+#             if seg.startswith('recipe'):
+#                 r = seg[len('recipe'):]
+#             elif seg.startswith('go'):
+#                 g = int(seg[len('go'):])
+#             elif seg.startswith('take'):
+#                 t = seg[len('take'):]
+#             elif seg == 'cook':
+#                 k = 'k'
+#             elif seg == 'cut':
+#                 c = 'c'
+#             elif seg == 'open':
+#                 o = 'o'
+#             elif seg == 'drop':
+#                 d = 'd'
+#             else:
+#                 assert False, "unparsable game_id: {}".format(game_id)
+#         shortcode = "r{}t{}{}{}{}{}g{:02d}-{}".format(r,t,k,c,o,d,g,guid)
+#     else:
+#         shortcode = game_id
+#     return shortcode
 
 
 def _collect_gamenames(games_dir=TW_TRAINING_DIR):
@@ -79,13 +77,14 @@ def _collect_gamenames(games_dir=TW_TRAINING_DIR):
         print("number of {} files in {} = {}".format(suffix, TW_TRAINING_DIR, len(training_games)))
     game_names_ = [s.split('.')[0] for s in training_games]
 
-    # remove the 'tw-cooking-' prefix
     if game_names_ and game_names_[0].startswith('tw-cooking-'):
+        # remove the 'tw-cooking-' prefix
         game_names = list(map(lambda gn: gn[11:], game_names_))
         games = defaultdict(list)
         for gn in game_names:
-            skills, gid = gn.split('-')
-            if not gid:
+            # skills, gid = gn.split('-')
+            gid, skills = split_gamename(gn)
+            if not skills or not skills[0]:
                 print("SPLIT FAILURE:", gn)
             else:
                 games[gid].append(gn) #defaultdict initializes with empty list
@@ -192,6 +191,7 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     observable_facts_serialized = [f.serialize() for f in observable_facts]
     step_key = format_stepkey(step_num)
     oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
+    oracle_state = infos['tw_o_state'][0] if 'tw_o_state' in infos else None
     step_json = {
         step_key: {
             'reward': rewards[0],
@@ -209,8 +209,10 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
             # 'GT_FACTS': world_facts_serialized,
         }
     }
+    if oracle_state:
+        step_json[step_key]['tw_o_state'] = oracle_state
     if step_num == 0 or dones[0]:  # at start of game or game over
-        step_json[format_stepkey(step_num)]['GT_FACTS'] = world_facts_serialized
+        step_json[step_key]['GT_FACTS'] = world_facts_serialized
     return step_json
 
 

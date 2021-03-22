@@ -13,6 +13,7 @@ from symbolic.task_modules import RecipeReaderTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
+from twutils.file_helpers import parse_gameid
 from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import ScoreToRewardWrapper, ConsistentFeedbackWrapper
 from ftwc.vocab import WordVocab
@@ -144,35 +145,35 @@ info_sample = {
 }
 
 
-def parse_gameid(game_id: str) -> str:
-    segments = game_id.split('-')
-    if len(segments) >= 4:
-        code, guid = segments[2:4]
-        guid = guid.split('.')[0]
-        guid = "{}..{}".format(guid[0:4],guid[-4:])
-        segments = code.split('+')
-        r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
-        for seg in segments:
-            if seg.startswith('recipe'):
-                r = seg[len('recipe'):]
-            elif seg.startswith('go'):
-                g = seg[len('go'):]
-            elif seg.startswith('take'):
-                t = seg[len('take'):]
-            elif seg == 'cook':
-                k = 'k'
-            elif seg == 'cut':
-                c = 'c'
-            elif seg == 'open':
-                o = 'o'
-            elif seg == 'drop':
-                d = 'd'
-            else:
-                assert False, "unparsable game_id: {}".format(game_id)
-        shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
-    else:
-        shortcode = game_id
-    return shortcode
+# def parse_gameid(game_id: str) -> str:
+#     segments = game_id.split('-')
+#     if len(segments) >= 4:
+#         code, guid = segments[2:4]
+#         guid = guid.split('.')[0]
+#         guid = "{}..{}".format(guid[0:4],guid[-4:])
+#         segments = code.split('+')
+#         r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
+#         for seg in segments:
+#             if seg.startswith('recipe'):
+#                 r = seg[len('recipe'):]
+#             elif seg.startswith('go'):
+#                 g = seg[len('go'):]
+#             elif seg.startswith('take'):
+#                 t = seg[len('take'):]
+#             elif seg == 'cook':
+#                 k = 'k'
+#             elif seg == 'cut':
+#                 c = 'c'
+#             elif seg == 'open':
+#                 o = 'o'
+#             elif seg == 'drop':
+#                 d = 'd'
+#             else:
+#                 assert False, "unparsable game_id: {}".format(game_id)
+#         shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
+#     else:
+#         shortcode = game_id
+#     return shortcode
 
 
 def get_game_id_from_infos(infos, idx):
@@ -253,6 +254,9 @@ class QaitEnvWrapper(gym.Wrapper):
                 infos = self._update_oracle(oracle, idx, infos, obs[idx], batch_size=len(obs),
                                             is_done=dones[idx], prev_action=prev_action, verbose=False)
         return obs, rewards, dones, infos
+
+    def close(self):
+        self.env.close()
 
     def _update_oracle(self, oracle, idx, infos, obstxt, batch_size=1, is_done=False, prev_action=None, verbose=False):
         # if is_done:   # if agent idx has already terminated, don't invoke it again
