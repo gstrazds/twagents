@@ -111,6 +111,8 @@ def simplify_feedback(feedback_str: str):
                 continue
             if "would you like to quit" in line.lower():
                 continue
+            if "would you like to restart" in line.lower():
+                continue
             if line:
                 if line.endswith(" Not bad."):  # You eat the meal. Not bad.
                     line = line[0:-9]
