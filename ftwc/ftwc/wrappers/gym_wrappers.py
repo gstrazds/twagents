@@ -262,6 +262,7 @@ class QaitEnvWrapper(gym.Wrapper):
         # if is_done:   # if agent idx has already terminated, don't invoke it again
         #     # actiontxt = 'do nothing'
         # else:
+        _tasks = oracle.task_exec.tasks_repr()
         actiontxt = self.invoke_oracle(oracle, idx, obstxt, infos, is_done, prev_action=prev_action, verbose=verbose)
         if actiontxt:
             if 'tw_o_step' not in infos:
@@ -269,6 +270,11 @@ class QaitEnvWrapper(gym.Wrapper):
                     f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
                 infos['tw_o_step'] = ['fake action'] * batch_size  # will be replaced before anyone sees these
             infos['tw_o_step'][idx] = actiontxt
+            if 'tw_o_stack' not in infos:
+                assert idx == 0, \
+                    f"if tw_o_stack is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
+                infos['tw_o_stack'] = ['[[ task ]]'] * batch_size  # will be replaced before anyone sees these
+            infos['tw_o_stack'][idx] = _tasks
         return infos
 
     def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True, objective='eat meal'):

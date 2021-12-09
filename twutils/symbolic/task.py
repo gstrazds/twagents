@@ -122,6 +122,9 @@ class Task:
         self._children = []   # keep track of subtasks that need to be revoked if this task fails or is revoked
         self._parent_task = parent_task
         self._do_only_once = False
+        self._verb = "<TASK>"
+        self._preposition = None
+        self._args = []
 
     def _knowledge_graph(self, gi):
         if self.use_groundtruth:
@@ -249,6 +252,12 @@ class Task:
             assert False, errmsg
         return act
 
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        words = [self._verb] + self._args
+        if len(words) > 2 and self._preposition:
+            words.insert(2, self._preposition)
+        return " ".join(words)
+
     def __str__(self):
         return "{}({}{}{})".format(
             self.description,
@@ -267,6 +276,7 @@ class CompositeTask(Task):
                 classname=type(self).__name__, tasklist=str([t for t in tasks]))
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self.tasks = tasks
+        self._verb = "<COMPOSITE>"
 
     @property
     def subtasks(self):
@@ -296,6 +306,8 @@ class SequentialTasks(CompositeTask):
     def __init__(self, tasks: List[Task], description=None, use_groundtruth=False):
         super().__init__(tasks, description=description, use_groundtruth=use_groundtruth)
         self._current_idx = 0
+        self._verb = "<SEQUENCE>"
+
 
     def reset_all(self):
         self._current_idx = 0
@@ -376,6 +388,7 @@ class ParallelTasks(CompositeTask):
     def __init__(self, tasks: List[Task], num_required=0, description=None, use_groundtruth=False):
         super().__init__(tasks, description=description, use_groundtruth=use_groundtruth)
         self.num_required = num_required
+        self._verb = "<PARALLEL>"
 
     def _generate_actions(self, kg) -> Action:
         assert False, f"{self} - Not Yet Implemented"

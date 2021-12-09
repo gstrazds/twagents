@@ -9,6 +9,9 @@ class SayLocationOfEntityTask(SingleActionTask):
                          use_groundtruth=use_groundtruth)
         self._entityname = entityname
 
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        return f"where is {self._entityname} ?"
+
     def activate(self, kg, exec):
         if kg.location_of_entity_is_known(self._entityname):
             if super().action:
@@ -29,6 +32,10 @@ class AnswerFoundTask(SingleActionTask):
                          description=f"AnswerFoundTask[{entityname}]",
                          use_groundtruth=use_groundtruth)
         self._entityname = entityname
+
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        return f"exists {self._entityname} ?"
+
 
     def activate(self, kg, exec):
         if super().action:

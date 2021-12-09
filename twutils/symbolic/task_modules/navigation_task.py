@@ -20,6 +20,8 @@ def get_door_if_closed(connection):
 class ExploreHereTask(Task):
     def __init__(self, description='', use_groundtruth=False, look_first=False):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self._verb = "explore"
+        self._args = ['here']
         self.look_first = look_first
         # self._path_task = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
         # self._children.append(self._path_task)
@@ -57,8 +59,11 @@ class ExploreHereTask(Task):
 class GoToNextRoomTask(Task):
     def __init__(self, connection=None, description='', use_groundtruth=False):
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self._verb = "enter"
         assert connection
         self._connection = connection
+        self._args = [connection.to_location.name]
+
 
     def check_result(self, response: str, kg: KnowledgeGraph) -> bool:
         return True
@@ -114,6 +119,15 @@ class PathTask(SequentialTasks):
         if not description:
             description = f"PathTask[{goalname}]"
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
+        self._verb = "go to"
+        self._args = [goalname]
+
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        return f"go to {self.goal_name}"
+        # words = [self._verb] + self._args
+        # if len(words) > 2 and self._preposition:
+        #     words.insert(2, self._preposition)
+        # return " ".join(words)
 
     def activate(self, kg, exec):
         if self.is_active:
@@ -202,6 +216,8 @@ class FindTask(Task):
         if not description:
             description = f"FindTask[{objname}]"
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self._verb = "find"
+        self._args = [objname]
         self.add_postcondition(_location_of_obj_is_known)
 
     # def check_result(self, response: str, kg: KnowledgeGraph) -> bool:
@@ -250,6 +266,8 @@ class GoToTask(Task):
         if not description:
             description = f"GoToTask[{objname}]"
         super().__init__(description=description, use_groundtruth=use_groundtruth)
+        self._verb = "walk to"
+        self._args = [objname]
         self.prereq.add_required_task(FindTask(objname, use_groundtruth=use_groundtruth))
         self.add_postcondition(_location_of_obj_is_here)
 

@@ -58,3 +58,7 @@ class SingleActionTask(SequentialActionsTask):
     def action(self):
         return self.actions[0] if self.actions else None
 
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        if self.action:
+            return self.action.text()
+        return "<UNSPECIFIED_ACTION>"

@@ -20,6 +20,9 @@ class TakeItemTask(Task):
 
         super().__init__(description=description, use_groundtruth=use_groundtruth)
         self._item_name = item_name
+        self._verb = "acquire"
+        self._args = [item_name]
+
         self.add_postcondition(_item_is_in_inventory)
         # self.prereq.add_required_object(item_name)  # need to be in the vicinity of this object
         self.prereq.add_required_task(GoToTask(item_name, use_groundtruth=use_groundtruth))
