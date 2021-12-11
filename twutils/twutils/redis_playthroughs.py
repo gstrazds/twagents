@@ -224,18 +224,20 @@ def create_skills_map(redserv=None, skillsmap_key=REDIS_FTWC_SKILLS_MAP, gameset
 # gata:v1:skills:recipe1 980
 # TOTAL # of game files for which skills have been mapped: 1400
 
-def count_game_files(dirpath):
+
+def _list_game_files(dirpath):
     game_names_ = []
     all_files = os.listdir(dirpath)
     # directory contains up to 3 files per game: *.json, *.ulx, *.z8
     print(f"Total files in {dirpath} = {count_iter_items(all_files)}" )
-    suffixes = ['.ulx', '.z8', '.json']
+    suffixes = ['.ulx', '.z8', '.json']  # will list all suffixes, but return only the last list
     for suffix in suffixes:
         game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
         if game_files:
             print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
-            game_names_ = [s.split('.')[0] for s in game_files]
+            game_names_ = [s.split('.')[0] for s in game_files]   # return only the last of 3 possible lists
     return game_names_
+
 
 def create_difficulty_map(redserv=None,
                           difficulty_map_key=REDIS_GATA_DIFFICULTY_MAP,
@@ -257,7 +259,7 @@ def create_difficulty_map(redserv=None,
         for level in range(1, 11):
             difficulty = f"difficulty_level_{level}"
             print("\n-------------------", difficulty)
-            games_list = count_game_files(game_dir + difficulty)
+            games_list = _list_game_files(game_dir + difficulty)
             game_names_.extend(games_list)
             _rj.sadd(difficulty_map_key+str(level), *games_list)
         print(f"total games in {game_dir}: {len(game_names_)} {len(set(game_names_))}")
