@@ -18,7 +18,7 @@ from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description
 from twutils.redis_ids import *
 from twutils.playthroughs import *
-#format_stepkey, start_game_for_playthrough, playthrough_step_to_json, step_game_for_playthrough
+#format_stepkey, start_game_for_playthrough, playthrough_step_to_json, step_game_for_playthrough, playthrough
 
 
 # default values, can be overriden by config or cmd line args
@@ -431,11 +431,11 @@ QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
 
 
 
-def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones, infos, cmds,
+def save_playthrough_step_info_to_redis(gamename, step_num, step_json, #obs, rewards, dones, infos, cmds,
                               redisbasekey=REDIS_FTWC_PLAYTHROUGHS, ptid=f'eatmeal_42',
                               do_write=False, redis=None, redis_ops=0):
     print(f"{'++' if do_write else '..'} step:[{step_num}] save_playthrough_step_info: {gamename} ({ptid})")
-    step_json = playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num)
+    # step_json = playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num)
 
     if do_write:
         step_key = list(step_json.keys())[0]  # get the first (and only) key
@@ -451,7 +451,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, obs, rewards, dones,
 #     print("--------------------------- Oracle Next Action: -----------------\n", infos['tw_o_step'][0])
 #     #print()
 #     print("--------------------------- Facts: ------------------------------\n", infos['facts'][0])
-    return redis_ops, step_json
+    return redis_ops
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
@@ -471,10 +471,6 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         if not os.path.exists(_gamefile):
             _gamefile = f"{gamedir}/{gamename}.ulx"
 
-    redis_ops = 0
-    num_steps = 0
-    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
-
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if not redis:
@@ -487,32 +483,19 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         elif skip_existing:
             if redis.jsonobjlen(f'{redisbasekey}:{gamename}', Path('.'+ptid)):  # if exists and non-empty
                 print(f"SKIPPED EXISTING playthrough {gamename}")
-                return num_steps, redis_ops
+                return num_steps, redis_ops, None
 
-    _dones = [0]
-    _rewards = [0]
-    next_cmds = ['start']
-    gymenv, _obs, _infos = start_game_for_playthrough(_gamefile)
-    redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
+    redis_ops = 0
+    num_steps = 0
+
+    step_array = playthrough(_gamefile, randseed=randseed)
+    for num_steps, step_json in enumerate(step_array):
+        redis_ops = save_playthrough_step_info_to_redis(gamename, num_steps, step_json,
                                     redisbasekey=redisbasekey,
                                     ptid=ptid,
                                     redis=redis,
                                     do_write=do_write, redis_ops=redis_ops)
 
-    step_array.append(playthru_step_data[format_stepkey(num_steps)])
-
-    next_cmds = _infos['tw_o_step']
-    while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
-        num_steps += 1
-        _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
-        redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, _obs, _rewards, _dones, _infos, next_cmds,
-                                            redisbasekey=redisbasekey,
-                                            ptid=ptid,
-                                            redis=redis,
-                                            do_write=do_write, redis_ops=redis_ops)
-        step_array.append(playthru_step_data[format_stepkey(num_steps)])
-        next_cmds = _infos['tw_o_step']
-    gymenv.close()
     print(f"----------------- {gamename} playthrough steps: {num_steps}  Redis writes {redis_ops} ----------------")
     return num_steps, redis_ops, step_array
 

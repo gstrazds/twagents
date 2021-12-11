@@ -6,7 +6,7 @@ import torch
 import textworld
 import textworld.gym
 from textworld import EnvInfos
-import rlpyt.envs.gym
+#import rlpyt.envs.gym
 
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
@@ -456,9 +456,6 @@ class QaitGym:
         print(f"Registered {len(gamefiles)} gamefiles as {batch_env_id}")
         for igf, gf in enumerate(gamefiles):
             print(f" *** make_batch_env registered [{igf}]: {gf}")
-        #TODO - fix crash: self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info, act_null_value='look', obs_null_value='')
-        # self.gym_env = rlpyt.envs.gym.make(env_id, info_example=info_sample)
-        ## The following lines are more-or-less copied from rlpyt.envs.gym.make()
         base_env = gym.make(batch_env_id)
         wrapped_env = ScoreToRewardWrapper(base_env)
         if request_infos and request_infos.feedback and not self.raw_obs_feedback_mode:
@@ -470,8 +467,6 @@ class QaitGym:
                 print("WARNING: QaitGym -- Skipping ConsistentFeedbackWrapper because request_infos.feedback is not set")
 
         gym_env = QaitEnvWrapper(wrapped_env, random_seed=self.random_seed, passive_oracle_mode=self.passive_oracle_mode)
-        # env_info = rlpyt.envs.gym.EnvInfoWrapper(gym_env, info_sample)
-        # #self.rlpyt_env = rlpyt.envs.gym.GymEnvWrapper(env_info)   # this used to crash
         return gym_env  #, batch_env_id
 
 

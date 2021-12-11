@@ -1,11 +1,12 @@
 import random
 
 import numpy as np
-# from collections import namedtuple
-from rlpyt.utils.collections import namedarraytuple
+from collections import namedtuple
+# from rlpyt.utils.collections import namedarraytuple
 
 # a snapshot of state to be stored in replay memory
-Transition = namedarraytuple('Transition', ('obs_word_ids', 'cmd_word_ids',
+#Transition = namedarraytuple('Transition', ('obs_word_ids', 'cmd_word_ids',
+Transition = namedtuple('Transition', ('obs_word_ids', 'cmd_word_ids',
                                        'reward', 'mask', 'done',
                                        'next_obs_word_ids',
                                        'next_word_masks'))

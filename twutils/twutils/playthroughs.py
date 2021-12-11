@@ -1,6 +1,7 @@
 import json
 from collections import defaultdict, OrderedDict
 import os
+import os.path
 
 from typing import List, Dict, Optional, Any
 
@@ -15,10 +16,11 @@ from twutils.gym_wrappers import normalize_feedback_vs_obs_description, simplify
 from ftwc.wrappers import QaitGym
 from ftwc.vocab import WordVocab
 
-# default values, usually overriden by config or cmd line args
-TW_TRAINING_DIR = '/ssd2tb/ftwc/games/train/'
-# TW_VALIDATION_DIR = '/ssd2tb/ftwc/games/valid/'
-# TW_TEST_DIR = '/ssd2tb/ftwc/games/test/'
+# default directory paths, usually overriden by env, config or cmd line args
+TW_GAMES_BASEDIR = '/ssd2tb/ftwc/games/'
+TW_TRAINING_DIR = TW_GAMES_BASEDIR + 'train/'
+# TW_VALIDATION_DIR = TW_GAMES_BASEDIR + 'valid/'
+# TW_TEST_DIR = TW_GAMES_BASEDIR + 'test/'
 
 CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
@@ -28,6 +30,22 @@ DEFAULT_PTHRU_SEED = 42
 GOAL_MEAL = 'eatmeal'
 GOAL_ANSWER_WHERE = 'whereis'
 GOAL_ANSWER_EXISTS = 'exists'
+
+
+def normalize_path(path_str: str, subdir: str = None):
+    if subdir:
+        path_str = os.path.join(path_str, subdir)
+    path_str = os.path.normpath(path_str)
+    path_str = os.path.join(path_str, '')   # make sure it ends with a trailing slash
+    return path_str
+
+
+def get_games_dir(basepath: str = None, splitname: str = 'train'):
+    if not basepath:
+        basepath = os.getenv('TW_GAMES_BASEDIR', TW_GAMES_BASEDIR)
+    games_dir = basepath
+    return normalize_path(games_dir, splitname)
+
 
 def playthrough_id(objective_name=GOAL_MEAL, seed=None):
     if seed is None:
@@ -67,14 +85,17 @@ def playthrough_id(objective_name=GOAL_MEAL, seed=None):
 #     return shortcode
 
 
-def _collect_gamenames(games_dir=TW_TRAINING_DIR):
-    training_files = os.listdir()
+def _collect_gamenames(games_dir=None):
+    if not games_dir:
+        games_dir = get_games_dir()    # retrieve the default dir for training games (based on env and config)
+
+    training_files = os.listdir(games_dir)
     # directory contains 3 files per game: *.json, *.ulx, *.z8
     print("Total training files = ", count_iter_items(training_files))
     suffixes = ['.json', '.z8', '.ulx']
     for suffix in suffixes:
         training_games = list(filter(lambda fname: fname.endswith(suffix), training_files))
-        print("number of {} files in {} = {}".format(suffix, TW_TRAINING_DIR, len(training_games)))
+        print("number of {} files in {} = {}".format(suffix, games_dir, len(training_games)))
     game_names_ = [s.split('.')[0] for s in training_games]
 
     if game_names_ and game_names_[0].startswith('tw-cooking-'):
@@ -148,10 +169,11 @@ MAX_PLAYTHROUGH_STEPS = 150
 def start_game_for_playthrough(gamefile,
                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
                                passive_oracle_mode=False,  # if True, don't predict next action
-                               max_episode_steps=MAX_PLAYTHROUGH_STEPS
+                               max_episode_steps=MAX_PLAYTHROUGH_STEPS,
+                               random_seed=DEFAULT_PTHRU_SEED
                                ):  #
     _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
-    _qgym_ = QaitGym(random_seed=DEFAULT_PTHRU_SEED,
+    _qgym_ = QaitGym(random_seed=random_seed,
                      raw_obs_feedback=raw_obs_feedback,
                      passive_oracle_mode=passive_oracle_mode)
     _qgym_env = _qgym_.make_batch_env([gamefile],
@@ -214,6 +236,29 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     if step_num == 0 or dones[0]:  # at start of game or game over
         step_json[step_key]['GT_FACTS'] = world_facts_serialized
     return step_json
+
+
+def playthrough(gamefile, randseed=DEFAULT_PTHRU_SEED):
+    num_steps = 0
+    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
+
+    _dones = [0]
+    _rewards = [0]
+    next_cmds = ['start']
+    gymenv, _obs, _infos = start_game_for_playthrough(gamefile, random_seed=randseed)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+
+    step_array.append(playthru_step_data[format_stepkey(num_steps)])
+
+    next_cmds = _infos['tw_o_step']
+    while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
+        num_steps += 1
+        _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+        step_array.append(playthru_step_data[format_stepkey(num_steps)])
+        next_cmds = _infos['tw_o_step']
+    gymenv.close()
+    return step_array
 
 
 from textworld.logic import Proposition  #, Variable, Signature, State
