@@ -420,7 +420,7 @@ class GamesIndex:
             print("WARNING( GamesIndex.add_pthrus_to_index called with EMPTY list of game_names:", game_names)
             return
         try:
-            idx_ptdir = self.pthru_dirs.index(pthrus_dir)
+            dir_index = self.pthru_dirs.index(pthrus_dir)
         except ValueError:
             self.pthru_dirs.append(pthrus_dir)
             dir_index = len(self.pthru_dirs)-1
@@ -440,7 +440,7 @@ class GamesIndex:
                 n_added += 1
 
             self._index[gn]['ptdir'] = dir_index
-        print(f"Added {n_added} pthtrus + {n_dupl}  updated  + {n_dupl} unchanged")
+        print(f"Added {n_added} pthtrus + {n_updated}  updated  + {n_dupl} unchanged")
 
     def get_dir_for_game(self, game_name):
         if not game_name in self._index:
