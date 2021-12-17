@@ -4,22 +4,21 @@ import os
 
 from typing import List, Dict, Optional, Any
 
-import textworld
-import textworld.gym
-import gym
+# import textworld
+# import textworld.gym
+# import gym
 
 
-import redis
-from redisgraph import Node, Edge, Graph, Path  # https://github.com/RedisGraph/redisgraph-py
-from rejson import Client, Path                 # https://github.com/RedisJSON/redisjson-py
+# import redis
+# from redisgraph import Node, Edge, Graph, Path  # https://github.com/RedisGraph/redisgraph-py
+# from rejson import Client, Path                 # https://github.com/RedisJSON/redisjson-py
 
 from twutils.file_helpers import count_iter_items, split_gamename  #, parse_gameid
 from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description
 from twutils.redis_ids import *
 from twutils.playthroughs import *
-# from twutils.playthroughs import format_stepkey, generate_playthru, export_playthru
-# from twutils.playthroughs import start_game_for_playthrough, playthrough_step_to_json, step_game_for_playthrough,
+#format_stepkey, start_game_for_playthrough, playthrough_step_to_json, step_game_for_playthrough
 
 
 # default values, can be overriden by config or cmd line args
@@ -146,25 +145,6 @@ def check_extracted_data(game_names=None, xtract_dir=XTRACT_DIR):
 # check_extracted_data(game_names=game_names_)
 
 
-def add_gamenames_to_redis(rediskey, listofnames):
-    if not redserv.exists(rediskey):
-        print("Added", redserv.sadd(rediskey, *listofnames), f"FTWC {rediskey} games to Redis")
-    else:
-        print("Redis has", redserv.scard(rediskey), f"{rediskey} game names")
-#
-# add_gamenames_to_redis(REDIS_FTWC_TRAINING, game_names_)
-
-# # directory contains 3 files per game: *.json, *.ulx, *.z8
-# suffixes = ['.json', '.ulx', '.z8']
-# for _dir, rediskey in [ (TW_VALIDATION_DIR, REDIS_FTWC_VALID), (TW_TEST_DIR, REDIS_FTWC_TEST) ]:
-#     print()
-#     _file_list =  os.listdir(_dir)
-#     for suffix in suffixes:
-#         _games = list(filter(lambda fname: fname.endswith(suffix), _file_list))
-#         print("number of {} files in {} = {}".format(suffix, _dir, len(_games)))
-#     _game_names_ = [s.split('.')[0] for s in _games]
-#     add_gamenames_to_redis(rediskey, _game_names_)
-
 FTWC_GAME_SETS = (REDIS_FTWC_TRAINING, REDIS_FTWC_VALID, REDIS_FTWC_TEST)
 GATA_GAME_SETS = (REDIS_GATA_TRAINING, REDIS_GATA_VALID, REDIS_GATA_TEST)
 
@@ -225,20 +205,18 @@ def create_skills_map(redserv=None, skillsmap_key=REDIS_FTWC_SKILLS_MAP, gameset
 # gata:v1:skills:recipe1 980
 # TOTAL # of game files for which skills have been mapped: 1400
 
-
-def _list_game_files(dirpath):
+def count_game_files(dirpath):
     game_names_ = []
     all_files = os.listdir(dirpath)
     # directory contains up to 3 files per game: *.json, *.ulx, *.z8
     print(f"Total files in {dirpath} = {count_iter_items(all_files)}" )
-    suffixes = ['.ulx', '.z8', '.json']  # will list all suffixes, but return only the last list
+    suffixes = ['.ulx', '.z8', '.json']
     for suffix in suffixes:
         game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
         if game_files:
             print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
-            game_names_ = [s.split('.')[0] for s in game_files]   # return only the last of 3 possible lists
+            game_names_ = [s.split('.')[0] for s in game_files]
     return game_names_
-
 
 def create_difficulty_map(redserv=None,
                           difficulty_map_key=REDIS_GATA_DIFFICULTY_MAP,
@@ -260,7 +238,7 @@ def create_difficulty_map(redserv=None,
         for level in range(1, 11):
             difficulty = f"difficulty_level_{level}"
             print("\n-------------------", difficulty)
-            games_list = _list_game_files(game_dir + difficulty)
+            games_list = count_game_files(game_dir + difficulty)
             game_names_.extend(games_list)
             _rj.sadd(difficulty_map_key+str(level), *games_list)
         print(f"total games in {game_dir}: {len(game_names_)} {len(set(game_names_))}")
@@ -335,92 +313,92 @@ def create_nsteps_map(redserv=None,
 # create_nsteps_map(nsteps_map_key=REDIS_FTWC_NSTEPS_MAP, nsteps_index_key=REDIS_FTWC_NSTEPS_INDEX, gameset_keys=FTWC_GAME_SETS)
 # create_nsteps_map(nsteps_map_key=REDIS_GATA_NSTEPS_MAP, nsteps_index_key=REDIS_GATA_NSTEPS_INDEX, gameset_keys=GATA_GAME_SETS)
 
-def select_games_for_mingpt(redserv=None):
-    if redserv is None:
-        _rj = Client(host='localhost', port=6379, decode_responses=True)
-    else:
-        _rj = redserv
-    # for n in range(70):
-    # rkey = f"{REDIS_FTWC_NSTEPS_INDEX}{n}"
-    #     if rj.exists(rkey):
-    #         n_nsteps = rj.scard(f"{REDIS_FTWC_NSTEPS_INDEX}{n}")
-    #         n_nodrop = rj.sdiff(f"{REDIS_FTWC_NSTEPS_INDEX}{n}", "ftwc:cog2019:skills:drop")
-    # #         maxtoks, mintoks = get_max_token_length(n_nodrop)
-    #         if n <= 32 and len(n_nodrop):
-    #             rj.sadd(REDIS_MINGPT_ALL, *n_nodrop)
-    #         print(f"{n:2d}:__{n_nsteps:3d}__{len(n_nodrop):3d}") #" {maxtoks:4d} {mintoks:4d}")
+# def select_games_for_mingpt(redserv=None):
+#     if redserv is None:
+#         _rj = Client(host='localhost', port=6379, decode_responses=True)
+#     else:
+#         _rj = redserv
+#     # for n in range(70):
+#     # rkey = f"{REDIS_FTWC_NSTEPS_INDEX}{n}"
+#     #     if rj.exists(rkey):
+#     #         n_nsteps = rj.scard(f"{REDIS_FTWC_NSTEPS_INDEX}{n}")
+#     #         n_nodrop = rj.sdiff(f"{REDIS_FTWC_NSTEPS_INDEX}{n}", "ftwc:cog2019:skills:drop")
+#     # #         maxtoks, mintoks = get_max_token_length(n_nodrop)
+#     #         if n <= 32 and len(n_nodrop):
+#     #             rj.sadd(REDIS_MINGPT_ALL, *n_nodrop)
+#     #         print(f"{n:2d}:__{n_nsteps:3d}__{len(n_nodrop):3d}") #" {maxtoks:4d} {mintoks:4d}")
+#
+#     if redserv is None:
+#         _rj.close()
 
-    if redserv is None:
-        _rj.close()
-
-def extracted_data_to_redis(game_names=None, xtract_dir=XTRACT_DIR, redis=None):
-
-    do_write = False
-
-    if not game_names:
-        game_names = []
-    itercount = 0
-    room_count = 0
-    desc_count = 0
-    failed_count = 0
-    max_desc_wlen = 0
-    max_desc_wlen = 0
-    max_desc_str = ''
-    redis_ops = 0
-    for bn in game_names: #[0:10]:
-        if do_write:
-            if not redis.exists(f'{REDIS_EXTRACTED_DATA}:{bn}'):
-                redis_ops += 1
-                redis.jsonset(f'{REDIS_EXTRACTED_DATA}:{bn}', Path.rootPath(), {'room': {}})
-        xdir = xtract_dir + '/' + bn
-        itercount += 1
-        data_files = os.listdir(xdir)
-        # suffixes = ['.room_state', '.desc']
-        suffix = '.room_state'
-        filtered_files = list(filter(lambda fname: fname.endswith(suffix), data_files))
-        sorted_files = list(map( lambda fname: fname.split('_', maxsplit=2), filtered_files ))
-        for i, tup in enumerate(sorted_files):
-            tup[1] = int(tup[1])  # convert room numbers from ascii to int
-            tup[2] = tup[2].split('.')[0]  # the room name
-            tup.append(filtered_files[i]) # add the original file name  (NOTE: tup is a list, not a tuple)
-        # sort by room number, not alphabetically
-        sorted_files = sorted(sorted_files)
-#         print(sorted_files[0:3])
-        for (_, i, room, f) in sorted_files:
-            obj_lines = []
-            room_count += 1
-            with open(xdir+'/'+f, 'r') as room_state_file:
-                state_str = room_state_file.read()
-            room_name = f.split('.')[0]
-            with open(xdir+'/'+room_name + '.desc', 'r') as desc_file:
-                desc_lines = [line.strip() for line in desc_file]
-                desc_str = ' '.join(desc_lines)
-                if len(desc_str):
-                    desc_count += 1
-                    if len(desc_str) > len(max_desc_str):
-                        if len(desc_str.split(' ')) > max_desc_wlen:
-                            max_desc_wlen = len(desc_str.split(' '))
-                            max_desc_str = desc_str
-            jsonobj = {
-                'room_name': room,
-                'room_id': i,
-                'init_descr': desc_str,
-                'init_state': state_str
-            }
-            if do_write:
-                redis_ops += 1
-                redis.jsonset(f'{REDIS_EXTRACTED_DATA}:{bn}', Path(f'.room.{room}'), jsonobj)
-                #print(bn, room.upper(), f)
-            
-    print("Processed", itercount, "games, ", room_count, "rooms." )
-    print(redis_ops, "redis write ops")
-    print("max room description length =", len(max_desc_str), "# words=", max_desc_wlen)
-    assert desc_count == room_count
-
-# extracted_data_to_redis(game_names=game_names_, redis=rj)
-## Processed 4440 games,  29400 rooms.
-## 0 redis write ops
-## max room description length = 1266 # words= 245
+# def extracted_data_to_redis(game_names=None, xtract_dir=XTRACT_DIR, redis=None):
+#
+#     do_write = False
+#
+#     if not game_names:
+#         game_names = []
+#     itercount = 0
+#     room_count = 0
+#     desc_count = 0
+#     failed_count = 0
+#     max_desc_wlen = 0
+#     max_desc_wlen = 0
+#     max_desc_str = ''
+#     redis_ops = 0
+#     for bn in game_names: #[0:10]:
+#         if do_write:
+#             if not redis.exists(f'{REDIS_EXTRACTED_DATA}:{bn}'):
+#                 redis_ops += 1
+#                 redis.jsonset(f'{REDIS_EXTRACTED_DATA}:{bn}', Path.rootPath(), {'room': {}})
+#         xdir = xtract_dir + '/' + bn
+#         itercount += 1
+#         data_files = os.listdir(xdir)
+#         # suffixes = ['.room_state', '.desc']
+#         suffix = '.room_state'
+#         filtered_files = list(filter(lambda fname: fname.endswith(suffix), data_files))
+#         sorted_files = list(map( lambda fname: fname.split('_', maxsplit=2), filtered_files ))
+#         for i, tup in enumerate(sorted_files):
+#             tup[1] = int(tup[1])  # convert room numbers from ascii to int
+#             tup[2] = tup[2].split('.')[0]  # the room name
+#             tup.append(filtered_files[i]) # add the original file name  (NOTE: tup is a list, not a tuple)
+#         # sort by room number, not alphabetically
+#         sorted_files = sorted(sorted_files)
+# #         print(sorted_files[0:3])
+#         for (_, i, room, f) in sorted_files:
+#             obj_lines = []
+#             room_count += 1
+#             with open(xdir+'/'+f, 'r') as room_state_file:
+#                 state_str = room_state_file.read()
+#             room_name = f.split('.')[0]
+#             with open(xdir+'/'+room_name + '.desc', 'r') as desc_file:
+#                 desc_lines = [line.strip() for line in desc_file]
+#                 desc_str = ' '.join(desc_lines)
+#                 if len(desc_str):
+#                     desc_count += 1
+#                     if len(desc_str) > len(max_desc_str):
+#                         if len(desc_str.split(' ')) > max_desc_wlen:
+#                             max_desc_wlen = len(desc_str.split(' '))
+#                             max_desc_str = desc_str
+#             jsonobj = {
+#                 'room_name': room,
+#                 'room_id': i,
+#                 'init_descr': desc_str,
+#                 'init_state': state_str
+#             }
+#             if do_write:
+#                 redis_ops += 1
+#                 redis.jsonset(f'{REDIS_EXTRACTED_DATA}:{bn}', Path(f'.room.{room}'), jsonobj)
+#                 #print(bn, room.upper(), f)
+#
+#     print("Processed", itercount, "games, ", room_count, "rooms." )
+#     print(redis_ops, "redis write ops")
+#     print("max room description length =", len(max_desc_str), "# words=", max_desc_wlen)
+#     assert desc_count == room_count
+#
+#  # extracted_data_to_redis(game_names=game_names_, redis=rj)
+#  ## Processed 4440 games,  29400 rooms.
+#  ## 0 redis write ops
+#  ## max room description length = 1266 # words= 245
 
 
 FTWC_ALL_VOCAB = '/ssd2tb/ftwc/all-vocab.txt'
@@ -438,7 +416,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, step_json, #obs, rew
                               redisbasekey=REDIS_FTWC_PLAYTHROUGHS, ptid=f'eatmeal_42',
                               do_write=False, redis=None, redis_ops=0):
     print(f"{'++' if do_write else '..'} step:[{step_num}] save_playthrough_step_info: {gamename} ({ptid})")
-    # step_json = playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num)
+#    step_json = playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num)
 
     if do_write:
         step_key = list(step_json.keys())[0]  # get the first (and only) key
@@ -454,7 +432,7 @@ def save_playthrough_step_info_to_redis(gamename, step_num, step_json, #obs, rew
 #     print("--------------------------- Oracle Next Action: -----------------\n", infos['tw_o_step'][0])
 #     #print()
 #     print("--------------------------- Facts: ------------------------------\n", infos['facts'][0])
-    return redis_ops
+    return redis_ops, step_json
 
 
 def save_playthrough_to_redis(gamename, gamedir=None,
@@ -474,6 +452,10 @@ def save_playthrough_to_redis(gamename, gamedir=None,
         if not os.path.exists(_gamefile):
             _gamefile = f"{gamedir}/{gamename}.ulx"
 
+    redis_ops = 0
+    num_steps = 0
+    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
+
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if not redis:
@@ -488,18 +470,33 @@ def save_playthrough_to_redis(gamename, gamedir=None,
                 print(f"SKIPPED EXISTING playthrough {gamename}")
                 return num_steps, redis_ops, None
 
-    redis_ops = 0
-    num_steps = 0
+    _dones = [0]
+    _rewards = [0]
+    next_cmds = ['start']
+    gymenv, _obs, _infos = start_game_for_playthrough(_gamefile)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+    # redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, step_json,
+    #                                 redisbasekey=redisbasekey,
+    #                                 ptid=ptid,
+    #                                 redis=redis,
+    #                                 do_write=do_write, redis_ops=redis_ops)
 
-    step_array = generate_playthru(_gamefile, randseed=randseed)
-    for num_steps, step_json in enumerate(step_array):
-        redis_ops = save_playthrough_step_info_to_redis(gamename, num_steps, step_json,
-                                    redisbasekey=redisbasekey,
-                                    ptid=ptid,
-                                    redis=redis,
-                                    do_write=do_write, redis_ops=redis_ops)
+    step_array.append(playthru_step_data[format_stepkey(num_steps)])
 
-    print(f"----------------- {gamename} playthrough steps: {num_steps}  Redis writes {redis_ops} ----------------")
+    next_cmds = _infos['tw_o_step']
+    while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
+        num_steps += 1
+        _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+        # redis_ops, playthru_step_data = save_playthrough_step_info_to_redis(gamename, num_steps, step_json,
+        #                                     redisbasekey=redisbasekey,
+        #                                     ptid=ptid,
+        #                                     redis=redis,
+        #                                     do_write=do_write, redis_ops=redis_ops)
+        step_array.append(playthru_step_data[format_stepkey(num_steps)])
+        next_cmds = _infos['tw_o_step']
+    gymenv.close()
+    print(f"----------------- {gamename} playthrough steps: {num_steps}  ----------------")
     return num_steps, redis_ops, step_array
 
 
@@ -766,8 +763,8 @@ if __name__ == "__main__":
                                                                 redis=None,
                                                                 redisbasekey=None,
                                                                 do_write=False)
-                for s in playthru:
-                    print(s, '\n')
+                # for s in playthru:
+                #     print(s, '\n')
                 if args.export_files:
                     total_files += export_playthru(gname.split('.')[0], playthru, destdir=destdir)
             else:

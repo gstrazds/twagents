@@ -7,11 +7,13 @@ from typing import List, Dict, Optional, Any
 
 import textworld
 import textworld.gym
-import gym
+from textworld.logic import Proposition  #, Variable, Signature, State
 
 from twutils.file_helpers import count_iter_items, split_gamename  # , parse_gameid
 from twutils.twlogic import filter_observables
 from twutils.gym_wrappers import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
+
+from symbolic.knowledge_graph import KnowledgeGraph
 
 from ftwc.wrappers import QaitGym
 from ftwc.vocab import WordVocab
@@ -237,10 +239,10 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     return step_json
 
 
-def playthrough(gamefile, randseed=DEFAULT_PTHRU_SEED):
-    num_steps = 0
+def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED):
     step_array = []  # convert json dict data (with redundant keys) to an array for convenience
 
+    num_steps = 0
     _dones = [0]
     _rewards = [0]
     next_cmds = ['start']
@@ -258,10 +260,6 @@ def playthrough(gamefile, randseed=DEFAULT_PTHRU_SEED):
         next_cmds = _infos['tw_o_step']
     gymenv.close()
     return step_array
-
-
-from textworld.logic import Proposition  #, Variable, Signature, State
-from symbolic.knowledge_graph import KnowledgeGraph
 
 
 def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
@@ -353,6 +351,69 @@ def _list_game_files(dirpath):
             print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
             game_names_ = [s.split('.')[0] for s in game_files]   # return only the last of 3 possible lists
     return game_names_
+
+
+def export_playthru(gn, playthru, destdir='.', dry_run=False):
+
+    # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
+    # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
+    #_rj = Client(host='localhost', port=6379, decode_responses=True)
+
+    # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
+    pthru_all = ''
+    kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+    num_files = 0
+    for i, stepdata in enumerate(playthru):
+        prev_action = stepdata['prev_action']
+        if prev_action and " the " in prev_action:
+            prev_action = prev_action.replace(" the ", " ")
+            stepdata['prev_action'] = prev_action
+
+        kg_descr = get_kg_descr(kg_accum, stepdata)
+        prev_options = kg_accum.set_formatting_options('parsed-obs')
+        assert prev_options == 'kg-descr', prev_options
+        kg_descr_without_oracle = get_kg_descr(kg_accum, stepdata)
+        kg_accum.set_formatting_options(prev_options)
+
+        # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
+        outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
+        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
+
+        pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True)
+        xdir = destdir + '/' + gn
+        if not os.path.exists(xdir):
+            if not dry_run:
+                os.makedirs(xdir)
+        if not dry_run:
+            with open(xdir+f'/_step_{i:02d}.txt', 'w') as outfile:
+                outfile.write(outstr)
+        num_files += 1
+        if not dry_run:
+            with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
+                outfile.write(pthru)
+        num_files += 1
+        if not dry_run:
+            with open(xdir + f'/step_{i:02d}.othru', 'w') as outfile:
+                outfile.write(pthru0)
+        num_files += 1
+    if not dry_run:
+        with open(destdir+f'/{gn}.pthru', 'w') as outfile:
+            outfile.write(pthru_all)
+    num_files += 1
+    return num_files
+
+
+def retrieve_playthrough_json(gamename, ptdir=None,
+        ptid=playthrough_id(),  # default ptid based on default goal and randseed, can optionally specify
+        ):
+
+    if ptdir is None:
+        ptdir = "./"
+    ptdir = normalize_path(ptdir)
+    _ptjson = os.path.join(ptdir, gamename+"_PT.json")
+    with open(_ptjson, "r") as infile:
+        step_array = json.load(infile)
+    return step_array
 
 
 def map_gata_difficulty(game_dirs):
