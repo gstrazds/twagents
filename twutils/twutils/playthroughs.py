@@ -49,11 +49,121 @@ def get_games_dir(basepath: str = None, splitname: str = 'train'):
     return normalize_path(games_dir, splitname)
 
 
-def playthrough_id(objective_name=GOAL_MEAL, seed=None):
+def playthrough_id(objective_name=None, seed=None):
     if seed is None:
         seed = DEFAULT_PTHRU_SEED
+    if not objective_name:
+        objective_name = GOAL_MEAL
+
     return f"{objective_name}_{seed}"
 
+
+class GamesIndex:
+    def __init__(self):
+        self._index = {}   # maps game_name => {'skills': list of skills, 'dir': index in _game_dirs}
+        self.game_dirs = []
+        self.pthru_dirs = []
+
+    def add_games_to_index(self, games_dir: str, game_names: List[str]):
+        if not game_names:
+            print("WARNING( GamesIndex.add_games_to_index called with EMPTY list of game_names:", game_names)
+            return
+        try:
+            dir_index = self.game_dirs.index(games_dir)
+        except ValueError:
+            self.game_dirs.append(games_dir)
+            dir_index = len(self.game_dirs)-1
+
+        n_dupl = 0
+        n_added = 0
+        for gn in game_names:
+            gid, skills = split_gamename(gn)
+            if gn in self._index:
+                n_dupl += 1
+                skills0 = self._index[gn].get('skills', None)
+                gid0 = self._index[gn].get('gid', None)
+                idx0 = self._index[gn].get('dir', None)
+                assert skills0 == skills, f"Inconsistent existing entry for {games_dir} / {gn}: {skills0} {skills}"
+                assert gid0 == gid, f"Inconsistent existing entry for {games_dir} / {gn}: {gid0} {gid}"
+                assert idx0 == dir_index, f"Inconsistent existing entry for {games_dir} / {gn}: {idx0} {dir_index}"
+            else:
+                self._index[gn] = {'dir': dir_index, 'skills': skills, 'gid': gid}
+                n_added += 1
+        print(f"Added {n_added} games ; {n_dupl} duplicates skipped")
+
+    def add_pthrus_to_index(self, pthrus_dir: str, game_names: List[str]):
+        if not game_names:
+            print("WARNING( GamesIndex.add_pthrus_to_index called with EMPTY list of game_names:", game_names)
+            return
+        try:
+            dir_index = self.pthru_dirs.index(pthrus_dir)
+        except ValueError:
+            self.pthru_dirs.append(pthrus_dir)
+            dir_index = len(self.pthru_dirs)-1
+
+        n_dupl = 0
+        n_added = 0
+        n_updated = 0
+        for gn in game_names:
+            assert gn in self._index, f"Game {gn} must be indexed before playthough can be indexed"
+            if 'ptdir'in self._index[gn]:
+                if self._index[gn]['ptdir'] != dir_index:
+                    n_updated += 1
+                    print(f"WARNING: replacing {self.get_dir_for_pthru(gn)} <= {pthrus_dir}")
+                else:
+                    n_dupl += 1
+            else:
+                n_added += 1
+
+            self._index[gn]['ptdir'] = dir_index
+        print(f"Added {n_added} pthtrus + {n_updated}  updated  + {n_dupl} unchanged")
+
+    def get_dir_for_game(self, game_name):
+        if not game_name in self._index:
+            return None
+        return self.game_dirs[self._index[game_name]['dir']]
+
+    def get_dir_for_pthru(self, game_name):
+        if not game_name in self._index:
+            return None
+        idx_ptdir = self._index[game_name].get('ptdir', None)
+        if idx_ptdir is None:
+            return None
+        return self.pthru_dirs[idx_ptdir]
+
+    def get_skills_for_game(self, game_name):
+        if not game_name in self._index:
+            return None
+        return self._index[game_name]['skills']
+
+    def count_and_index_gamefiles(self, which, dirpath, suffixes=None):
+        if not suffixes:
+            suffixes = ['.ulx', '.z8', '.json']
+        game_names_ = []
+        all_files = os.listdir(dirpath)
+        # directory contains up to 3 files per game: *.json, *.ulx, *.z8
+        print(f"Total files in {dirpath} = {count_iter_items(all_files)}" )
+        for suffix in suffixes:
+            game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
+            if game_files:
+                print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
+                game_names_ = [s.split('.')[0] for s in game_files]
+        self.add_games_to_index(dirpath, game_names_)
+        return game_names_
+
+    def count_and_index_pthrus(self, which, dirpath):
+        suffixes = ['.pthru']
+        game_names_ = []
+        all_files = os.listdir(dirpath)
+        # directory contains up to 3 files per game: *.json, *.ulx, *.z8
+        print(f"Total files in {dirpath} = {count_iter_items(all_files)}" )
+        for suffix in suffixes:
+            game_files = list(filter(lambda fname: fname.endswith(suffix), all_files))
+            if game_files:
+                print("number of {} files in {} = {}".format(suffix, dirpath, len(game_files)))
+                game_names_ = [s.split('.')[0] for s in game_files]
+        self.add_pthrus_to_index(dirpath, game_names_)
+        return game_names_
 
 # def parse_gameid(game_name: str) -> str:
 #     game_id = game_name[11:] if game_name.startswith("tw-cooking-") else game_name
@@ -403,12 +513,15 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False):
     return num_files
 
 
-def retrieve_playthrough_json(gamename, ptdir=None,
-        ptid=playthrough_id(),  # default ptid based on default goal and randseed, can optionally specify
-        ):
+def retrieve_playthrough_json(gamename, ptdir=None, gindex: GamesIndex = None, ptid=None):
+    # if not ptid:  #allow for multiple playthroughs per game
+    #     ptid=playthrough_id(),  # default ptid based on default goal and randseed, can optionally specify
 
     if ptdir is None:
-        ptdir = "./"
+        if gindex:
+            ptdir = gindex.get_dir_for_pthru(gamename)
+        if ptdir is None:
+            ptdir = "./"
     ptdir = normalize_path(ptdir)
     _ptjson = os.path.join(ptdir, gamename+"_PT.json")
     with open(_ptjson, "r") as infile:
@@ -442,81 +555,3 @@ def lookup_difficulty_level(gamename, difficulty_map):
             break
     return level
 
-
-class GamesIndex:
-    def __init__(self):
-        self._index = {}   # maps game_name => {'skills': list of skills, 'dir': index in _game_dirs}
-        self.game_dirs = []
-        self.pthru_dirs = []
-
-    def add_games_to_index(self, games_dir: str, game_names: List[str]):
-        if not game_names:
-            print("WARNING( GamesIndex.add_games_to_index called with EMPTY list of game_names:", game_names)
-            return
-        try:
-            dir_index = self.game_dirs.index(games_dir)
-        except ValueError:
-            self.game_dirs.append(games_dir)
-            dir_index = len(self.game_dirs)-1
-
-        n_dupl = 0
-        n_added = 0
-        for gn in game_names:
-            gid, skills = split_gamename(gn)
-            if gn in self._index:
-                n_dupl += 1
-                skills0 = self._index[gn].get('skills', None)
-                gid0 = self._index[gn].get('gid', None)
-                idx0 = self._index[gn].get('dir', None)
-                assert skills0 == skills, f"Inconsistent existing entry for {games_dir} / {gn}: {skills0} {skills}"
-                assert gid0 == gid, f"Inconsistent existing entry for {games_dir} / {gn}: {gid0} {gid}"
-                assert idx0 == dir_index, f"Inconsistent existing entry for {games_dir} / {gn}: {idx0} {dir_index}"
-            else:
-                self._index[gn] = {'dir': dir_index, 'skills': skills, 'gid': gid}
-                n_added += 1
-        print(f"Added {n_added} games ; {n_dupl} duplicates skipped")
-
-    def add_pthrus_to_index(self, pthrus_dir: str, game_names: List[str]):
-        if not game_names:
-            print("WARNING( GamesIndex.add_pthrus_to_index called with EMPTY list of game_names:", game_names)
-            return
-        try:
-            dir_index = self.pthru_dirs.index(pthrus_dir)
-        except ValueError:
-            self.pthru_dirs.append(pthrus_dir)
-            dir_index = len(self.pthru_dirs)-1
-
-        n_dupl = 0
-        n_added = 0
-        n_updated = 0
-        for gn in game_names:
-            assert gn in self._index, f"Game {gn} must be indexed before playthough can be indexed"
-            if 'ptdir'in self._index[gn]:
-                if self._index[gn]['ptdir'] != dir_index:
-                    n_updated += 1
-                    print(f"WARNING: replacing {self.get_dir_for_pthru(gn)} <= {pthrus_dir}")
-                else:
-                    n_dupl += 1
-            else:
-                n_added += 1
-
-            self._index[gn]['ptdir'] = dir_index
-        print(f"Added {n_added} pthtrus + {n_updated}  updated  + {n_dupl} unchanged")
-
-    def get_dir_for_game(self, game_name):
-        if not game_name in self._index:
-            return None
-        return self.game_dirs[self._index[game_name]['dir']]
-
-    def get_dir_for_pthru(self, game_name):
-        if not game_name in self._index:
-            return None
-        idx_ptdir = self._index[game_name].get('ptdir', None)
-        if idx_ptdir is None:
-            return None
-        return self.pthru_dirs[idx_ptdir]
-
-    def get_skills_for_game(self, game_name):
-        if not game_name in self._index:
-            return None
-        return self._index[game_name]['skills']
