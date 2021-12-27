@@ -517,11 +517,10 @@ def retrieve_playthrough_json(gamename, ptdir=None, gindex: GamesIndex = None, p
     # if not ptid:  #allow for multiple playthroughs per game
     #     ptid=playthrough_id(),  # default ptid based on default goal and randseed, can optionally specify
 
+    if gindex:
+        ptdir = gindex.get_dir_for_pthru(gamename)
     if ptdir is None:
-        if gindex:
-            ptdir = gindex.get_dir_for_pthru(gamename)
-        if ptdir is None:
-            ptdir = "./"
+        ptdir = "./"
     ptdir = normalize_path(ptdir)
     _ptjson = os.path.join(ptdir, gamename+"_PT.json")
     with open(_ptjson, "r") as infile:
