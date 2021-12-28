@@ -2,6 +2,8 @@ import json
 from collections import defaultdict, OrderedDict
 import os
 import os.path
+import glob
+from pathlib import Path
 
 from typing import List, Dict, Optional, Any
 
@@ -21,6 +23,8 @@ from ftwc.vocab import WordVocab
 # default directory paths, usually overriden by env, config or cmd line args
 TW_GAMES_BASEDIR = '/ssd2tb/ftwc/games/'
 TW_TRAINING_DIR = TW_GAMES_BASEDIR + 'train/'
+DEFAULT_FTWC_PTHRU_BASE = '/work2/gstrazds/ftwc/playthru_data/'
+
 # TW_VALIDATION_DIR = TW_GAMES_BASEDIR + 'valid/'
 # TW_TEST_DIR = TW_GAMES_BASEDIR + 'test/'
 
@@ -63,6 +67,22 @@ class GamesIndex:
         self._index = {}   # maps game_name => {'skills': list of skills, 'dir': index in _game_dirs}
         self.game_dirs = []
         self.pthru_dirs = []
+        self.skills_index = {}    # maps skill name => set of gamenames
+        self._skills_up_to_date = False
+
+    def recompute_skills_index(self):
+        self.skills_index = defaultdict(set)
+        for gn in self._index:
+            skills_list = self.get_skills_for_game(gn)
+            if skills_list:
+                for skill in skills_list:
+                    self.skills_index[skill].add(gn)
+        self._skills_up_to_date = True
+
+    def get_skills_map(self):
+        if not self._skills_up_to_date:
+            self.recompute_skills_index()
+        return self.skills_index
 
     def add_games_to_index(self, games_dir: str, game_names: List[str]):
         if not game_names:
@@ -530,6 +550,47 @@ def retrieve_playthrough_json(gamename, ptdir=None, gindex: GamesIndex = None, p
     with open(_ptjson, "r") as infile:
         step_array = json.load(infile)
     return step_array
+
+
+def retrieve_playthrough_nsteps(gamename, ptdir=None, gindex: GamesIndex = None, ptid=None):
+    pt_json = retrieve_playthrough_json(gamename, ptdir=ptdir, gindex=gindex, ptid=ptid)
+    return len(pt_json)
+
+
+def find_gn_in_nsteps_index(nsteps_index, gn):
+    for i, nsteps_set in enumerate(nsteps_index):
+        if gn in nsteps_set:
+            return i
+    return -1
+
+
+def get_nsteps_index(ptpatterns:List[str]=None, ptid=None):
+    if not ptpatterns:
+        ptpatterns = [normalize_path(os.getenv('FTWC_PTHRU', DEFAULT_FTWC_PTHRU_BASE))+"**/*_PT.json"]
+    # returns an array -- nsteps_map[n] is a set of gamenames with len(pthru) == n
+    nsteps_index = [set()]  # by default, an empty set of games with zero nsteps
+    _max_nsteps = 0
+    for globpattern in ptpatterns:
+        print(globpattern)
+        ptfiles = list(glob.glob(globpattern))
+        for ptfile in ptfiles:
+            #print(ptfile)
+            with open(ptfile, "r") as infile:
+                assert Path(ptfile).stem.endswith('_PT')
+                gn = Path(ptfile).stem[:-3]
+                step_array = json.load(infile)
+                _nsteps = len(step_array)
+                already_indexed = find_gn_in_nsteps_index(nsteps_index, gn)
+                if already_indexed > -1:
+                    print(f"ALREADY INDEXED ({_nsteps} {already_indexed}) gn={gn}")
+                    if already_indexed != _nsteps:
+                        assert False, f"!!! ALREADY INDEXED ({_nsteps} {already_indexed}) gn={gn}"
+
+                while _nsteps > _max_nsteps:
+                    _max_nsteps = len(nsteps_index)   # _max_nsteps += 1
+                    nsteps_index.append(set())    # emtpy set
+                nsteps_index[_nsteps].add(gn)
+    return nsteps_index
 
 
 def map_gata_difficulty(game_dirs):
