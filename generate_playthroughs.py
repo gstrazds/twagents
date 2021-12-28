@@ -116,17 +116,18 @@ if __name__ == "__main__":
                 else:
                     basepath = args.input_dir
                 splitname = subset
-            basepath = normalize_path(basepath, splitname)
+            subsetpath = normalize_path(basepath, splitname)
             gamenames = []
             for level in levels:
                 if difficulty_prefix:
                     subdir = difficulty_prefix.format(level=level)
                 else:
                     subdir = None
-                gamespath = normalize_path(basepath, subdir)
                 if args.reexport_pthrus:
-                    gamenames.extend(games_index.count_and_index_pthrus(which=splitname, dirpath=gamespath))
+                    # gamespath = normalize_path(basepath, args.which)
+                    gamenames.extend(games_index.count_and_index_pthrus(which=splitname, dirpath=basepath))
                 else:
+                    gamespath = normalize_path(subsetpath, subdir)
                     gamenames.extend(games_index.count_and_index_gamefiles(which=splitname, dirpath=gamespath))
             if args.which == 'miniset':
                 # gamenames = list(gamenames)[0:3]   # just the first 3
@@ -165,8 +166,7 @@ if __name__ == "__main__":
                 if args.which == 'extra':
                     print(f"[{i}] {gname}")
                     gname = gname.split('.')[0]   # just in case
-                num_steps, playthru = \
-                    generate_and_export_pthru(gname,
+                num_steps, playthru = generate_and_export_pthru(gname,
                                               gamedir=gamespath,
                                               gindex=games_index,
                                               outdir=destdir,
