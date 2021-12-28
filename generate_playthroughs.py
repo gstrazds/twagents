@@ -2,8 +2,8 @@ import os
 import os.path
 import json
 from pathlib import Path
-from twutils.playthroughs import generate_playthru, export_playthru, get_games_dir, normalize_path, GamesIndex
-from twutils.playthroughs import playthrough_id, _list_game_files
+from twutils.playthroughs import generate_playthru, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
+from twutils.playthroughs import playthrough_id, normalize_path, _list_game_files
 
 def generate_and_export_pthru(gamename, gamedir, outdir,
                               ptdir=None,   # directory for PT.json files (read if not do_generate, else write)
@@ -92,17 +92,18 @@ if __name__ == "__main__":
                 gamenames = gamenames[args.start_idx:args.start_idx+1000]
             #small slice FOR TESTING: gamenames = gamenames[0:5]
         else:
+            difficulty_prefix = ''
+            levels = [0]  # FTWC doesn't segregate games by difficulty levels
             if (args.which).startswith("gata_"):
-                difficulty_prefix = 'difficulty_level_'
-                levels = list(range(1,11))   # 10 difficulty levels, numbered from 1 to 10
+                if not args.reexport_pthrus:
+                    difficulty_prefix = 'difficulty_level_{level:d}'
+                    levels = list(range(1,11))   # 10 difficulty levels, numbered from 1 to 10
                 if not args.input_dir:
                     basepath = os.getenv('GATA_BASEDIR', '/work2/gstrazds/gata/rl.0.2')
                 else:
                     basepath = args.input_dir
                 splitname = subset
             else:  #by default we use FTWC games
-                difficulty_prefix = ''
-                levels = [0]  #FTWC doesn't segregate games by difficulty levels
 
                 if not args.input_dir:
                     # TW_TRAINING_DIR = get_games_dir(basepath=TW_GAMES_BASEDIR,splitname='train')  # '/ssd2tb/ftwc/games/train/'
@@ -119,11 +120,14 @@ if __name__ == "__main__":
             gamenames = []
             for level in levels:
                 if difficulty_prefix:
-                    subdir = difficulty_prefix + str(level)
+                    subdir = difficulty_prefix.format(level=level)
                 else:
                     subdir = None
                 gamespath = normalize_path(basepath, subdir)
-                gamenames.extend(games_index.count_and_index_gamefiles(which=splitname, dirpath=gamespath))
+                if args.reexport_pthrus:
+                    gamenames.extend(games_index.count_and_index_pthrus(which=splitname, dirpath=gamespath))
+                else:
+                    gamenames.extend(games_index.count_and_index_gamefiles(which=splitname, dirpath=gamespath))
             if args.which == 'miniset':
                 # gamenames = list(gamenames)[0:3]   # just the first 3
                 gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']

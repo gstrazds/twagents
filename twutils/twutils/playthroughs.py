@@ -105,17 +105,21 @@ class GamesIndex:
         n_added = 0
         n_updated = 0
         for gn in game_names:
-            assert gn in self._index, f"Game {gn} must be indexed before playthough can be indexed"
-            if 'ptdir'in self._index[gn]:
-                if self._index[gn]['ptdir'] != dir_index:
-                    n_updated += 1
-                    print(f"WARNING: replacing {self.get_dir_for_pthru(gn)} <= {pthrus_dir}")
-                else:
-                    n_dupl += 1
-            else:
+            if gn not in self._index:
+                self._index[gn] = {'ptdir': dir_index}
                 n_added += 1
+            else:
+                assert gn in self._index, f"Game {gn} must be indexed before playthough can be indexed"
+                if 'ptdir'in self._index[gn]:
+                    if self._index[gn]['ptdir'] != dir_index:
+                        n_updated += 1
+                        print(f"WARNING: replacing {self.get_dir_for_pthru(gn)} <= {pthrus_dir}")
+                    else:
+                        n_dupl += 1
+                else:
+                    n_added += 1
+                self._index[gn]['ptdir'] = dir_index
 
-            self._index[gn]['ptdir'] = dir_index
         print(f"Added {n_added} pthtrus + {n_updated}  updated  + {n_dupl} unchanged")
 
     def get_dir_for_game(self, game_name):
@@ -138,7 +142,7 @@ class GamesIndex:
 
     def count_and_index_gamefiles(self, which, dirpath, suffixes=None):
         if not suffixes:
-            suffixes = ['.ulx', '.z8', '.json']
+            suffixes = ['.ulx', '.z8', ]  #'.json']
         game_names_ = []
         all_files = os.listdir(dirpath)
         # directory contains up to 3 files per game: *.json, *.ulx, *.z8
