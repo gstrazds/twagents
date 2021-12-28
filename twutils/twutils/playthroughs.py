@@ -24,6 +24,7 @@ from ftwc.vocab import WordVocab
 TW_GAMES_BASEDIR = '/ssd2tb/ftwc/games/'
 TW_TRAINING_DIR = TW_GAMES_BASEDIR + 'train/'
 DEFAULT_FTWC_PTHRU_BASE = '/work2/gstrazds/ftwc/playthru_data/'
+DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/gata/playthru_data/'
 
 # TW_VALIDATION_DIR = TW_GAMES_BASEDIR + 'valid/'
 # TW_TEST_DIR = TW_GAMES_BASEDIR + 'test/'
