@@ -267,7 +267,7 @@ cooking_adjs = ['raw', 'diced', 'fried', 'chopped', 'grilled',
 
 #remove (closed), (locked), (open) if 
 def remove_parenthetical_state(line):
-    splitline = line.split(' (')
+    splitline = line.split(' (')ll 
     if len(splitline) > 1 and line[-1] == ')':
         return splitline[0]
     #else:
@@ -349,7 +349,7 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     observable_facts_serialized = [f.serialize() for f in observable_facts]
     step_key = format_stepkey(step_num)
     oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
-    oracle_state = infos['tw_o_state'][0] if 'tw_o_state' in infos else None
+    oracle_stack = infos['tw_o_stack'][0] if 'tw_o_stack' in infos else None
     step_json = {
         step_key: {
             'reward': rewards[0],
@@ -367,8 +367,8 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
             # 'GT_FACTS': world_facts_serialized,
         }
     }
-    if oracle_state:
-        step_json[step_key]['tw_o_state'] = oracle_state
+    if oracle_stack:
+        step_json[step_key]['tw_o_stack'] = oracle_stack
     if step_num == 0 or dones[0]:  # at start of game or game over
         step_json[step_key]['GT_FACTS'] = world_facts_serialized
     return step_json
