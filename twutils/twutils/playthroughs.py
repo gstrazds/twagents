@@ -447,6 +447,8 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
 
    # print(f"[{i}] {gn} .....")
     pthru = ''
+    if 'rtg' in stepdata:
+        pthru += f"[[[ {stepdata['rtg']} ]]]\n"
     if 'tw_o_stack' in stepdata:
         pthru += format_taskstack(stepdata['tw_o_stack'])
     outstr = f"\n{CMD_START_TOKEN} {prev_action} {CMD_END_TOKEN}\n"
@@ -494,7 +496,7 @@ def _list_game_files(dirpath):
     return game_names_
 
 
-def export_playthru(gn, playthru, destdir='.', dry_run=False):
+def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
@@ -502,10 +504,17 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False):
 
     # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
     pthru_all = ''
-    kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+    kg_accum = KnowledgeGraph(None, debug=True)   # suppress excessive print() outs
     num_files = 0
+    max_score = max([stepdata['score'] for stepdata in playthru])
+    end_score = playthru[-1]['score']
+    return_to_go = max_score
     for i, stepdata in enumerate(playthru):
         prev_action = stepdata['prev_action']
+        if rtg:
+            stepdata['rtg'] = return_to_go
+        return_to_go -= stepdata['reward']
+        assert return_to_go == max_score - stepdata['score'], f"max_score:{max_score} score:{stepdata['score']} rtg:{return_to_go}"
         if prev_action and " the " in prev_action:
             prev_action = prev_action.replace(" the ", " ")
             stepdata['prev_action'] = prev_action

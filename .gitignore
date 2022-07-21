@@ -2,6 +2,10 @@
 foo
 tmp/
 tmp_*
+*.hold/
+
+# generated playthrough data
+playthrus/
 
 # console output files
 out/
@@ -9,6 +13,7 @@ results/
 console_out/
 tmp_out*.txt
 nail_logs/
+*.out
 
 # trained models
 saved_models/
