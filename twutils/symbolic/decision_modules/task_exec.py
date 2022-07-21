@@ -57,12 +57,23 @@ class TaskExec(DecisionModule):
             print(" ", t)
         print("[[----------------------]]")
 
-    def tasks_repr(self):
-        task_repr_list = []
+
+    def tasks_repr(self) -> str:
+        return ' '.join([self.repr_task_queue(), self.repr_task_stack()])
+
+    def repr_task_queue(self) -> str:
+        if self.task_queue:
+            task_list = reversed([t.action_phrase() for t in self.task_queue])
+            return '(('+ ' (( '.join(task_list) + ' ))'
+        else:
+            return '((EMPTY))'
+
+    def repr_task_stack(self) -> str:
         if self.task_stack:
-            for t in self.task_stack:
-                task_repr_list.append(f"[[ {t.action_phrase()} ]]")
-        return '\n'.join(task_repr_list)
+            task_list = [t.action_phrase() for t in self.task_stack]
+            return '[[ '+ ' [[ '.join(task_list) + ' ]]'
+        else:
+            return '[[EMPTY]]'
 
     def _current_task_is_runnable(self):
         # print("TaskExecutor _have_a_runnable_task?...", end='')

@@ -51,7 +51,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     if do_export:
         if os.path.exists(_pthrufile):
             warn_prefix = "SKIPPING - pthru file exists:" if skip_existing else "WARNING - OVERWRITING pthru:"
-            print(warn_prefix, _phtrufile)
+            print(warn_prefix, _pthrufile)
         else:
             warn_prefix = None
         if not warn_prefix or not skip_existing:  # file doesn't exist, or write even if it does
@@ -171,7 +171,7 @@ if __name__ == "__main__":
                                               gindex=games_index,
                                               outdir=destdir,
                                               randseed=None, goal_type=None,
-                                              skip_existing=True,
+                                              skip_existing=(not args.overwrite),
                                               do_export=args.do_write,
                                               dry_run=dry_run,
                                         )
@@ -196,6 +196,7 @@ if __name__ == "__main__":
     parser.add_argument("--start-idx", type=int, default=None,
                         help="(Optional) Offset into the list of games - range:[START_IDX:START_IDX+1000]")
 
+    parser.add_argument("--overwrite", action='store_true', help="overwrite instead of skip if output file already exists")
     parser.add_argument("--reexport-pthrus", action='store_true', help="rewrite .pthru files from _PT.json")
     parser.add_argument("--do-write", action='store_true',
                         help="If not specified, dry run (without writing anything to disk)")

@@ -7,7 +7,7 @@ from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
 from symbolic.entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINER, SUPPORT, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
 from twutils.twlogic import reverse_direction
-from .mention_index import *
+from .mention_index import describe_visible_objects, MentionIndex
 
 DIRECTION_ACTIONS = {
         'north_of': GoNorth,

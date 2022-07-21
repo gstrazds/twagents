@@ -215,7 +215,7 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
     idx = 0
     obs_descr = ""   #"You see:"+LINE_SEPARATOR
     while idx < len(non_door_entities):
-        descr_str, idx = _format_entity_descr(non_door_entities, idx, groundtruth=groundtruth)
+        descr_str, idx = _format_entities_descr(non_door_entities, idx, groundtruth=groundtruth)
         obs_descr += descr_str + LINE_SEPARATOR
     if exits_descr:
         obs_descr += LINE_SEPARATOR + exits_descr
@@ -234,11 +234,13 @@ def _format_entity_name(entity):
         state_descr = entity.state.format_descr()
         if state_descr:
             out_str += state_descr
+    if entity._type:
+        out_str += f"_{entity._type}_ "
     out_str += f"{entity.name}"
     return out_str
 
 
-def _format_entity_descr(entity_list, idx, groundtruth=False):
+def _format_entities_descr(entity_list, idx, groundtruth=False):
     entity = entity_list[idx]
     idx += 1
     if entity.is_container:

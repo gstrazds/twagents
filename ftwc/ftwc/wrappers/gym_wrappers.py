@@ -262,7 +262,7 @@ class QaitEnvWrapper(gym.Wrapper):
         # if is_done:   # if agent idx has already terminated, don't invoke it again
         #     # actiontxt = 'do nothing'
         # else:
-        _tasks = oracle.task_exec.tasks_repr()
+        _tasks = oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
         actiontxt = self.invoke_oracle(oracle, idx, obstxt, infos, is_done, prev_action=prev_action, verbose=verbose)
         if actiontxt:
             if 'tw_o_step' not in infos:

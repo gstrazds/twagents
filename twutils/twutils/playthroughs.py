@@ -267,7 +267,7 @@ cooking_adjs = ['raw', 'diced', 'fried', 'chopped', 'grilled',
 
 #remove (closed), (locked), (open) if 
 def remove_parenthetical_state(line):
-    splitline = line.split(' (')ll 
+    splitline = line.split(' (')
     if len(splitline) > 1 and line[-1] == ')':
         return splitline[0]
     #else:
@@ -430,6 +430,9 @@ def get_kg_descr(kg_accum, stepdata):
     return kg_descr
 
 
+def format_taskstack(stackstr):
+    return stackstr
+
 def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
@@ -443,8 +446,11 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
             feedback = new_feedback
 
    # print(f"[{i}] {gn} .....")
+    pthru = ''
+    if 'tw_o_stack' in stepdata:
+        pthru += format_taskstack(stepdata['tw_o_stack'])
     outstr = f"\n{CMD_START_TOKEN} {prev_action} {CMD_END_TOKEN}\n"
-    pthru = outstr
+    pthru += outstr
     # pthru_out += outstr
     if feedback: #and prev_action != 'start':
         outstr += feedback
