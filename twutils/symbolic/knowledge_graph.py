@@ -938,7 +938,7 @@ class KnowledgeGraph:
                     maybe_new_entities.append(obj)
                 self.maybe_move_entity(obj, locations=locs)
             else:
-                self.warn(f"-- ADD FACTS: unexpected location for at(o,l): {f}")
+                self.warn(f"-- ADD FACTS: unexpected location for at(o,l): {r}")
             # add_attributes_for_type(obj, o.type)  # GVS 2020-12-12 This was redundant here, and potentially dangerous
 
         #NOTE: the following assumes that objects are not stacked on top of other objects which are on or in objects
