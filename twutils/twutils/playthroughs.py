@@ -47,6 +47,10 @@ def normalize_path(path_str: str, subdir: str = None):
     return path_str
 
 
+def make_dsfilepath(dirpath, dataset_name:str) -> str:
+    return normalize_path(dirpath) + f'/{dataset_name}.textds'
+
+
 def get_games_dir(basepath: str = None, splitname: str = 'train'):
     if not basepath:
         basepath = os.getenv('TW_GAMES_BASEDIR', TW_GAMES_BASEDIR)
@@ -496,7 +500,7 @@ def _list_game_files(dirpath):
     return game_names_
 
 
-def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True):
+def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_name=None):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
@@ -549,6 +553,18 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True):
     if not dry_run:
         with open(destdir+f'/{gn}.pthru', 'w') as outfile:
             outfile.write(pthru_all)
+        if dataset_name:
+            with open(make_dsfilepath(destdir, dataset_name), 'a') as dsfile:
+                lines = []
+                for line in pthru_all.split('\n'):
+                    line = line.strip()
+                    if line:
+                        lines.append(line)
+                dsfile.write(f'{{"game":"{gn}"')
+                dsfile.write(',"text":"')
+                dsfile.write(' <|> '.join(lines))
+                dsfile.write('"}')
+                dsfile.write('\n')
     num_files += 1
     return num_files
 

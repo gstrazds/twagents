@@ -3,7 +3,7 @@ import os.path
 import json
 from pathlib import Path
 from twutils.playthroughs import generate_playthru, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
-from twutils.playthroughs import playthrough_id, normalize_path, _list_game_files
+from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
 
 def generate_and_export_pthru(gamename, gamedir, outdir,
                               ptdir=None,   # directory for PT.json files (read if not do_generate, else write)
@@ -12,7 +12,8 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               skip_existing=True,
                               do_generate=True,
                               do_export=True,
-                              dry_run=False):   # do everything according to other args, but don't write to disk
+                              dry_run=False,
+                              dataset_name='twdata'):   # do everything according to other args, but don't write to disk
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:
@@ -55,7 +56,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
         else:
             warn_prefix = None
         if not warn_prefix or not skip_existing:  # file doesn't exist, or write even if it does
-            export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run)
+            export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run, dataset_name=dataset_name)
     return num_steps, step_array
 
 
@@ -147,6 +148,7 @@ if __name__ == "__main__":
             dry_run = False
         if destdir and args.do_write:
             Path(destdir).mkdir(parents=True, exist_ok=True)
+            Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
         for i, gname in enumerate(tqdm(gamenames)):
             if args.reexport_pthrus:
                 _output_dir = args.output_dir
@@ -161,7 +163,7 @@ if __name__ == "__main__":
 
                 playthru = retrieve_playthrough_json(gname, ptdir=args.input_dir, gindex=games_index, ptid=None)
                 if args.do_write:
-                    total_files += export_playthru(gname, playthru, destdir=destdir)
+                    total_files += export_playthru(gname, playthru, destdir=destdir, dataset_name=args.which)
             else:
                 if args.which == 'extra':
                     print(f"[{i}] {gname}")
@@ -174,6 +176,7 @@ if __name__ == "__main__":
                                               skip_existing=(not args.overwrite),
                                               do_export=args.do_write,
                                               dry_run=dry_run,
+                                              dataset_name=args.which,
                                         )
                 total_files += 1
 
