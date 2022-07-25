@@ -63,7 +63,7 @@ class TaskExec(DecisionModule):
     def repr_task_queue(self) -> str:
         if self.task_queue:
             task_list = reversed([t.action_phrase() for t in self.task_queue])
-            return '(('+ ' (( '.join(task_list) + ' ))'
+            return '(( '+ ' (( '.join(task_list) + ' ))'
         else:
             return '(( ))'
 

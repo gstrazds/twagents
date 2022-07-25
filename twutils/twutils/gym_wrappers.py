@@ -87,7 +87,7 @@ def simplify_feedback(feedback_str: str):
         return ''
     feedback_str = feedback_str.strip()
     if "cook a delicious meal" in feedback_str and "cookbook in the kitchen" in feedback_str:
-        feedback_str = f"{INSTRUCTIONS_TOKEN} Do : find kitchen , read cookbook , eat meal ."
+        feedback_str = f"{INSTRUCTIONS_TOKEN} Do : find kitchen , read cookbook , eat meal ;"
     elif feedback_str.endswith(" and look around"):  # this is a preprocessed feedback msg from QaitGymEnvWrapper
         feedback_str = feedback_str[:-16]+"."   # remove " and look around" (because it's redundant)
     elif "all following ingredients and follow the directions to prepare" in feedback_str:
