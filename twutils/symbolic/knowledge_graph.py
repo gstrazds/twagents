@@ -434,11 +434,11 @@ class KnowledgeGraph:
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
 # NOTE 2020-12-24: changed ---Exits--- => Exits, because tokenizer splits ---Exits--- it into 3 tokens
-        obs_descr = "Exits\n"
-        for direction in outgoing_directions:
-            con = self.connections.connection_for_direction(loc, direction)
-            obs_descr += con.to_string(options=self._formatting_options) + LINE_SEPARATOR
-        return obs_descr
+        exits_list = [
+            self.connections.connection_for_direction(loc, direction).to_string(options=self._formatting_options)
+            for direction in outgoing_directions
+        ]
+        return "Exits : " + f" {ITEM_SEPARATOR} ".join(exits_list) + f" {END_OF_LIST}{LINE_SEPARATOR}"
 
     def describe_room(self, roomname, obs_descr=None):
         """ Generate a concise (and easily parseable) text description of the room and what's currently observable there.
@@ -1278,7 +1278,7 @@ class Connection:
 
     def to_string(self, prefix='', options=None):
         if options == 'kg-descr':       # info known by current (non-GT) knowledge graph
-            return prefix + "{}{} to {} ;".format(self.action.verb,
+            return prefix + "{}{} to {}".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options),
                     _format_location(self.to_location, options=options))
         elif options == 'parsed-obs':   # info directly discernible from 'look' command
