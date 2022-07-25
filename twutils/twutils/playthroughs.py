@@ -353,7 +353,7 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     observable_facts_serialized = [f.serialize() for f in observable_facts]
     step_key = format_stepkey(step_num)
     oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
-    oracle_stack = infos['tw_o_stack'][0] if 'tw_o_stack' in infos else None
+    oracle_stack = infos['tw_o_stack'][0] if 'tw_o_stack' in infos else "(( )) [[ ]]"
     step_json = {
         step_key: {
             'reward': rewards[0],
@@ -382,6 +382,7 @@ def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED):
     step_array = []  # convert json dict data (with redundant keys) to an array for convenience
 
     num_steps = 0
+    game_over = -1
     _dones = [0]
     _rewards = [0]
     next_cmds = ['start']
@@ -393,6 +394,8 @@ def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED):
     next_cmds = _infos['tw_o_step']
     while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
         num_steps += 1
+        # if _dones[0]:
+        #     game_over += 1  # invoke one extra step after the last real step
         _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
         playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
         step_array.append(playthru_step_data[format_stepkey(num_steps)])
@@ -469,7 +472,7 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     return outstr, pthru
 
 
-def concat_pthru_step(pthru_so_far:str, pthru_step:str, keep_objectives=True) -> str:
+def concat_pthru_step(pthru_so_far:str, pthru_step:str, keep_objectives=True, is_last=False) -> str:
     if keep_objectives:
         instr = []
         lines_so_far = pthru_so_far.split('\n')  # parse pthru_so_far
@@ -482,7 +485,10 @@ def concat_pthru_step(pthru_so_far:str, pthru_step:str, keep_objectives=True) ->
                 instr = line[line.index(INSTRUCTIONS_TOKEN):]  # copy from token to end of line
                 # keep iterating, if more than one line matches, we keep only the last one ...
         if instr and not lines_step[-1].startswith(INSTRUCTIONS_TOKEN):  # if step already ends with instr, don't double it
-            pthru_step = pthru_step + instr + '\n'  # (put back the EOL that we stripped off from instr line)
+            if is_last:  # if this is the end of the game, change the descr of objectives
+                pthru_step = pthru_step + f"{INSTRUCTIONS_TOKEN} GAME_OVER ;\n"
+            else:
+                pthru_step = pthru_step + instr + '\n'  # (put back the EOL that we stripped off from instr line)
     return pthru_so_far + pthru_step
 
 
@@ -514,6 +520,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
     end_score = playthru[-1]['score']
     return_to_go = max_score
     for i, stepdata in enumerate(playthru):
+        is_last_step = (i >= len(playthru)-1)
         prev_action = stepdata['prev_action']
         if rtg:
             stepdata['rtg'] = return_to_go
@@ -533,7 +540,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
         outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
         _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
 
-        pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True)
+        pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True, is_last=is_last_step)
         xdir = destdir + '/' + gn
         if not os.path.exists(xdir):
             if not dry_run:
