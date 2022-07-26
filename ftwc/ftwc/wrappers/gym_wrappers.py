@@ -276,7 +276,7 @@ class QaitEnvWrapper(gym.Wrapper):
         if 'tw_o_stack' not in infos:
             assert idx == 0, \
                 f"if tw_o_stack is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-            infos['tw_o_stack'] = ['[[ task ]]'] * batch_size  # will be replaced before anyone sees these
+            infos['tw_o_stack'] = ['(( )) [[ task ]]'] * batch_size  # will be replaced before anyone sees these
         infos['tw_o_stack'][idx] = _tasks
         return infos
 
