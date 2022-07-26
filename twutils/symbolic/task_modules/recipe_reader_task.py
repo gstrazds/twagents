@@ -2,7 +2,7 @@ from ..action import Action, SingleAction, StandaloneAction, PrepareMeal, Eat, N
 # from ..event import NeedToDo
 # from ..game import GameInstance
 from ..knowledge_graph import KnowledgeGraph
-from ..task import SequentialTasks
+from ..task import SequentialTasks, Task
 from ..task_modules import SingleActionTask
 from ..task_modules.acquire_task import TakeItemTask
 from ..task_modules.navigation_task import GoToTask
@@ -213,11 +213,68 @@ class RecipeReaderTask(SingleActionTask):
             self._done = True
             return None
         if ingredients:
+            if self._task_exec:
+                drop_unneeded = DropUnneededItemsTask(required_items=ingredients, use_groundtruth=self.use_groundtruth)
+                self._task_exec.push_task(drop_unneeded)
+            # unneeded_inventory = []  # inventory items that are not listed as ingredients
+            # already_in_inventory = []  #ingredients that we already have
+            # for entity in kg.inventory.entities:
+            #     is_in_ingredients = False
+            #     for ingredient in ingredients:
+            #         if entity.has_name(ingredient):
+            #             already_in_inventory.append(ingredient)
+            #             is_in_ingredients = True
+            #             continue  # check next entity
+            #     if not is_in_ingredients:
+            #         unneeded_inventory.append(entity)
+            # for entity in unneeded_inventory:
+            #     response = yield Drop(entity)
+        if directions:
+            main_task = self.convert_instructions_to_tasks(kg)
+            if main_task and self._task_exec:
+                # drop_unneeded = SingleActionTask(StandaloneAction("drop unneeded items"), use_groundtruth=self.use_groundtruth)
+                # self._task_exec.push_task(drop_unneeded)
+                self._task_exec.queue_task(main_task)
+        self.deactivate(kg)
+        self._done = True
+        return None
+
+
+class DropUnneededItemsTask(Task):
+    """
+    The Drop Unneeded items activates after the player reads the cookbook, to free up space in the inventory
+    """
+    def __init__(self, required_items=None, use_groundtruth=True):
+        _items = required_items if required_items else []
+        _descr = f"DropUnneededActionsTask{[itemname for itemname in _items]}"
+        super().__init__(description=_descr, use_groundtruth=use_groundtruth)
+        self.required_items = _items
+        self.use_groundtruth = use_groundtruth
+        # self.prereq.required_locations = ['kitchen']
+
+    @property
+    def maybe_GT(self):
+        return "GT " if self.use_groundtruth else ""
+
+    def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
+        return "drop unneeded items"
+
+    def check_result(self, result: str, kg: KnowledgeGraph) -> bool:
+        return True
+
+    def _generate_actions(self, kg) -> Action:
+        """ Generates a sequence of actions.
+        :type gi: GameInstance
+        """
+        ignored = yield   # required handshake
+
+
+        if self.required_items:
             unneeded_inventory = []  # inventory items that are not listed as ingredients
             already_in_inventory = []  #ingredients that we already have
             for entity in kg.inventory.entities:
                 is_in_ingredients = False
-                for ingredient in ingredients:
+                for ingredient in self.required_items:
                     if entity.has_name(ingredient):
                         already_in_inventory.append(ingredient)
                         is_in_ingredients = True
@@ -226,11 +283,6 @@ class RecipeReaderTask(SingleActionTask):
                     unneeded_inventory.append(entity)
             for entity in unneeded_inventory:
                 response = yield Drop(entity)
-        if directions:
-            main_task = self.convert_instructions_to_tasks(kg)
-            if main_task and self._task_exec:
-                # kg.event_stream.push(NeedToDo(main_task, groundtruth=self.use_groundtruth))
-                self._task_exec.queue_task(main_task)
         self.deactivate(kg)
         self._done = True
         return None
