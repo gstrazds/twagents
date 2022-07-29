@@ -227,6 +227,11 @@ START_OF_LIST = ':'
 ITEM_SEPARATOR = ','
 LINE_SEPARATOR = '\n'
 
+ALWAYS_LIST_EXITS = True
+ALWAYS_LIST_ONGROUND = True
+ALWAYS_LIST_INVENTORY = True
+INCLUDE_ENTITY_TYPES = True
+
 
 # NOTE: Here's a stove. [...] But the thing is empty. [misleading] (no clue here that stove is a support, not a container)
 # on fridge <:> nothing <;>  in oven <:> nothing <;> on table <:> cookbook <;>  on counter <:> red potato <;> on stove: nothing.
@@ -290,11 +295,17 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
     if exits_descr:
         obs_descr += LINE_SEPARATOR + exits_descr
     if on_floor_entities:
-        onground_descr = f"ON floor {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in on_floor_entities])
-        obs_descr += LINE_SEPARATOR + onground_descr + ' '+END_OF_LIST
+        onground_descr = f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in on_floor_entities])
+    else:
+        onground_descr = "nothing" if ALWAYS_LIST_ONGROUND else ''
+    if onground_descr:
+        obs_descr += LINE_SEPARATOR + f"ON floor {START_OF_LIST} {onground_descr} {END_OF_LIST}"
     if len(inventory_items):
         inventory_descr = f"Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
-        obs_descr += LINE_SEPARATOR + inventory_descr + ' '+END_OF_LIST
+    else:
+        inventory_descr = f"Carrying {START_OF_LIST} nothing" if ALWAYS_LIST_INVENTORY else ''
+    if inventory_descr:
+        obs_descr += LINE_SEPARATOR + inventory_descr + ' ' + END_OF_LIST
     return obs_descr
 
 
@@ -304,7 +315,7 @@ def _format_entity_name(entity):
         state_descr = entity.state.format_descr()
         if state_descr:
             out_str += state_descr
-    if entity._type:
+    if INCLUDE_ENTITY_TYPES and entity._type:
         out_str += f"_{entity._type}_ "
     out_str += f"{entity.name}"
     return out_str
@@ -419,6 +430,7 @@ class KnowledgeGraph:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
 
+
     def set_formatting_options(self, formatting_options:str):
         """ options that control some nuances of the output from describe_room(), describe_exits(), etc """
         assert formatting_options == 'parsed-obs' or formatting_options == 'kg-descr', formatting_options
@@ -427,9 +439,8 @@ class KnowledgeGraph:
         return prev_options
 
     def describe_exits(self, loc, mention_tracker=None):
-        # assert False, "Not Yet Implemented"
         outgoing_directions = self.connections.outgoing_directions(loc)
-        if not outgoing_directions:
+        if not ALWAYS_LIST_EXITS and not outgoing_directions:
             return ""
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
@@ -438,6 +449,8 @@ class KnowledgeGraph:
             self.connections.connection_for_direction(loc, direction).to_string(options=self._formatting_options)
             for direction in outgoing_directions
         ]
+        if not exits_list:    # if there are no exits,
+            exits_list = ["none"]
         return "Exits : " + f" {ITEM_SEPARATOR} ".join(exits_list) + f" {END_OF_LIST}{LINE_SEPARATOR}"
 
     def describe_room(self, roomname, obs_descr=None):

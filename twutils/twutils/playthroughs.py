@@ -32,6 +32,7 @@ DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/gata/playthru_data/'
 CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
 GAME_START_CMD = 'start'
+JSON_LINE_SEP = ' '         #' <|> '   # replaces '\n'* when merging .pthru files into JSON for .textds dataset file
 
 DEFAULT_PTHRU_SEED = 42
 GOAL_MEAL = 'eatmeal'
@@ -569,7 +570,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                         lines.append(line)
                 dsfile.write(f'{{"game":"{gn}"')
                 dsfile.write(',"text":"')
-                dsfile.write(' <|> '.join(lines))
+                dsfile.write(JSON_LINE_SEP.join(lines))
                 dsfile.write('"}')
                 dsfile.write('\n')
     num_files += 1
