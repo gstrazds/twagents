@@ -131,8 +131,8 @@ if __name__ == "__main__":
                     gamespath = normalize_path(subsetpath, subdir)
                     gamenames.extend(games_index.count_and_index_gamefiles(which=splitname, dirpath=gamespath))
             if args.which == 'miniset':
-                # gamenames = list(gamenames)[0:3]   # just the first 3
-                gamenames = ['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']
+                gamenames = list(gamenames)[0:3]   # just the first 3
+                gamenames.extend(['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'])
 
         if (args.which).startswith("gata_"):
             destdir = f'{args.output_dir}/{args.which}'

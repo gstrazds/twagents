@@ -1295,7 +1295,7 @@ class Connection:
                     _format_doorinfo(self.doorway, options=options),
                     _format_location(self.to_location, options=options))
         elif options == 'parsed-obs':   # info directly discernible from 'look' command
-            return prefix + "{}{} ;".format(self.action.verb,
+            return prefix + "{}{}".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options))
         # else:
         return prefix + "{} --({}:{})--> {}".format(_format_location(self.from_location),

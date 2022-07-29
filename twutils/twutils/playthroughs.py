@@ -441,7 +441,7 @@ def get_kg_descr(kg_accum, stepdata):
 def format_taskstack(stackstr):
     return stackstr
 
-def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
+def format_playthrough_step(_pthru_, kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
     if simplify_raw_obs_feedback:
@@ -454,13 +454,13 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
             feedback = new_feedback
 
    # print(f"[{i}] {gn} .....")
-    pthru = ''
-    if 'rtg' in stepdata:
-        pthru += f"[[[ {stepdata['rtg']} ]]]\n"
-    if 'tw_o_stack' in stepdata:
-        pthru += format_taskstack(stepdata['tw_o_stack'])
-    outstr = f"\n{CMD_START_TOKEN} {prev_action} {CMD_END_TOKEN}\n"
-    pthru += outstr
+    cmdstr = f"\n{CMD_START_TOKEN} {prev_action} {CMD_END_TOKEN}\n"
+    # if 'rtg' in stepdata:
+    #     pthru += f"[[[ {stepdata['rtg']} ]]]\n"
+    # if 'tw_o_stack' in stepdata:
+    #     pthru += format_taskstack(stepdata['tw_o_stack'])
+    outstr = cmdstr
+    pthru = _pthru_ + cmdstr
     # pthru_out += outstr
     if feedback: #and prev_action != 'start':
         outstr += feedback
@@ -507,6 +507,12 @@ def _list_game_files(dirpath):
     return game_names_
 
 
+def format_rtg_for_json(playthru, rtg=True):
+    if 'rtg' in playthru[0]:
+        rtg_list_str = ','.join([str(stepdata['rtg']) for stepdata in playthru])
+        return f"[[ {rtg_list_str} ]]"
+    return ''
+
 def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_name=None):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
@@ -519,7 +525,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])
     end_score = playthru[-1]['score']
-    return_to_go = max_score
+    return_to_go = end_score  # max_score
     for i, stepdata in enumerate(playthru):
         is_last_step = (i >= len(playthru)-1)
         prev_action = stepdata['prev_action']
@@ -537,9 +543,12 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
         kg_descr_without_oracle = get_kg_descr(kg_accum, stepdata)
         kg_accum.set_formatting_options(prev_options)
 
+        _pthru_ = ''  # Prefix for formatted pthru string; before the agent's action
         # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
-        outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
-        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
+        _, pthru0 = format_playthrough_step(_pthru_, kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
+        if 'tw_o_stack' in stepdata:
+            _pthru_ += format_taskstack(stepdata['tw_o_stack'])
+        outstr, pthru = format_playthrough_step(_pthru_, kg_descr, stepdata, simplify_raw_obs_feedback=True)
 
         pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True, is_last=is_last_step)
         xdir = destdir + '/' + gn
@@ -569,10 +578,11 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                     if line:
                         lines.append(line)
                 dsfile.write(f'{{"game":"{gn}"')
-                dsfile.write(',"text":"')
-                dsfile.write(JSON_LINE_SEP.join(lines))
-                dsfile.write('"}')
-                dsfile.write('\n')
+                rtg_json_str = format_rtg_for_json(playthru, rtg=True)
+                if rtg_json_str:
+                    dsfile.write(',"rtg":'+rtg_json_str)
+                dsfile.write(',"text":"'+JSON_LINE_SEP.join(lines))
+                dsfile.write('"}\n')
     num_files += 1
     return num_files
 
