@@ -49,7 +49,7 @@ def normalize_path(path_str: str, subdir: str = None):
 
 
 def make_dsfilepath(dirpath, dataset_name:str) -> str:
-    return normalize_path(dirpath) + f'/{dataset_name}.textds'
+    return normalize_path(dirpath) + f'../{dataset_name}.textds'
 
 
 def get_games_dir(basepath: str = None, splitname: str = 'train'):
@@ -441,7 +441,7 @@ def get_kg_descr(kg_accum, stepdata):
 def format_taskstack(stackstr):
     return stackstr
 
-def format_playthrough_step(_pthru_, kg_descr, stepdata, simplify_raw_obs_feedback=True):
+def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
     if simplify_raw_obs_feedback:
@@ -460,7 +460,7 @@ def format_playthrough_step(_pthru_, kg_descr, stepdata, simplify_raw_obs_feedba
     # if 'tw_o_stack' in stepdata:
     #     pthru += format_taskstack(stepdata['tw_o_stack'])
     outstr = cmdstr
-    pthru = _pthru_ + cmdstr
+    pthru = cmdstr  #_pthru_ + cmdstr
     # pthru_out += outstr
     if feedback: #and prev_action != 'start':
         outstr += feedback
@@ -510,8 +510,17 @@ def _list_game_files(dirpath):
 def format_rtg_for_json(playthru, rtg=True):
     if 'rtg' in playthru[0]:
         rtg_list_str = ','.join([str(stepdata['rtg']) for stepdata in playthru])
-        return f"[[ {rtg_list_str} ]]"
+        return f"[ {rtg_list_str} ]"
     return ''
+
+
+def format_taskstack_for_json(playthru):
+    if 'tw_o_stack' in playthru[0]:
+        tasks_list = [ format_taskstack(stepdata['tw_o_stack']) for stepdata in playthru ]
+
+        return '["' + '", "'.join(tasks_list) + '"]'
+    return ''
+
 
 def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_name=None):
 
@@ -543,14 +552,18 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
         kg_descr_without_oracle = get_kg_descr(kg_accum, stepdata)
         kg_accum.set_formatting_options(prev_options)
 
-        _pthru_ = ''  # Prefix for formatted pthru string; before the agent's action
         # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
-        _, pthru0 = format_playthrough_step(_pthru_, kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
-        if 'tw_o_stack' in stepdata:
-            _pthru_ += format_taskstack(stepdata['tw_o_stack'])
-        outstr, pthru = format_playthrough_step(_pthru_, kg_descr, stepdata, simplify_raw_obs_feedback=True)
+        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
 
-        pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True, is_last=is_last_step)
+        taskstack = format_taskstack(stepdata['tw_o_stack']) if 'tw_o_stack' in stepdata else ''
+
+        outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
+
+        if True:
+            pthru_all = concat_pthru_step(pthru_all, (taskstack + pthru), keep_objectives=True, is_last=is_last_step)
+        else:   # temporarily don't output taskstack (for comparison)
+            pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True, is_last=is_last_step)
+
         xdir = destdir + '/' + gn
         if not os.path.exists(xdir):
             if not dry_run:
@@ -561,7 +574,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
         num_files += 1
         if not dry_run:
             with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
-                outfile.write(pthru)
+                outfile.write(taskstack+pthru)
         num_files += 1
         if not dry_run:
             with open(xdir + f'/step_{i:02d}.othru', 'w') as outfile:
@@ -580,7 +593,8 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                 dsfile.write(f'{{"game":"{gn}"')
                 rtg_json_str = format_rtg_for_json(playthru, rtg=True)
                 if rtg_json_str:
-                    dsfile.write(',"rtg":'+rtg_json_str)
+                    dsfile.write(',"rtg":' + rtg_json_str)
+                dsfile.write(',"taskstack":' + format_taskstack_for_json(playthru))
                 dsfile.write(',"text":"'+JSON_LINE_SEP.join(lines))
                 dsfile.write('"}\n')
     num_files += 1

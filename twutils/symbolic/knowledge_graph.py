@@ -287,6 +287,7 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
     #     non_door_entities = sort_entity_list_by_parent(loc, non_door_entities)
     #     on_floor_entities = sort_entity_list_by_parent(loc, on_floor_entities)
 
+    include_entity_type = (INCLUDE_ENTITY_TYPES and options != 'parsed-obs')
     idx = 0
     obs_descr = ""   #"You see:"+LINE_SEPARATOR
     while idx < len(non_door_entities):
@@ -295,27 +296,28 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
     if exits_descr:
         obs_descr += LINE_SEPARATOR + exits_descr
     if on_floor_entities:
-        onground_descr = f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in on_floor_entities])
+        onground_descr = f" {ITEM_SEPARATOR} ".join([_format_entity_name(item, include_entity_type) for item in on_floor_entities])
     else:
-        onground_descr = "nothing" if ALWAYS_LIST_ONGROUND else ''
+        onground_descr = "nothing" if (ALWAYS_LIST_ONGROUND and options != 'parsed-obs') else ''
     if onground_descr:
         obs_descr += LINE_SEPARATOR + f"ON floor {START_OF_LIST} {onground_descr} {END_OF_LIST}"
     if len(inventory_items):
-        inventory_descr = f"Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join([_format_entity_name(item) for item in inventory_items])
+        inventory_descr = f"Carrying {START_OF_LIST} " + f" {ITEM_SEPARATOR} ".join(
+            [_format_entity_name(item, include_entity_type) for item in inventory_items])
     else:
-        inventory_descr = f"Carrying {START_OF_LIST} nothing" if ALWAYS_LIST_INVENTORY else ''
+        inventory_descr = f"Carrying {START_OF_LIST} nothing" if (ALWAYS_LIST_INVENTORY and options != 'parsed-obs') else ''
     if inventory_descr:
         obs_descr += LINE_SEPARATOR + inventory_descr + ' ' + END_OF_LIST
     return obs_descr
 
 
-def _format_entity_name(entity):
+def _format_entity_name(entity, include_entity_type):
     out_str = ""
     if entity.state:
         state_descr = entity.state.format_descr()
         if state_descr:
             out_str += state_descr
-    if INCLUDE_ENTITY_TYPES and entity._type:
+    if include_entity_type and entity._type:
         out_str += f"_{entity._type}_ "
     out_str += f"{entity.name}"
     return out_str
@@ -324,14 +326,15 @@ def _format_entity_name(entity):
 def _format_entities_descr(entity_list, idx, groundtruth=False, options=None):
     entity = entity_list[idx]
     idx += 1
+    include_entity_type = (INCLUDE_ENTITY_TYPES and options != 'parsed-obs')
     if entity.is_container:
-        descr_str = f"IN {_format_entity_name(entity)} {START_OF_LIST} "
+        descr_str = f"IN {_format_entity_name(entity, include_entity_type)} {START_OF_LIST} "
         held_entities = entity.entities
     elif entity.is_support:
-        descr_str = f"ON {_format_entity_name(entity)} {START_OF_LIST} "
+        descr_str = f"ON {_format_entity_name(entity, include_entity_type)} {START_OF_LIST} "
         held_entities = entity.entities
     else:
-        descr_str = f"{_format_entity_name(entity)}"
+        descr_str = f"{_format_entity_name(entity, include_entity_type)}"
         return descr_str, idx
 
     if not groundtruth and entity.is_container \
@@ -351,7 +354,7 @@ def _format_entities_descr(entity_list, idx, groundtruth=False, options=None):
             if not first:
                 descr_str += f" {ITEM_SEPARATOR} "
             first = False
-            descr_str += _format_entity_name(entity_list[idx])
+            descr_str += _format_entity_name(entity_list[idx], include_entity_type)
             idx += 1
         descr_str += f" {END_OF_LIST}"
     return descr_str, idx
@@ -440,7 +443,7 @@ class KnowledgeGraph:
 
     def describe_exits(self, loc, mention_tracker=None):
         outgoing_directions = self.connections.outgoing_directions(loc)
-        if not ALWAYS_LIST_EXITS and not outgoing_directions:
+        if (not ALWAYS_LIST_EXITS or self._formatting_options == 'parsed-obs') and not outgoing_directions:
             return ""
         if mention_tracker:
             outgoing_directions = mention_tracker.sort_entity_list_by_first_mention(outgoing_directions)
