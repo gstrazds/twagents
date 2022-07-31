@@ -23,7 +23,7 @@ class ExploreHereTask(Task):
         self._verb = "explore"
         self._args = ['here']
         self.look_first = look_first
-        # self._path_task = PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth)
+        # self._path_task = PathTask('NearestUnexplored', use_groundtruth=self.use_groundtruth)
         # self._children.append(self._path_task)
         # self.prereq.add_required_task(self._path_task)
         # self.add_postcondition( check if here has any unopened containers or doors )
@@ -119,11 +119,11 @@ class PathTask(SequentialTasks):
         if not description:
             description = f"PathTask[{goalname}]"
         super().__init__(tasks=task_list, description=None, use_groundtruth=False)
-        self._verb = "go to"
+        self._verb = "walk_to"
         self._args = [goalname]
 
     def action_phrase(self) -> str:   # repr similar to a command/action (verb phrase) in the game env
-        return f"go to {self.goal_name}"
+        return f"{self._verb} {self.goal_name}"
         # words = [self._verb] + self._args
         # if len(words) > 2 and self._preposition:
         #     words.insert(2, self._preposition)
@@ -159,7 +159,7 @@ class PathTask(SequentialTasks):
         failure = False   # return value: initially optimistic
         assert self.goal_name
         current_loc = kg.player_location
-        if self.goal_name == '+NearestUnexplored+':
+        if self.goal_name == 'NearestUnexplored':
             self.goal_location = None
             self.path = kg.path_to_unknown()
         else:
@@ -179,7 +179,7 @@ class PathTask(SequentialTasks):
             self.description = f"PathTask({self.goal_name})[{link_desc}]"
             self.tasks = []   #ExploreHereTask(use_groundtruth=self.use_groundtruth)]
             self.tasks += [GoToNextRoomTask(link) for link in self.path]
-            if self.goal_name == '+NearestUnexplored+':
+            if self.goal_name == 'NearestUnexplored':
                 self.tasks.append(ExploreHereTask(use_groundtruth=self.use_groundtruth))
         else:
             if self.goal_location == current_loc:
@@ -241,7 +241,7 @@ class FindTask(Task):
                 if go_somewhere_new.is_done and not go_somewhere_new.has_failed:
                     go_somewhere_new.reset_all()
             else:
-                task_list = [PathTask('+NearestUnexplored+', use_groundtruth=self.use_groundtruth),
+                task_list = [PathTask('NearestUnexplored', use_groundtruth=self.use_groundtruth),
                              ExploreHereTask(use_groundtruth=self.use_groundtruth)]
                 go_somewhere_new = task_list[0]  #SequentialTasks(tasks=task_list, use_groundtruth=self.use_groundtruth)
                 self._children.append(go_somewhere_new)
@@ -266,7 +266,7 @@ class GoToTask(Task):
         if not description:
             description = f"GoToTask[{objname}]"
         super().__init__(description=description, use_groundtruth=use_groundtruth)
-        self._verb = "walk to"
+        self._verb = "go_to"
         self._args = [objname]
         self.prereq.add_required_task(FindTask(objname, use_groundtruth=use_groundtruth))
         self.add_postcondition(_location_of_obj_is_here)

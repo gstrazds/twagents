@@ -32,7 +32,8 @@ DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/gata/playthru_data/'
 CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
 GAME_START_CMD = 'start'
-JSON_LINE_SEP = ' '         #' <|> '   # replaces '\n'* when merging .pthru files into JSON for .textds dataset file
+JSON_LINE_SEP = ' '         #' <|> '
+JSON_CRLF = '<|>'   # replaces '\n'* when merging raw text output into JSON for .textds dataset file
 
 DEFAULT_PTHRU_SEED = 42
 GOAL_MEAL = 'eatmeal'
@@ -80,6 +81,8 @@ class GamesIndex:
         self.skills_index = defaultdict(set)
         for gn in self._index:
             skills_list = self.get_skills_for_game(gn)
+            if not skills_list:
+                _gid_, skills_list = split_gamename(gn)
             if skills_list:
                 for skill in skills_list:
                     self.skills_index[skill].add(gn)
@@ -529,7 +532,10 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
     #_rj = Client(host='localhost', port=6379, decode_responses=True)
 
     # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
-    pthru_all = ''
+    pthru_all = []
+    othru_all = []   # similar, but without using any knowledge from previous observations
+    raw_all = []
+    tstacks_all = []
     kg_accum = KnowledgeGraph(None, debug=True)   # suppress excessive print() outs
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])
@@ -556,13 +562,12 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
         _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
 
         taskstack = format_taskstack(stepdata['tw_o_stack']) if 'tw_o_stack' in stepdata else ''
+        tstacks_all.append(taskstack)
 
         outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
-
-        if True:
-            pthru_all = concat_pthru_step(pthru_all, (taskstack + pthru), keep_objectives=True, is_last=is_last_step)
-        else:   # temporarily don't output taskstack (for comparison)
-            pthru_all = concat_pthru_step(pthru_all, pthru, keep_objectives=True, is_last=is_last_step)
+        pthru_all.append(pthru)
+        othru_all.append(pthru0)
+        raw_all.append(outstr)
 
         xdir = destdir + '/' + gn
         if not os.path.exists(xdir):
@@ -581,24 +586,62 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                 outfile.write(pthru0)
         num_files += 1
     if not dry_run:
+        # output the full playthrough
+        accum_pthru = ''
+        for i, (pthru, taskstack) in enumerate(zip(pthru_all, tstacks_all)):
+            is_last_step = (i >= len(pthru_all) - 1)
+            if True:
+                pthru_step_ = (taskstack + pthru)
+            else:
+                pthru_step_ = pthru  # temporarily don't output taskstack (for comparison)
+            accum_pthru = concat_pthru_step(accum_pthru, pthru_step_, keep_objectives=True, is_last=is_last_step)
+
+        accum_othru = "\n".join(othru_all)
         with open(destdir+f'/{gn}.pthru', 'w') as outfile:
-            outfile.write(pthru_all)
+            outfile.write(accum_pthru)
+        with open(destdir+f'/{gn}.othru', 'w') as outfile:
+            outfile.write(accum_othru)
         if dataset_name:
+            # and add a record to the .textds file
             with open(make_dsfilepath(destdir, dataset_name), 'a') as dsfile:
-                lines = []
-                for line in pthru_all.split('\n'):
-                    line = line.strip()
-                    if line:
-                        lines.append(line)
                 dsfile.write(f'{{"game":"{gn}"')
+                dsfile.write(f',"numsteps":{len(playthru)}')
+                gid, skills = split_gamename(gn)
+                if skills:   # if successfully parsed the game name
+                    dsfile.write(f',"gid":"{gid}"')
+                    dsfile.write(f',"skills":["{",".join(skills)}"]')
                 rtg_json_str = format_rtg_for_json(playthru, rtg=True)
                 if rtg_json_str:
                     dsfile.write(',"rtg":' + rtg_json_str)
                 dsfile.write(',"taskstack":' + format_taskstack_for_json(playthru))
-                dsfile.write(',"text":"'+JSON_LINE_SEP.join(lines))
-                dsfile.write('"}\n')
+                lines = []
+                for line in accum_pthru.split('\n'):
+                    line = line.strip()
+                    if line:
+                        lines.append(line)
+                dsfile.write(f',"text":"{JSON_LINE_SEP.join(lines)}"')
+                lines = []
+                for line in accum_othru.split('\n'):
+                    line = line.strip()
+                    if line:
+                        lines.append(line)
+                dsfile.write(f',"text0":"{JSON_LINE_SEP.join(lines)}"')
+                lines = []
+                raw_accum = "\n".join(raw_all)
+                for line in raw_accum.split('\n'):
+                    line = line.strip()
+                    lines.append(line)
+                dsfile.write(f',"raw":"{JSON_CRLF.join(lines)}"')
+                dsfile.write('}\n')
     num_files += 1
     return num_files
+
+
+def _get_skills_list(data: dict):
+    print("_get_skills_list:", data['game'], skills)
+    return {'skills': skills, 'gid': gid}
+    # tokenized_ds = tokenized_ds.map(_get_skills_list, batched=False)
+    # print(tokenized_ds['valid'][0:10]['skills'])
 
 
 def retrieve_playthrough_json(gamename, ptdir=None, gindex: GamesIndex = None, ptid=None):
