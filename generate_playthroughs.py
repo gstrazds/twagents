@@ -12,8 +12,8 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               skip_existing=True,
                               do_generate=True,
                               do_export=True,
-                              dry_run=False,
-                              dataset_name='twdata'):   # do everything according to other args, but don't write to disk
+                              dry_run=False,  # do everything according to other args, but don't write to disk
+                              dataset_name=None):
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:

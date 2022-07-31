@@ -33,7 +33,7 @@ CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
 GAME_START_CMD = 'start'
 JSON_LINE_SEP = ' '         #' <|> '
-JSON_CRLF = '<|>'   # replaces '\n'* when merging raw text output into JSON for .textds dataset file
+JSON_CRLF = ' <|> '   # replaces '\n'* when merging raw text output into JSON for .textds dataset file
 
 DEFAULT_PTHRU_SEED = 42
 GOAL_MEAL = 'eatmeal'
@@ -603,9 +603,12 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
             outfile.write(accum_othru)
         if dataset_name:
             # and add a record to the .textds file
+            source_ds = "gata" if "gata" in dataset_name else \
+                dataset_name if "extra" in dataset_name else "ftwc"
             with open(make_dsfilepath(destdir, dataset_name), 'a') as dsfile:
                 dsfile.write(f'{{"game":"{gn}"')
                 dsfile.write(f',"numsteps":{len(playthru)}')
+                dsfile.write(f',"source":"{source_ds}"')
                 gid, skills = split_gamename(gn)
                 if skills:   # if successfully parsed the game name
                     dsfile.write(f',"gid":"{gid}"')
@@ -626,12 +629,12 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                     if line:
                         lines.append(line)
                 dsfile.write(f',"text0":"{JSON_LINE_SEP.join(lines)}"')
-                lines = []
-                raw_accum = "\n".join(raw_all)
-                for line in raw_accum.split('\n'):
-                    line = line.strip()
-                    lines.append(line)
-                dsfile.write(f',"raw":"{JSON_CRLF.join(lines)}"')
+                # lines = []
+                # raw_accum = "\n".join(raw_all)
+                # for line in raw_accum.split('\n'):
+                #     line = line.strip()
+                #     lines.append(line)
+                # dsfile.write(f',"raw":"{JSON_CRLF.join(lines)}"')
                 dsfile.write('}\n')
     num_files += 1
     return num_files
