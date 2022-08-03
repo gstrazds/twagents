@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from twutils.playthroughs import generate_playthru, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
 from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
+from train_tokenizer import build_tokenizer, save_tokenizer_to_json
 
 def generate_and_export_pthru(gamename, gamedir, outdir,
                               ptdir=None,   # directory for PT.json files (read if not do_generate, else write)
@@ -64,7 +65,7 @@ if __name__ == "__main__":
     import argparse
     from tqdm import tqdm
 
-    gamesets = {'extra': None,
+    gamesets = {'extra': None, 'none': None,
                 'miniset': 'train',
                 'train': 'train', 'valid': 'valid', 'test': 'test',
                 'gata_100': 'train_100', 'gata_20': 'train_20', 'gata_1': 'train_1',
@@ -84,7 +85,10 @@ if __name__ == "__main__":
             assert False, "Expected which= one of [extra, train, valid, test, miniset, gata_100, gata_20, gata_1, gata_valid, gata_test]"
             exit(1)
         subset = gamesets[args.which]   # == None if args.which == 'extra'
-        if not subset:   #assert args.which == 'extra'
+        if args.which == 'none':
+            print("no playthru processing -- presumably just want to (re)build tokenizer?")
+            gamenames = []
+        elif args.which == 'extra':
             gamespath=args.input_dir
             gamenames = _list_game_files(gamespath)
             #num_games = len(gamenames)
@@ -100,7 +104,7 @@ if __name__ == "__main__":
                     difficulty_prefix = 'difficulty_level_{level:d}'
                     levels = list(range(1,11))   # 10 difficulty levels, numbered from 1 to 10
                 if not args.input_dir:
-                    basepath = os.getenv('GATA_BASEDIR', '/work2/gstrazds/gata/rl.0.2')
+                    basepath = os.getenv('GATA_BASEDIR', '/work2/gstrazds/twdata/gata/rl.0.2')
                 else:
                     basepath = args.input_dir
                 splitname = subset
@@ -113,7 +117,7 @@ if __name__ == "__main__":
                     # assert os.path.exists(TW_VALIDATION_DIR)
                     # TW_TEST_DIR = get_games_dir(basepath=TW_GAMES_BASEDIR,splitname='test')  # '/ssd2tb/ftwc/games/test/'
                     # assert os.path.exists(TW_TEST_DIR)
-                    basepath = os.getenv('TW_GAMES_BASEDIR', '/work2/gstrazds/ftwc/games')
+                    basepath = os.getenv('TW_GAMES_BASEDIR', '/work2/gstrazds/twdata/ftwc/games/games_ftwc')
                 else:
                     basepath = args.input_dir
                 splitname = subset
@@ -132,7 +136,7 @@ if __name__ == "__main__":
                     gamenames.extend(games_index.count_and_index_gamefiles(which=splitname, dirpath=gamespath))
             if args.which == 'miniset':
                 gamenames = list(gamenames)[0:3]   # just the first 3
-                gamenames.extend(['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'])
+                gamenames.extend(['tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg']) #plus one specifically selected
 
         if (args.which).startswith("gata_"):
             destdir = f'{args.output_dir}/{args.which}'
@@ -149,48 +153,67 @@ if __name__ == "__main__":
         if destdir and args.do_write:
             Path(destdir).mkdir(parents=True, exist_ok=True)
             Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
-        for i, gname in enumerate(tqdm(gamenames)):
-            if args.reexport_pthrus:
-                _output_dir = args.output_dir
-                if not _output_dir:
-                    FTWC_PTHRU = os.getenv('FTWC_PTHRU',
-                                           '/work2/gstrazds/ftwc/playthru_data')  # '/ssd2tb/ftwc/playthru_data')
-                    assert os.path.exists(FTWC_PTHRU)
+        if gamenames:
+            for i, gname in enumerate(tqdm(gamenames)):
+                if args.reexport_pthrus:
+                    _output_dir = args.output_dir
+                    if not _output_dir:
+                        FTWC_PTHRU = os.getenv('FTWC_PTHRU',
+                                               '/work2/gstrazds/ftwc/playthru_data')  # '/ssd2tb/ftwc/playthru_data')
+                        assert os.path.exists(FTWC_PTHRU)
 
-                    FTWC_TRAIN_PTHRUS = normalize_path(FTWC_PTHRU, 'train')  # '/ssd2tb/ftwc/playthru_data/train/'
-                    FTWC_VALID_PTHRUS = normalize_path(FTWC_PTHRU, 'valid')  # '/ssd2tb/ftwc/playthru_data/valid/'
-                    FTWC_TEST_PTHRUS = normalize_path(FTWC_PTHRU, 'test')  # '/ssd2tb/ftwc/playthru_data/test/'
+                        FTWC_TRAIN_PTHRUS = normalize_path(FTWC_PTHRU, 'train')  # '/ssd2tb/ftwc/playthru_data/train/'
+                        FTWC_VALID_PTHRUS = normalize_path(FTWC_PTHRU, 'valid')  # '/ssd2tb/ftwc/playthru_data/valid/'
+                        FTWC_TEST_PTHRUS = normalize_path(FTWC_PTHRU, 'test')  # '/ssd2tb/ftwc/playthru_data/test/'
 
-                playthru = retrieve_playthrough_json(gname, ptdir=args.input_dir, gindex=games_index, ptid=None)
-                if args.do_write:
-                    total_files += export_playthru(gname, playthru, destdir=destdir, dataset_name=args.which)
-            else:
-                if args.which == 'extra':
-                    print(f"[{i}] {gname}")
-                    gname = gname.split('.')[0]   # just in case
-                num_steps, playthru = generate_and_export_pthru(gname,
-                                              gamedir=gamespath,
-                                              gindex=games_index,
-                                              outdir=destdir,
-                                              randseed=None, goal_type=None,
-                                              skip_existing=(not args.overwrite),
-                                              do_export=args.do_write,
-                                              dry_run=dry_run,
-                                              dataset_name=args.which,
-                                        )
-                total_files += 1
+                    playthru = retrieve_playthrough_json(gname, ptdir=args.input_dir, gindex=games_index, ptid=None)
+                    if args.do_write:
+                        total_files += export_playthru(gname, playthru, destdir=destdir, dataset_name=args.which)
+                else:
+                    if args.which == 'extra':
+                        print(f"[{i}] {gname}")
+                        gname = gname.split('.')[0]   # just in case
+                    num_steps, playthru = generate_and_export_pthru(gname,
+                                                  gamedir=gamespath,
+                                                  gindex=games_index,
+                                                  outdir=destdir,
+                                                  randseed=None, goal_type=None,
+                                                  skip_existing=(not args.overwrite),
+                                                  do_export=args.do_write,
+                                                  dry_run=dry_run,
+                                                  dataset_name=args.which,
+                                            )
+                    total_files += 1
 
-                print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps}")
+                    print(f"[{i}] PLAYTHROUGH {gname}: steps:{num_steps}")
 
         if args.reexport_pthrus:
             print("Total files exported:", total_files)
         else:
             print("Total playthroughs generated:", total_files)
 
+        if args.build_tokenizer:
+            if args.tokenizer_input_dirs:
+                dir_list = args.tokenizer_input_dirs
+            else:
+                PTHRU_DIR = '/work2/gstrazds/twdata/ftwc/playthru_data/'
+                GATA_PTHRU_DIR = '/work2/gstrazds/twdata/gata/playthru_data/'
+                glob_list = [
+                    PTHRU_DIR + "valid/*.pthru",
+                    PTHRU_DIR + "test/*.pthru",
+                    PTHRU_DIR + "train/*.pthru",
+                    GATA_PTHRU_DIR + "gata_valid/*.pthru",
+                    GATA_PTHRU_DIR + "gata_test/*.pthru",
+                    GATA_PTHRU_DIR + "gata_100/*.pthru",
+                ]
+
+            tokenizer = build_tokenizer(glob_list)
+            save_tokenizer_to_json(tokenizer, args.tokenizer_filepath)
+
 
     parser = argparse.ArgumentParser(description="Generate or export playthrough data")
     parser.add_argument("which",
-                        choices=('extra', 'train', 'valid', 'test', 'miniset',
+                        choices=('extra', 'none', 'train', 'valid', 'test', 'miniset',
                                  'gata_100', 'gata_20', 'gata_1', 'gata_valid', 'gata_test'))
     parser.add_argument("--input-dir", default=None, metavar="PATH",
                         help="(Optional) Path to directory of .z8 games or _PT.json files from which to generate pthru data")
@@ -203,6 +226,12 @@ if __name__ == "__main__":
     parser.add_argument("--reexport-pthrus", action='store_true', help="rewrite .pthru files from _PT.json")
     parser.add_argument("--do-write", action='store_true',
                         help="If not specified, dry run (without writing anything to disk)")
+    parser.add_argument("--build-tokenizer", action='store_true',
+                        help="Train a tokenizer from the generated playthrough files")
+    parser.add_argument("--tokenizer-input-dirs", type=list, nargs="+",
+                        help="One or more paths to playthrough output-dirs")
+    parser.add_argument("--tokenizer-filepath", default="tokenizer_new.json",
+                        help="File path to use when saving newly trained tokenizer")
     args = parser.parse_args()
     main(args)
 

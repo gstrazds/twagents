@@ -300,9 +300,9 @@ def remove_prewords(item):
     return item2, indent
 
 
-FTWC_ALL_VOCAB = '/ssd2tb/ftwc/all-vocab.txt'
+FTWC_ALL_VOCAB = '/ssd2tb/twdata/ftwc/all-vocab.txt'
 
-QAIT_VOCAB = '/ssd2tb/qait/qait_word_vocab.txt'
+QAIT_VOCAB = '/ssd2tb/twdata/qait/qait_word_vocab.txt'
 
 # FTWC_QAIT_VOCAB = '/ssd2tb/ftwc/combined-qait-ftwc-vocab.txt'
 # NOTE: there is only one word in all-vocab.txt not in QAIT_VOCAB:  "bbq's"
@@ -372,13 +372,13 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
             'next_action': oracle_action,
             'possible_actions': infos['admissible_commands'][0],
             'obs_facts': observable_facts_serialized,
-            # 'GT_FACTS': world_facts_serialized,
+            'GT_FACTS': world_facts_serialized,
         }
     }
     if oracle_stack:
         step_json[step_key]['tw_o_stack'] = oracle_stack
-    if step_num == 0 or dones[0]:  # at start of game or game over
-        step_json[step_key]['GT_FACTS'] = world_facts_serialized
+    # if step_num == 0 or dones[0]:  # at start of game or game over
+    #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
     return step_json
 
 
