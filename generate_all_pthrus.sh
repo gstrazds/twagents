@@ -1,3 +1,5 @@
+ulimit -Sn unlimited
+
 python generate_playthroughs.py  gata_1 --output-dir /ssd2tb/twdata/gata/playthru_data/ --do-write --overwrite
 
 python generate_playthroughs.py  valid --output-dir /ssd2tb/twdata/ftwc/playthru_data/ --do-write --overwrite
