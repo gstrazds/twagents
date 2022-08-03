@@ -117,7 +117,7 @@ if __name__ == "__main__":
                     # assert os.path.exists(TW_VALIDATION_DIR)
                     # TW_TEST_DIR = get_games_dir(basepath=TW_GAMES_BASEDIR,splitname='test')  # '/ssd2tb/ftwc/games/test/'
                     # assert os.path.exists(TW_TEST_DIR)
-                    basepath = os.getenv('TW_GAMES_BASEDIR', '/work2/gstrazds/twdata/ftwc/games/games_ftwc')
+                    basepath = os.getenv('TW_GAMES_BASEDIR', '/work2/gstrazds/twdata/ftwc/games_ftwc')
                 else:
                     basepath = args.input_dir
                 splitname = subset
