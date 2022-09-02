@@ -3,7 +3,8 @@ ulimit -Sn unlimited
 # use TWDATA_DIR env variable, assign default value if not set
 : "${TWDATA_DIR:=/ssd2tb/twdata}"
 export TWDATA_DIR
-mkdir -p ${TWDATA_DIR}
+#mkdir -p ${TWDATA_DIR}
+mkdir -p ${TWDATA_DIR}/combined/
 
 python generate_playthroughs.py  gata_1 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
 
