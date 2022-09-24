@@ -1,22 +1,22 @@
 import re
 from fuzzywuzzy import fuzz
-from symbolic import gv
+# from symbolic import gv
 # from symbolic import event
 # from symbolic.game import GameInstance
 # from symbolic.action import Action
 # from symbolic.location import Location
 
 
-def first_sentence(text):
-    """ Extracts the first sentence from text. """
-    tokens = gv.nlp(text)
-    return next(tokens.sents).merge().text
-
-
-def tokenize(description):
-    """ Returns a list of tokens in a string. """
-    doc = gv.nlp(description)
-    return [word.lower_ for word in doc]
+# def first_sentence(text):
+#     """ Extracts the first sentence from text. """
+#     tokens = gv.nlp(text)
+#     return next(tokens.sents).merge().text
+#
+#
+# def tokenize(description):
+#     """ Returns a list of tokens in a string. """
+#     doc = gv.nlp(description)
+#     return [word.lower_ for word in doc]
 
 
 def clean(s):

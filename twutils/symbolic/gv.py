@@ -1,11 +1,11 @@
 import sys
-import random
+# import random
 # from symbolic import attribute
 #import logging
 #import spacy
 
 # Global RNG
-rng = random.Random()
+# rng = random.Random()
 
 # Global logger
 # logger = logging.getLogger('nail')

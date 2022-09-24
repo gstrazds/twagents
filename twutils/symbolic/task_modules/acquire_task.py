@@ -1,10 +1,8 @@
 from typing import List
 from .navigation_task import GoToTask
-from ..action import Take, Drop, Open, Portable
-# from ..game import GameInstance
-from ..task import Task, SequentialTasks
+from ..action import Take, Drop, Open #, Portable
+from ..task import Task  #, SequentialTasks
 from ..action import Action
-from ..gv import rng
 
 
 class TakeItemTask(Task):
@@ -49,7 +47,7 @@ class TakeItemTask(Task):
            or not kg.inventory.has_entity_with_name(entityName):
             print(f"TakeItemTask: Take({entityName}) failed, try dropping something...")
             if len(kg.inventory.entities) > 0:
-                drop_entity = rng.choice(kg.inventory.entities)
+                drop_entity = kg.choose_from_inventory() #rng.choice(kg.inventory.entities)
                 print("-- RANDOMLY CHOOSING to drop:", drop_entity.name)
                 response2 = yield Drop(drop_entity)
                 response = yield take_action  # try again, now that we've dropped something

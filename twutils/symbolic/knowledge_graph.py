@@ -2,6 +2,7 @@
 # from itertools import chain
 from typing import Tuple
 
+import random
 from symbolic.event import *
 from symbolic.action import *
 from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
@@ -365,7 +366,7 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False):
+    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False, rng=None):
         self._logger = logger
         self._debug = debug
         self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
@@ -375,6 +376,7 @@ class KnowledgeGraph:
         self._locations          = set()   # a set of top-level locations (rooms)
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
+        self.rng                 = rng   # random number generator
         self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
         self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
 
@@ -433,6 +435,8 @@ class KnowledgeGraph:
                         s += "\n      {} --> {}".format(con.action, con.to_location.name)
         return s
 
+    def set_random_number_generator(self, rng):
+        self.rng = rng
 
     def set_formatting_options(self, formatting_options:str):
         """ options that control some nuances of the output from describe_room(), describe_exits(), etc """
@@ -784,6 +788,12 @@ class KnowledgeGraph:
             self.warn(f"{obj.name} NOT IN INVENTORY {self.inventory.entities}")
             assert False
         return obj
+
+    def choose_from_inventory(self):
+        if self.rng:
+            return self.rng.choice(self.inventory.entities)
+        else:
+            return random.choice(self.inventory.entities)
 
     def update_facts(self, obs_facts, prev_action=None):
         if self._debug:

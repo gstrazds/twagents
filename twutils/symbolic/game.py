@@ -1,3 +1,4 @@
+import random
 from symbolic import event
 from symbolic import util
 
@@ -32,8 +33,12 @@ ILLEGAL_ACTIONS = ['restart', 'verbose', 'save', 'restore', 'score', 'quit', 'mo
 
 
 class GameInstance:
-    def __init__(self, kg=None, gt=None, logger=None):  # kg : knowledge_graph.KnowledgeGraph
+    def __init__(self, kg=None, gt=None, rng=None, logger=None):  # kg : knowledge_graph.KnowledgeGraph
         self._logger = logger
+        if rng is None:
+            rng = random.Random()
+            rng.seed(42)  # default seed for Random number generator
+        self.rng = rng
         self.event_stream = event.EventStream(logger)
         self._unrecognized_words = ILLEGAL_ACTIONS[:]  #makes a copy of list
         self.kg = None
@@ -50,6 +55,7 @@ class GameInstance:
             assert graph.groundtruth == groundtruth
             graph.groundtruth = groundtruth
             graph.set_logger(self._logger)
+            graph.set_random_number_generator(self.rng)
         if groundtruth:
             self.gt = graph
         else:

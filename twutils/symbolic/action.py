@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import namedtuple
-from symbolic import gv   # global constants
+# from symbolic import gv   # global constants
 from symbolic.game import GameInstance
 from symbolic.entity import Thing   # Entity
 from symbolic.attribute import Attribute

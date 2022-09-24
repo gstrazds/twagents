@@ -1,4 +1,3 @@
-from symbolic import gv
 from symbolic import util
 
 

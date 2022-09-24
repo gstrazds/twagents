@@ -1,5 +1,6 @@
 import os
 import logging
+import random
 from symbolic.decision_modules import TaskExec
 from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 from symbolic.entity import Location
@@ -22,11 +23,12 @@ class TextGameAgent:
         self.setup_logging(env_name, idx, output_subdir)
         if game:
             self._game = game  # if provided, can do nicer logging
-        gv.rng.seed(seed)
         self.dbg("RandomSeed: {}".format(seed))
+        rng = random.Random()  # each game instance gets its own random number generator
+        rng.seed(seed)
         observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger())
         groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())
-        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.get_logger())
+        self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, rng=rng, logger=self.get_logger())
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.task_exec = None
