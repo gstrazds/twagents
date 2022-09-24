@@ -4,7 +4,7 @@ from symbolic.task import *
 from symbolic.task_modules import SingleActionTask, SequentialActionsTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.action import StandaloneAction
-from symbolic.decision_modules import TaskExecutor
+from symbolic.decision_modules import TaskExec
 from symbolic.game import GameInstance
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.entity import Location
@@ -25,6 +25,13 @@ def _consume_event_stream(module, gi):
     gi.event_stream.clear()
 
 
+def _reactivate_task_executor(task_exec, gi):
+    """ Selects the most eager module to take control. """
+    print("_reactivate_task_executor:", "[UNITTEST](elect): {} Eagerness: {}".format(type(task_exec).__name__, task_exec.get_eagerness(gi)))
+    action_generator = task_exec.take_control(gi)
+    action_generator.send(None)  # handshake with initial argless yield
+    return action_generator
+
 def _generate_next_action(action_generator, module, gi, observation):
     """Returns the action selected by the current active module and
     selects a new active module if the current one is finished.
@@ -32,20 +39,27 @@ def _generate_next_action(action_generator, module, gi, observation):
     """
     next_action = None
     failed_counter = 0
+    reactivate_count = 0
 
     while not next_action:
-        if failed_counter > 1:  # chain_prereqs+1:  #FIXED -- no longer needs to be increased for chained prereqs
+        if failed_counter > 2:  # chain_prereqs+1:  #?FIXED -- no longer needs to be increased for chained prereqs
             print(f"[tests] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
             return None
         try:
             _consume_event_stream(module, gi)
             next_action = action_generator.send(observation)  # None)
-
         except StopIteration:
-            pass
-            # _consume_event_stream(module, gi)
+            _consume_event_stream(module, gi)
+            reactivate_count += 1
+            if reactivate_count < 5:
+                action_generator = _reactivate_task_executor(module, gi)
+            else:
+                print("task_tests DON'T REACTIVATE TaskExec because reactivate_count=", reactivate_count)
+                break
+
         failed_counter += 1
     return next_action
+
 
 
 class TaskTests(unittest.TestCase):
@@ -207,7 +221,7 @@ class TaskTests(unittest.TestCase):
     def test_taskexec(self):
         print("\n----- testing TaskExecutor------")
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         te.activate(gi)
         self.assertFalse(te._active)
         action_gen = te.take_control(gi)
@@ -224,9 +238,9 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_act1(self):
-        print("......... TaskExecutor with one SingleActionTask ...")
+        print("......... TaskExec with one SingleActionTask ...")
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         StandaloneAction('action1')
         t = SingleActionTask(act=StandaloneAction('act1'))
         te.push_task(t)
@@ -242,9 +256,9 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_queue(self):
-        print("......... TaskExecutor queue 3 SingleActionTasks ...")
+        print("......... TaskExec queue 3 SingleActionTasks ...")
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         t1 = SingleActionTask(act=StandaloneAction('act1'))
         t2 = SingleActionTask(act=StandaloneAction('act2'))
         t3 = SingleActionTask(act=StandaloneAction('act3'))
@@ -272,9 +286,9 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_stack(self):
-        print("......... TaskExecutor stack 3 SingleActionTasks ...")
+        print("......... TaskExec stack 3 SingleActionTasks ...")
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         t1 = SingleActionTask(act=StandaloneAction('act1'))
         t2 = SingleActionTask(act=StandaloneAction('act2'))
         t3 = SingleActionTask(act=StandaloneAction('act3'))
@@ -298,11 +312,11 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_task_prereq(self):
-        print("......... TaskExecutor task with prereqs ...")
+        print("......... TaskExec task with prereqs ...")
         chain_prereqs = 1
 
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         t1 = SingleActionTask(act=StandaloneAction('act1'), use_groundtruth=True)
         t2 = SingleActionTask(act=StandaloneAction('act2'), use_groundtruth=True)
         t3 = SingleActionTask(act=StandaloneAction('act3'), use_groundtruth=True)
@@ -341,11 +355,11 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_task_prereq_queued(self):
-        print("......... TaskExecutor task with queued prereqs ...")
+        print("......... TaskExec task with queued prereqs ...")
         chain_prereqs = 1
 
         gi = GameInstance()
-        te = TaskExecutor()
+        te = TaskExec()
         t1 = SingleActionTask(act=StandaloneAction('act1'), use_groundtruth=True)
         t2 = SingleActionTask(act=StandaloneAction('act2'), use_groundtruth=True)
         t3 = SingleActionTask(act=StandaloneAction('act3'), use_groundtruth=True)
@@ -381,12 +395,12 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(te.get_eagerness(gi), 0)
 
     def test_taskexec_prereq_location(self):
-        print("......... TaskExecutor missing prereq location ...")
+        print("......... TaskExec missing prereq location ...")
         kg = KnowledgeGraph(None, groundtruth=True)
         gi = GameInstance(gt=kg)
         kitchen = Location(description="kitchen")
         kg.add_location(kitchen)
-        te = TaskExecutor()
+        te = TaskExec()
         t1 = SingleActionTask(act=StandaloneAction('act1'), use_groundtruth=True)
         t2 = SingleActionTask(act=StandaloneAction('act2'), use_groundtruth=True)
         t1.prereq.add_required_task(t2)
@@ -397,7 +411,7 @@ class TaskTests(unittest.TestCase):
         action_gen = te.take_control(gi)
         action_gen.send(None)  # handshake: decision_module protocol
         counter = -1
-        for counter in range(100):
+        for counter in range(10):
             act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
             if not act:
                 break
@@ -409,15 +423,22 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(counter, 0)
         # te.deactivate(gi)
         self.assertFalse(te._active)
-        self.assertFalse(t1.is_done)
-        self.assertFalse(t2.is_done)
+        self.assertTrue(t1.has_failed, f"{t1}")
+        self.assertTrue(t1.is_done, f"{t1}")
+        self.assertTrue(t2.has_failed, f"{t2}")  # FAIL because there is no path to the kitchen
+        self.assertTrue(t2.is_done, f"{t2}")
         self.assertEqual(te.get_eagerness(gi), 0)
-        self.assertGreater(len(te.task_stack), 0)
-        self.assertEqual(te.task_stack[-1], t2)
+        # self.assertGreater(len(te.task_stack), 0)
+        # self.assertEqual(te.task_stack[-1], t2)
+        self.assertEqual(len(te.task_stack), 0)
 
         print("kg.player_location=", kg.player_location)
         print("SETTING LOCATION=kitchen")
         kg.set_player_location(kitchen)
+        t1.reset_all()
+        t2.reset_all()
+        te.queue_task(t1)
+
         print("kg.player_location=", kg.player_location)
         _consume_event_stream(te, gi)
 
@@ -426,7 +447,7 @@ class TaskTests(unittest.TestCase):
         action_gen = te.take_control(gi)
         action_gen.send(None)  # handshake: decision_module protocol
         counter = -1
-        for counter in range(100):
+        for counter in range(10):
             act = _generate_next_action(action_gen, te, gi, f"Nothing to see here {counter}")
             if not act:
                 break
@@ -440,6 +461,8 @@ class TaskTests(unittest.TestCase):
         self.assertFalse(te._active)
         self.assertTrue(t1.is_done)
         self.assertTrue(t2.is_done)
+        self.assertFalse(t2.has_failed)
+        self.assertFalse(t1.has_failed)
         self.assertEqual(te.get_eagerness(gi), 0)
         self.assertEqual(len(te.task_stack), 0)
 

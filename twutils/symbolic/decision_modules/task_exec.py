@@ -84,7 +84,7 @@ class TaskExec(DecisionModule):
 
     def _activate_next_task(self, restart_failsafe=False):
         if restart_failsafe:
-            print("********* RESET FAILSAFE COUNTDOWN!")
+            print("********* TaskExec: RESET FAILSAFE COUNTDOWN!")
             self._failsafe_countdown = FAILSAFE_LIMIT
         self._failsafe_countdown -= 1
         if self._failsafe_countdown < 0:
@@ -168,7 +168,7 @@ class TaskExec(DecisionModule):
             # task_list = list(self.task_stack)  # copy list of potentially active tasks
             for t in self.task_stack:
                 kg = _get_kg_for_task(t, gi)
-                if t.has_postcondition_checks and t.check_postconditions(kg, deactivate_ifdone=True):
+                if t.is_done or t.has_postcondition_checks and t.check_postconditions(kg, deactivate_ifdone=True):
                     self.pop_task(task=t)   # removes one or more tasks from task_stack
                     something_changed = True
                     break   # exit inner for-loop, continue outer while-loop
@@ -218,7 +218,7 @@ class TaskExec(DecisionModule):
             for t in subtasks:
                 if t in self.task_stack:
                     self.pop_task(task=t)
-                    t.reset_all()
+                    # t.reset_all()  # GVS 24.sep.2022 Why was this here?
             # task.deactivate()
         # self._action_generator = None
         if popped.has_failed:
@@ -262,6 +262,7 @@ class TaskExec(DecisionModule):
             print(f"Propogating failure to ancestor task {parent_task} of failed prereq task: ", failed_task)
             while parent_task:
                 parent_task._failed = True
+                parent_task._done = True
                 parent_task = parent_task._parent_task
         self.remove_completed_tasks()
 
@@ -286,7 +287,7 @@ class TaskExec(DecisionModule):
             assert False, "Task prereqs: misssing.required_inventory is no longer userd!"
         if missing.required_locations:
             locname = list(missing.required_locations)[0]
-            if not use_groundtruth and kg: # and kg.location_of_entity_is_known(locname):
+            if True:  # not use_groundtruth and kg.location_of_entity_is_known(locname):
                 # gi.event_stream.push(NeedToDo(pathtask, groundtruth=use_groundtruth))
                 already_in_prereqs = False
                 for t in missing.required_tasks:
@@ -295,11 +296,11 @@ class TaskExec(DecisionModule):
                         break
                 if not already_in_prereqs:
                     gototask = GoToTask(locname, use_groundtruth=use_groundtruth)
-                    print(kg.location_of_entity_with_name(locname), gototask)
+                    if kg: print(kg.location_of_entity_with_name(locname), gototask)
                     missing.required_tasks.append(gototask)
-            else:
-                # gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
-                assert False, "NeedToGoTo event is no longer used!"
+            # else:
+            #     # gi.event_stream.push(NeedToGoTo(locname, groundtruth=use_groundtruth))
+            #     assert False, "NeedToGoTo event is no longer used!"
         # need_to_get = []
         if missing.required_objects:
             # need_to_get.append(objname)
@@ -406,7 +407,7 @@ class TaskExec(DecisionModule):
                 # print(f"RECEIVED observation={observation}")
             else:
             # except StopIteration:  # current task is stopping (might be done, paused missing preconditions, or failed):
-                if self.task_stack[-1].is_done:
+                if self.task_stack and self.task_stack[-1].is_done:
                     t = self.pop_task()
                     print(f"    (popped because {t}.is_done)")
                     kg = _get_kg_for_task(t, gi)

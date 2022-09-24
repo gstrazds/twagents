@@ -118,7 +118,7 @@ class PathTask(SequentialTasks):
         task_list: List[Task] = []
         if not description:
             description = f"PathTask[{goalname}]"
-        super().__init__(tasks=task_list, description=None, use_groundtruth=False)
+        super().__init__(tasks=task_list, description=None, use_groundtruth=use_groundtruth)
         self._verb = "walk_to"
         self._args = [goalname]
 
