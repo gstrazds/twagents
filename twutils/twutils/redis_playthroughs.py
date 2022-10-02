@@ -14,8 +14,6 @@ from redisgraph import Node, Edge, Graph, Path  # https://github.com/RedisGraph/
 from rejson import Client, Path                 # https://github.com/RedisJSON/redisjson-py
 
 from twutils.file_helpers import count_iter_items, split_gamename  #, parse_gameid
-from twutils.twlogic import filter_observables
-from twutils.gym_wrappers import normalize_feedback_vs_obs_description
 from twutils.redis_ids import *
 from twutils.playthroughs import *
 # from twutils.playthroughs import format_stepkey, generate_playthru, export_playthru

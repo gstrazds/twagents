@@ -15,7 +15,8 @@ from symbolic.entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from twutils.file_helpers import parse_gameid
 from twutils.twlogic import filter_observables
-from twutils.gym_wrappers import ScoreToRewardWrapper, ConsistentFeedbackWrapper
+from twutils.twlogic import parse_ftwc_recipe
+from twutils.feedback_utils import normalize_feedback_vs_obs_description
 from ftwc.vocab import WordVocab
 
 
@@ -60,6 +61,7 @@ class MultiWordSpace(gym.spaces.MultiDiscrete):  # adapted from textworld.gym.te
         else:
             return super().sample()
 
+
 # ToTensor gym env wrapoer copied from PyTorch-Lightning-Bolts
 class ToTensor(gym.Wrapper):
     """Converts env outputs to torch Tensors"""
@@ -75,6 +77,86 @@ class ToTensor(gym.Wrapper):
     def reset(self):
         """reset the env and cast to tensor"""
         return torch.tensor(self.env.reset())
+
+
+class ScoreToRewardWrapper(gym.RewardWrapper):
+    """ Converts returned cumulative score into per-step incrmenttal reward.
+    Compatible only with vector envs (TW gym env wrapper produces such by default)
+    """
+    def __init__(self, env):
+        super().__init__(env)
+        self._prev_score = []
+
+    def reset(self, **kwargs):
+        obs, infos = self.env.reset(**kwargs)
+        assert isinstance(obs, (list, tuple))   # for use only with vector envs (TW gym env wrapper produces such by default)
+        self._prev_score = [0] * len(obs)
+        if 'game_score' not in infos:
+            infos['game_score'] = self._prev_score
+        return obs, infos
+
+    # gym.RewardWrapper
+    # def step(self, action):
+    #     observation, score, done, info = self.env.step(action)
+    #     return observation, self.reward(score), done, info
+    def step(self, action):
+        observation, score, done, infos = self.env.step(action)
+        #if 'game_score' in infos:
+        #     assert infos['game_score'] == score, f"{infos['game_score']} should== {score}" #FAILS: infos from prev step
+        # else:
+        infos['game_score'] = score
+        return observation, self.reward(score), done, infos
+
+    def reward(self, score):
+        assert isinstance(score, (list, tuple))
+        assert len(score) == len(self._prev_score)
+        _reward = []
+        for _i in range(len(score)):
+            _reward.append(score[_i] - self._prev_score[_i])
+            self._prev_score[_i] = score[_i]
+        return tuple(_reward)
+
+
+class ConsistentFeedbackWrapper(gym.Wrapper):
+    """ Simplifies/normalizes the strings returned in infos['feedback'].
+    Compatible only with vector envs (TW gym env wrapper produces such by default)
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+    # def reset(self, **kwargs):
+    #     observation, infos = self.env.reset(**kwargs)
+    #     return observation, infos
+    def reset(self, **kwargs):
+        observation, infos = self.env.reset(**kwargs)
+        for idx, obs in enumerate(observation):
+            new_feedback = normalize_feedback_vs_obs_description(None,
+                    obs, infos['feedback'][idx], infos['description'][idx])
+        if new_feedback:
+            print(f"MODIFYING infos['feedback'] : '{new_feedback}' <-- orig: {infos['feedback'][idx]}")
+            infos['feedback'][idx] = new_feedback
+        return observation, infos
+
+    def step(self, action):
+        observation, reward, done, infos = self.env.step(action)
+        #print(f"ConsistentInfoWrapper: {len(infos['facts'])} {len(observation)} {len(observation[0])}")
+        assert isinstance(observation, (list, tuple))   # use with vector envs (TW gym wrapper produces such by default)
+        assert 'feedback' in infos, f"infos should include feedback {infos.keys()}"
+        assert 'description' in infos, f"infos should include description {infos.keys()}"
+        for idx, obs in enumerate(observation):
+            new_feedback = normalize_feedback_vs_obs_description(action[idx],
+                    obs, infos['feedback'][idx], infos['description'][idx])
+            if new_feedback:
+                print(f"ConsistenFeedbackWrapper MODIFYING infos['feedback'] : '{new_feedback}' <-- orig:", infos['feedback'][idx])
+                infos['feedback'][idx] = new_feedback
+            else:
+                pass
+                #print(f"NOT MODIFYING infos['feedback'] :\n"
+                #      f" ----- observation: {obs}\n"
+                #      f" ----- infos[feedback]: {infos['feedback'][idx]}\n"
+                #      f" ----- infos[description] {infos['description'][idx]}")
+        return observation, reward, done, infos
 
 #
 # game.metadata = metadata
