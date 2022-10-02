@@ -13,7 +13,7 @@ from textworld.logic import Proposition  #, Variable, Signature, State
 
 from twutils.file_helpers import count_iter_items, split_gamename  # , parse_gameid
 from twutils.twlogic import filter_observables
-from twutils.gym_wrappers import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
+from twutils.feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
 from symbolic.knowledge_graph import KnowledgeGraph
 
