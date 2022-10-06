@@ -92,11 +92,11 @@ class LocationChangedEvent(Event):
 #         super().__init__(message, groundtruth=groundtruth)
 #         self.new_attribute = new_attribute
 
-class GroundTruthComplete(Event):
-    """ Generated after all world facts have been incorporated into the Ground Truth knowledge graph. """
-    def __init__(self, groundtruth=True):
-        message = "Finished processing {}input facts".format('GT ' if groundtruth else '')
-        super().__init__(message, groundtruth=groundtruth)
+# class GroundTruthComplete(Event):
+#     """ Generated after all world facts have been incorporated into the Ground Truth knowledge graph. """
+#     def __init__(self, groundtruth=True):
+#         message = "Finished processing {}input facts".format('GT ' if groundtruth else '')
+#         super().__init__(message, groundtruth=groundtruth)
 
 class NeedToAcquire(Event):
     """ Generated whenever a decision module determines that one or more specific items should be obtained (into inventory). """

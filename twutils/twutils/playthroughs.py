@@ -17,8 +17,6 @@ from twutils.feedback_utils import normalize_feedback_vs_obs_description, simpli
 
 from symbolic.knowledge_graph import KnowledgeGraph
 
-from ftwc.wrappers import QaitGym
-from ftwc.vocab import WordVocab
 
 # default directory paths, usually overriden by env, config or cmd line args
 TW_GAMES_BASEDIR = '/ssd2tb/ftwc/games/'
@@ -300,9 +298,11 @@ def remove_prewords(item):
     return item2, indent
 
 
-FTWC_ALL_VOCAB = '/ssd2tb/twdata/ftwc/all-vocab.txt'
+from symbolic.wrappers.gym_wrappers import QaitGym
+from symbolic.wrappers.vocab import WordVocab
 
-QAIT_VOCAB = '/ssd2tb/twdata/qait/qait_word_vocab.txt'
+FTWC_ALL_VOCAB = '~/work2/twdata/ftwc/all-vocab.txt'
+QAIT_VOCAB = '~/work2/twdata/qait/qait_word_vocab.txt'
 
 # FTWC_QAIT_VOCAB = '/ssd2tb/ftwc/combined-qait-ftwc-vocab.txt'
 # NOTE: there is only one word in all-vocab.txt not in QAIT_VOCAB:  "bbq's"
@@ -316,7 +316,7 @@ def start_game_for_playthrough(gamefile,
                                max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                random_seed=DEFAULT_PTHRU_SEED
                                ):  #
-    _word_vocab = WordVocab(vocab_file=QAIT_VOCAB)
+    _word_vocab = WordVocab(vocab_file=None) # QAIT_VOCAB)
     _qgym_ = QaitGym(random_seed=random_seed,
                      raw_obs_feedback=raw_obs_feedback,
                      passive_oracle_mode=passive_oracle_mode)

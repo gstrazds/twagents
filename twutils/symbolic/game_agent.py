@@ -2,7 +2,7 @@ import os
 import logging
 import random
 from symbolic.decision_modules import TaskExec
-from symbolic.event import GroundTruthComplete   # NewTransitionEvent
+# from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *
@@ -263,7 +263,7 @@ class TextGameAgent:
         self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True, logger=self.get_logger()), groundtruth=True)
         #TODO (Disabled ground truth)
         # self.gi.gt.update_facts(gt_facts)
-        self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
+        # self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:
