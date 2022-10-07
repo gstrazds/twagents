@@ -1,12 +1,13 @@
-import gym
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Tuple, Mapping, Any
 import numpy as np
 import torch
+import gym
 
 import textworld
 import textworld.gym
+
 from textworld import EnvInfos
-#import rlpyt.envs.gym
+from textworld.core import GameState  #, Environment, Wrapper
 
 from symbolic.game_agent import TextGameAgent
 from symbolic.task_modules import RecipeReaderTask
@@ -158,6 +159,66 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
                 #      f" ----- infos[description] {infos['description'][idx]}")
         return observation, reward, done, infos
 
+
+class FactsWrapper(textworld.core.Wrapper):
+    """
+    Environment wrapper to access GameState: facts and actions .
+
+    Requested information will be included within the `infos` dictionary
+    returned by `Filter.reset()` and `Filter.step(...)`. To request
+    specific information, create a
+    :py:class:`textworld.EnvInfos <textworld.envs.wrappers.filter.EnvInfos>`
+    and set the appropriate attributes to `True`. Then, instantiate a `Filter`
+    wrapper with the `EnvInfos` object.
+
+    Example:
+        Here is an example of how to request information and retrieve it.
+
+        >>> from textworld import EnvInfos
+        >>> from textworld.envs.wrappers import Filter
+        >>> request_infos = EnvInfos(facts=True, extras=["_facts"])
+        >>> env = textworld.start(gamefile, request_infos)
+        >>> env = FactsWrapper(env)
+        >>> ob, infos = env.reset()
+        >>> print(infos["facts"])
+        >>> print(infos["extra._facts"])
+    """
+
+    def __init__(self, env: textworld.Environment):
+        super().__init__(env)
+
+
+    def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
+        game_state, score, done = super().step(command)
+        return game_state, score, done
+
+    def _get_gamestate_facts(self, game_state: GameState, infos):
+
+        infos['extra._facts'] = game_state.get("_facts")
+        return infos
+
+    def step(self, command: str) -> Tuple[GameState, float, bool]:
+        return self._wrapped_env.step(command)
+
+    def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
+        game_state, score, done = super().step(command)
+        ob = game_state.feedback
+        infos = self._get_requested_infos(game_state)
+        return ob, score, done, infos
+
+    def reset(self) -> Tuple[str, Mapping[str, Any]]:
+        game_state = super().reset()
+        ob = game_state.feedback
+        infos = self._get_requested_infos(game_state)
+        return ob, infos
+
+    def copy(self) -> "FactsWrapper":
+        env = FactsWrapper()
+        env._wrapped_env = self._wrapped_env.copy()
+        env.infos = self.infos
+        return env
+
+
 #
 # game.metadata = metadata
 # uuid = "tw-interactive_qa-{specs}-{seeds}"
@@ -267,7 +328,6 @@ def get_game_id_from_infos(infos, idx):
         print(f"WARNING: couldn't determine game_id for slot {idx} {len(infos)} {infos.keys()}")
         game_id = None
     return game_id
-
 
 
 class QaitEnvWrapper(gym.Wrapper):

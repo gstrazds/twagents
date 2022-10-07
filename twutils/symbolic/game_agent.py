@@ -1,6 +1,7 @@
 import os
 import logging
 import random
+
 from symbolic.decision_modules import TaskExec
 # from symbolic.event import GroundTruthComplete   # NewTransitionEvent
 from symbolic.entity import Location
@@ -269,5 +270,4 @@ class TextGameAgent:
         # with open(self.logpath+'.kng', 'w') as f:
         #     f.write(str(self.knowledge_graph)+'\n\n')
         pass
-
 
