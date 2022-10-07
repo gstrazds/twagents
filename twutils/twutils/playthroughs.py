@@ -421,10 +421,9 @@ def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
 
 
 def get_kg_descr(kg_accum, stepdata):
-    obs_facts_key = 'obs_facts'
     # obs_facts_key = 'oservable_facts' if 'oservable_facts' in stepdata else 'obs_facts'  # TODO: delete this line
     prev_action = stepdata['prev_action']
-    observed_facts = stepdata[obs_facts_key]
+    observed_facts = stepdata['obs_facts']
     # print( "---==================================================================---")
     # print(f"[{i:02d}] ++++ LOCATION:", stepdata['player_location'])
     # print(f"     ++++ DID:",      prev_action)

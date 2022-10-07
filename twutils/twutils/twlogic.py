@@ -1,4 +1,4 @@
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 from collections import defaultdict, OrderedDict
 from textworld.logic import Proposition, Variable, Signature, State
 from textworld.generator import World
@@ -190,7 +190,20 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None)
         print("++WORLD FACTS++:")
         for fact in world_facts:
             prettyprint_fact(fact, game=game)
+    if False and game:
+        observable_facts = [human_readable_to_internal(game, f) for f in observable_facts]
+
     return observable_facts, player_location
+
+
+def human_readable_to_internal(game:Game, fact:Proposition) -> Proposition:
+    def _human_readable_to_internal_var(game:Game, arg:Variable) -> Variable:
+        _name, _type = lookup_internal_name(game, arg)
+        return Variable(_name, _type)
+
+    args_new = [ _human_readable_to_internal_var(game, arg) for arg in fact.arguments ]
+    fact_new = Proposition(fact.name, args_new)
+    return fact_new
 
 
 def prettyprint_fact(fact, game=None, indent=1):
@@ -258,49 +271,49 @@ def find_room_info(game, room_name):
         return None
 
 def find_entity_info(game, entity_name):
-    entity_name = entity_name.lower()
+    #entity_name = entity_name.lower()
     entity_infos = [ei for ei in filter(_filter_out_unnamed_and_room_entities,
                                         game.infos.values()) if ei.name == entity_name]
     return entity_infos[0] if entity_infos else None
 
 
-def find_info(game, info_key):  # info_key might be info.id or info.name
-    info_key = info_key.lower()
+def _find_info(game, info_key):  # match EntityInfo.id or EntityInfo.name
+    # info_key = info_key.lower()  # instance of RECIPE has no name, but has allcaps id = RECIPE
     if info_key in game.infos:
         return game.infos[info_key]
     entity_infos = [ei for ei in game.infos.values()
-                    if ei.name == info_key or ei.id == info_key]
+                    if ei.id == info_key or ei.name == info_key]
     return entity_infos[0] if entity_infos else None
 
 
-def print_variable(game, arg):
-    info = None
-    outname = ''
-    if False and arg.type == 'r':
-        info = find_room_info(game, arg.name)
-    else:
-        info_id = arg.name
-        if not info_id:
-            info_id = arg.type
-        if info_id:
-            if info_id in game.infos:
-                info = game.infos[info_id]
-            else:
-                info = find_info(game, info_id)
+def lookup_internal_name(game, arg) -> Tuple[str,str]:
+    info_id = arg.type
+    info = _find_info(game, info_id)
+    if not info:
+        info = _find_info(game, arg.name)
     if info:
-        info_id = info.id
-        if arg.type == 'I':
-            outname = 'Inventory'
-        elif info.type == 'P':
-            outname = 'Player'
-        else:
-            outname = info.name
+        _name = info.id if info.id else info.type
+        _type = info.type
     else:
-        outname = arg.name
-        info_id = arg.type
-        # print("ARG:", arg)
+        _name = info_id  # arg.type
+        _type = arg.type
+        if _type:
+            _type = _type.split('_')[0]
+    print(f"lookup_internal_name: {arg} -> name:{_name}, type:{_type}")
+    return _name, _type
 
-    print("'{}'[{}]".format(outname, info_id), end='')
+def print_variable(game, arg):
+    _name, _type_ = lookup_internal_name(game, arg)
+    obj_id = arg.type
+
+    if _name == 'I':
+       outname = 'Inventory'
+    elif _name == 'P':
+        outname = 'Player'
+    else:
+        outname = _name
+
+    print("'{}'[{}]".format(outname, obj_id), end='')
 
 
 def print_fact(game, fact):
