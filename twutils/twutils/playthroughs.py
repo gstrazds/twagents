@@ -350,9 +350,9 @@ def format_stepkey(step_num:int):
     return f'step_{step_num:02d}'
 
 
-def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
+def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num, internal_names=False):
     world_facts = infos['facts'][0]
-    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0])
+    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0], internal_names=internal_names)
     world_facts_serialized = [f.serialize() for f in world_facts]
     observable_facts_serialized = [f.serialize() for f in observable_facts]
     step_key = format_stepkey(step_num)
@@ -382,7 +382,7 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num):
     return step_json
 
 
-def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED):
+def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED, internal_names=False):
     step_array = []  # convert json dict data (with redundant keys) to an array for convenience
 
     num_steps = 0
@@ -401,7 +401,7 @@ def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED):
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
         _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps, internal_names=internal_names)
         step_array.append(playthru_step_data[format_stepkey(num_steps)])
         next_cmds = _infos['tw_o_step']
     gymenv.close()

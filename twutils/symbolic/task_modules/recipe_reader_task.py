@@ -1,3 +1,4 @@
+from functools import partial
 from ..action import Action, SingleAction, StandaloneAction, PrepareMeal, Eat, NoOp, Drop
 # from ..event import NeedToDo
 # from ..game import GameInstance
@@ -9,13 +10,25 @@ from ..task_modules.navigation_task import GoToTask
 from twutils.twlogic import adapt_tw_instr, parse_ftwc_recipe, CUT_WITH, COOK_WITH
 
 
+def _check_cooked_state(item_name, verb, kgraph):
+    retval = kgraph.is_object_cooked(item_name, verb)
+    print(f"POSTCONDITION check_cooked_state({item_name}, {verb}) => {retval}")
+    return retval
+
+
+def _check_cut_state(item_name, verb, kgraph):
+    retval = kgraph.is_object_cut(item_name, verb)
+    print(f"POSTCONDITION check_cut_state({item_name}, {verb}) => {retval}")
+    return retval
+
+
 class RecipeReaderTask(SingleActionTask):
     """
     The Recipe Reader module activates when the player finds the cookbook.
     """
-    def __init__(self, use_groundtruth=True):
+    def __init__(self, use_groundtruth=False):
         super().__init__(act=StandaloneAction("read cookbook"),
-            description="RecipeReaderTask", use_groundtruth=False)
+            description="RecipeReaderTask", use_groundtruth=use_groundtruth)
         self.ingredients = []
         self.recipe_steps = []
         self.use_groundtruth = use_groundtruth
@@ -31,15 +44,15 @@ class RecipeReaderTask(SingleActionTask):
         return cookbook_location == kg.player_location
 
     def convert_cookbook_step_to_task(self, instr: str, kg: KnowledgeGraph):
-        def check_cooked_state(kgraph):
-            retval = kgraph.is_object_cooked(item_name, verb)
-            print(f"POSTCONDITION check_cooked_state({item_name}, {verb}) => {retval}")
-            return retval
-
-        def check_cut_state(kgraph):
-            retval = kgraph.is_object_cut(item_name, verb)
-            print(f"POSTCONDITION check_cut_state({item_name}, {verb}) => {retval}")
-            return retval
+        # def check_cooked_state(kgraph):
+        #     retval = kgraph.is_object_cooked(item_name, verb)
+        #     print(f"POSTCONDITION check_cooked_state({item_name}, {verb}) => {retval}")
+        #     return retval
+        #
+        # def check_cut_state(kgraph):
+        #     retval = kgraph.is_object_cut(item_name, verb)
+        #     print(f"POSTCONDITION check_cut_state({item_name}, {verb}) => {retval}")
+        #     return retval
 
         instr_words = instr.split()
         enhanced_instr_words, with_objs = adapt_tw_instr(instr_words, kg)
@@ -64,12 +77,14 @@ class RecipeReaderTask(SingleActionTask):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
                 else:
+                    check_cut_state = partial(_check_cut_state, item_name, verb)
                     if kg.get_entity(item_name):  # if we've already encountered this object
                         if check_cut_state(kg):
                             print("REDUNDANT:", instr)
                             # act = NoOp
                             # instr = "REDUNDANT: " + instr
                     # add postconditions to check for already done
+                    # post_checks.append(partial(_check_cut_state(item_name, verb, kg))
                     post_checks.append(check_cut_state)
             elif verb in COOK_WITH:
                 if self.use_groundtruth:
@@ -77,6 +92,7 @@ class RecipeReaderTask(SingleActionTask):
                         act = NoOp
                         instr = "REDUNDANT: " + instr
                 else:
+                    check_cooked_state = partial(_check_cooked_state, item_name, verb)
                     if kg.get_entity(item_name):  # if we've already encountered this object
                         if check_cooked_state(kg):
                             print("REDUNDANT:", instr)

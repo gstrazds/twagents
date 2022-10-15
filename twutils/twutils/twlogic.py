@@ -102,7 +102,7 @@ def reconstitute_facts(facts_list):
     return facts_list
 
 
-def filter_observables(world_facts: List[Proposition], verbose=False, game=None):
+def filter_observables(world_facts: List[Proposition], verbose=False, game=None, internal_names=False):
     fixups = defaultdict(set)
     if not world_facts:
         return None
@@ -190,7 +190,7 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None)
         print("++WORLD FACTS++:")
         for fact in world_facts:
             prettyprint_fact(fact, game=game)
-    if False and game:
+    if internal_names and game:
         observable_facts = [human_readable_to_internal(game, f) for f in observable_facts]
 
     return observable_facts, player_location
@@ -198,7 +198,7 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None)
 
 def human_readable_to_internal(game:Game, fact:Proposition) -> Proposition:
     def _human_readable_to_internal_var(game:Game, arg:Variable) -> Variable:
-        _name, _type = lookup_internal_name(game, arg)
+        _name, _type = lookup_internal_info(game, arg)
         return Variable(_name, _type)
 
     args_new = [ _human_readable_to_internal_var(game, arg) for arg in fact.arguments ]
@@ -286,24 +286,34 @@ def _find_info(game, info_key):  # match EntityInfo.id or EntityInfo.name
     return entity_infos[0] if entity_infos else None
 
 
-def lookup_internal_name(game, arg) -> Tuple[str,str]:
-    info_id = arg.type
+def lookup_internal_info(game, arg) -> Tuple[str, str]:
+    info_id = arg.name
     info = _find_info(game, info_id)
     if not info:
-        info = _find_info(game, arg.name)
+        print("lookup_internal_info failed for arg.name:", info_id)
+        # info = _find_info(game, arg.name)
     if info:
-        _name = info.id if info.id else info.type
+        _name = info.id  # if info.id else info.type
         _type = info.type
     else:
-        _name = info_id  # arg.type
+        _name = info_id  # arg.name
         _type = arg.type
-        if _type:
+        if type and '_' in _type:
+            print(f"!!!UNEXPECTED lookup_internal_info({info_id}) splitting pseudo arg.type:{_type}")
             _type = _type.split('_')[0]
-    print(f"lookup_internal_name: {arg} -> name:{_name}, type:{_type}")
+    print(f"lookup_internal_info: {arg} -> name:{_name}, type:{_type}")
     return _name, _type
 
+
+def lookup_internal_id(game, var_name) -> str:
+    info = _find_info(game, var_name)
+    _name = info.id  if info else None
+    print(f"lookup_internal_id: {var_name} -> {_name}")
+    return _name
+
+
 def print_variable(game, arg):
-    _name, _type_ = lookup_internal_name(game, arg)
+    _name, _type_ = lookup_internal_info(game, arg)
     obj_id = arg.type
 
     if _name == 'I':
@@ -312,7 +322,6 @@ def print_variable(game, arg):
         outname = 'Player'
     else:
         outname = _name
-
     print("'{}'[{}]".format(outname, obj_id), end='')
 
 

@@ -116,7 +116,7 @@ class Task:
         self.description = description
         self.prereq = Preconditions(task=self)
         self.missing = Preconditions(task=self)
-        self._postcondition_checks = []  # closures, invoked with one arg = KnowledgeGraph
+        self._postcondition_checks = []  # partial funcs (or closures), invoked with one positional arg = KnowledgeGraph
         self._action_generator = None  # generator: current state of self._generate_actions()
         self._task_exec = None   # when a task is activated, it gets a pointer to the TaskExecutor
         self._children = []   # keep track of subtasks that need to be revoked if this task fails or is revoked

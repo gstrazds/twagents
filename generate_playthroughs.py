@@ -14,7 +14,8 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               do_generate=True,
                               do_export=True,
                               dry_run=False,  # do everything according to other args, but don't write to disk
-                              dataset_name=None):
+                              dataset_name=None,
+                              internal_names=False):
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:
@@ -38,7 +39,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if do_generate:
-        step_array = generate_playthru(_gamefile, randseed=randseed, )
+        step_array = generate_playthru(_gamefile, randseed=randseed, internal_names=internal_names)
         _jsonstr = json.dumps(step_array, indent=2)
         if os.path.exists(_ptjson):
             warn_prefix = "SKIPPING - PT file exists:" if skip_existing else "WARNING - OVERWRITING PT:"
@@ -182,6 +183,7 @@ if __name__ == "__main__":
                                                   do_export=args.do_write,
                                                   dry_run=dry_run,
                                                   dataset_name=args.which,
+                                                  internal_names=args.internal_names,
                                             )
                     total_files += 1
 
@@ -232,6 +234,8 @@ if __name__ == "__main__":
                         help="One or more paths to playthrough output-dirs")
     parser.add_argument("--tokenizer-filepath", default="tokenizer_new.json",
                         help="File path to use when saving newly trained tokenizer")
+    parser.add_argument("--internal-names", action='store_true',
+                        help="Use TextWorld internal ids instead of entity and room names")
     args = parser.parse_args()
     main(args)
 
