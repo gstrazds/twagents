@@ -171,6 +171,7 @@ def add_attributes_for_type(entity, twvartype):
     #     entity.convert_to_container()
     #     # entity.state.add_state_variable('openable', 'is_open', 'unknown')  # TODO maybe not always (e.g. "in bowl", "in vase"...)
 
+
 def add_attributes_for_predicate(entity, predicate, entity2=None, groundtruth=False):
     attrib_list = get_attributes_for_predicate(predicate, entity2, groundtruth=groundtruth)
     for attrib in attrib_list:
@@ -366,7 +367,7 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False, rng=None):
+    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False, rng=None, internal_names=False):
         self._logger = logger
         self._debug = debug
         self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
@@ -378,6 +379,7 @@ class KnowledgeGraph:
         self.event_stream        = event_stream
         self.rng                 = rng   # random number generator
         self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
+        self.use_ids_as_names = internal_names
         self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
 
         self._unknown_location.add_entity(self._player)

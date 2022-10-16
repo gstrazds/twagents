@@ -232,19 +232,6 @@ class RecipeReaderTask(SingleActionTask):
             if self._task_exec:
                 drop_unneeded = DropUnneededItemsTask(required_items=ingredients, use_groundtruth=self.use_groundtruth)
                 self._task_exec.push_task(drop_unneeded)
-            # unneeded_inventory = []  # inventory items that are not listed as ingredients
-            # already_in_inventory = []  #ingredients that we already have
-            # for entity in kg.inventory.entities:
-            #     is_in_ingredients = False
-            #     for ingredient in ingredients:
-            #         if entity.has_name(ingredient):
-            #             already_in_inventory.append(ingredient)
-            #             is_in_ingredients = True
-            #             continue  # check next entity
-            #     if not is_in_ingredients:
-            #         unneeded_inventory.append(entity)
-            # for entity in unneeded_inventory:
-            #     response = yield Drop(entity)
         if directions:
             main_task = self.convert_instructions_to_tasks(kg)
             if main_task and self._task_exec:

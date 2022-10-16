@@ -188,18 +188,21 @@ class FactsWrapper(textworld.core.Wrapper):
         super().__init__(env)
 
 
-    def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
-        game_state, score, done = super().step(command)
-        return game_state, score, done
 
     def _get_gamestate_facts(self, game_state: GameState, infos):
-
         infos['extra._facts'] = game_state.get("_facts")
         return infos
 
-    def step(self, command: str) -> Tuple[GameState, float, bool]:
-        return self._wrapped_env.step(command)
+# TODO: finish coding step() -- CURRENTLY BROKEN
 
+#     def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
+#         game_state, score, done = super().step(command)
+#         return game_state, score, done
+#
+#     def step(self, command: str) -> Tuple[GameState, float, bool]:
+#         return self._wrapped_env.step(command)
+
+    # this version converts frpm to gym API
     def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
         game_state, score, done = super().step(command)
         ob = game_state.feedback
@@ -262,30 +265,6 @@ request_step_infos = EnvInfos(
                                game=True,
                                # verbs=True,
                              )
-
-
-
-# info_sample is a skeletal version of info struct returned from gym env, for use with RLPyT (currently not used)
-info_sample = {
-  "description": "-= Somewhere =-\\nYou are somewhere. There is not much here.",
-  "inventory": 'You are carrying nothing.\\n\\n\\n',
-  # "location": "somewhere",
-  "facts": [('at', ('P', 'P'), ('somewhere', 'r')), ('at', ('not much', 's'), ('somewhere', 'r'))],
-  "last_action": None,
-  "admissible_commands": ['enter front door', 'examine not much', 'look', 'open front door', 'wait'],
-#  "verbs": ['chop', 'close', 'cook', 'dice', 'drink', 'drop', 'eat', 'enter', 'examine', 'go', 'insert', 'inventory',
-    #  'lock', 'look', 'open', 'put', 'slice', 'take', 'unlock', 'wait'],
-#  # "location_names": ['somewhere', 'elsewhere'],
-#  # "location_nouns": ['somewhere', 'elsewhere'],
-#  # "location_adjs": ['', '', '', '', '', '', '', '', '', '', ''],
-#  "object_names": ['front door', 'plastic gate', 'barn door', 'glass door', 'etc...']
-#  "object_nouns": ['door', 'gate', 'door', 'door', 'door', 'gate', 'refrigerator', 'toolbox', 'etc...']
-#  "object_adjs": ['front', 'plastic', 'barn', 'glass', 'fiberglass', 'metallic', 'conventional', 'red', 'etc...']
-#  "game": "some big nasty string",
-#  # "extra.object_locations": {},
-#  # "extra.object_attributes": {},
-#  "extra.uuid": 'tw-interactive_qa-fAKe-guid'
-}
 
 
 # def parse_gameid(game_id: str) -> str:
@@ -446,9 +425,6 @@ class QaitEnvWrapper(gym.Wrapper):
             if not _gi.kg.get_entity('meal'):
                 meal = _gi.kg.create_new_object('meal', MEAL)
                 _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
-            if not _gi.gt.get_entity('meal'):
-                meal = _gi.gt.create_new_object('meal', MEAL)
-                _gi.gt._nowhere.add_entity(meal)
             _use_groundtruth = False
             task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
                          RecipeReaderTask(use_groundtruth=_use_groundtruth)]

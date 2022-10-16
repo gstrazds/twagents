@@ -386,7 +386,7 @@ def _convert_cooking_instruction(words, device: str, change_verb=None):
     return words_out
 
 
-def adapt_tw_instr(words: str, kg) -> str:
+def adapt_tw_instr(words: str, kg) -> Tuple[List[str],List[str]]:
     # if instr.startswith("chop ") or instr.startswith("dice ") or instr.startswith("slice "):
     #     return instr + " with the knife", ["knife"]
     # words = instr.split()
