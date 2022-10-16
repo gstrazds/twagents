@@ -160,63 +160,44 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
         return observation, reward, done, infos
 
 
-class FactsWrapper(textworld.core.Wrapper):
+class TWoWrapper(textworld.core.Wrapper):
     """
-    Environment wrapper to access GameState: facts and actions .
+    Environment wrapper to associate an active env with a TWOracle instance.
 
-    Requested information will be included within the `infos` dictionary
-    returned by `Filter.reset()` and `Filter.step(...)`. To request
-    specific information, create a
-    :py:class:`textworld.EnvInfos <textworld.envs.wrappers.filter.EnvInfos>`
-    and set the appropriate attributes to `True`. Then, instantiate a `Filter`
-    wrapper with the `EnvInfos` object.
-
-    Example:
-        Here is an example of how to request information and retrieve it.
-
-        >>> from textworld import EnvInfos
-        >>> from textworld.envs.wrappers import Filter
-        >>> request_infos = EnvInfos(facts=True, extras=["_facts"])
-        >>> env = textworld.start(gamefile, request_infos)
-        >>> env = FactsWrapper(env)
-        >>> ob, infos = env.reset()
-        >>> print(infos["facts"])
-        >>> print(infos["extra._facts"])
     """
 
-    def __init__(self, env: textworld.Environment):
-        super().__init__(env)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
+    def step(self, command: str) -> Tuple[GameState, float, bool]:
+        gs, reward, done = self._wrapped_env.step(command)
+        print(f"TWoWrapper.step({command}) -> {reward}, {done}, {gs.keys()}")
+        return gs, reward, done
 
+    def reset(self) -> GameState:
+        gs = self._wrapped_env.reset()
+        # print(f"TWoWrapper.reset() -> {gs}")
+        return gs
 
-    def _get_gamestate_facts(self, game_state: GameState, infos):
-        infos['extra._facts'] = game_state.get("_facts")
-        return infos
+    # def _get_gamestate_facts(self, game_state: GameState, infos):
+    #     infos['extra._facts'] = game_state.get("_facts")
+    #     return infos
+    #
+    # # this version converts to gym API
+    # def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
+    #     game_state, score, done = super().step(command)
+    #     ob = game_state.feedback
+    #     infos = self._get_requested_infos(game_state)
+    #     return ob, score, done, infos
+    #
+    # def reset(self) -> Tuple[str, Mapping[str, Any]]:
+    #     game_state = super().reset()
+    #     ob = game_state.feedback
+    #     infos = self._get_requested_infos(game_state)
+    #     return ob, infos
 
-# TODO: finish coding step() -- CURRENTLY BROKEN
-
-#     def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
-#         game_state, score, done = super().step(command)
-#         return game_state, score, done
-#
-#     def step(self, command: str) -> Tuple[GameState, float, bool]:
-#         return self._wrapped_env.step(command)
-
-    # this version converts frpm to gym API
-    def step(self, command: str) -> Tuple[str, Mapping[str, Any]]:
-        game_state, score, done = super().step(command)
-        ob = game_state.feedback
-        infos = self._get_requested_infos(game_state)
-        return ob, score, done, infos
-
-    def reset(self) -> Tuple[str, Mapping[str, Any]]:
-        game_state = super().reset()
-        ob = game_state.feedback
-        infos = self._get_requested_infos(game_state)
-        return ob, infos
-
-    def copy(self) -> "FactsWrapper":
-        env = FactsWrapper()
+    def copy(self) -> "TWoWrapper":
+        env = TWoWrapper()
         env._wrapped_env = self._wrapped_env.copy()
         env.infos = self.infos
         return env
@@ -265,37 +246,6 @@ request_step_infos = EnvInfos(
                                game=True,
                                # verbs=True,
                              )
-
-
-# def parse_gameid(game_id: str) -> str:
-#     segments = game_id.split('-')
-#     if len(segments) >= 4:
-#         code, guid = segments[2:4]
-#         guid = guid.split('.')[0]
-#         guid = "{}..{}".format(guid[0:4],guid[-4:])
-#         segments = code.split('+')
-#         r, t, g, k, c, o, d = ('0', '0', '0', '_', '_', '_', '_')
-#         for seg in segments:
-#             if seg.startswith('recipe'):
-#                 r = seg[len('recipe'):]
-#             elif seg.startswith('go'):
-#                 g = seg[len('go'):]
-#             elif seg.startswith('take'):
-#                 t = seg[len('take'):]
-#             elif seg == 'cook':
-#                 k = 'k'
-#             elif seg == 'cut':
-#                 c = 'c'
-#             elif seg == 'open':
-#                 o = 'o'
-#             elif seg == 'drop':
-#                 d = 'd'
-#             else:
-#                 assert False, "unparsable game_id: {}".format(game_id)
-#         shortcode = "r{}t{}{}{}{}{}g{}-{}".format(r,t,k,c,o,d,g,guid)
-#     else:
-#         shortcode = game_id
-#     return shortcode
 
 
 def get_game_id_from_infos(infos, idx):
@@ -372,34 +322,27 @@ class QaitEnvWrapper(gym.Wrapper):
                     oracle.observe(rewards[idx], obs[idx], dones[idx],
                                    prev_action=prev_action, idx=idx)
                     # populate oracle recommended action
-                infos = self._update_oracle(oracle, idx, infos, obs[idx], batch_size=len(obs),
+                if 'facts' in infos and prev_action != "do nothing":
+                    world_facts = infos['facts'][idx]
+                else:
+                    world_facts = None
+                actiontxt, _tasks = self._update_oracle(oracle, idx, obs[idx], world_facts,
                                             is_done=dones[idx], prev_action=prev_action, verbose=False)
+                _update_infos(infos, idx, actiontxt, _tasks, len(obs))
         return obs, rewards, dones, infos
 
     def close(self):
         self.env.close()
 
-    def _update_oracle(self, oracle, idx, infos, obstxt, batch_size=1, is_done=False, prev_action=None, verbose=False):
+    def _update_oracle(self, oracle, idx, obstxt, world_facts, is_done=False, prev_action=None, verbose=False):
         # if is_done:   # if agent idx has already terminated, don't invoke it again
         #     # actiontxt = 'do nothing'
         # else:
         _tasks = oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
         if is_done:
             print("_update_oracle is_done=True: ", _tasks)
-        actiontxt = self.invoke_oracle(oracle, idx, obstxt, infos, is_done, prev_action=prev_action, verbose=verbose)
-        if actiontxt:
-            if 'tw_o_step' not in infos:
-                assert idx == 0, \
-                    f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-                infos['tw_o_step'] = ['fake action'] * batch_size  # will be replaced before anyone sees these
-            infos['tw_o_step'][idx] = actiontxt
-
-        if 'tw_o_stack' not in infos:
-            assert idx == 0, \
-                f"if tw_o_stack is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{len(self.tw_oracles)}]"
-            infos['tw_o_stack'] = ['(( )) [[ task ]]'] * batch_size  # will be replaced before anyone sees these
-        infos['tw_o_stack'][idx] = _tasks
-        return infos
+        actiontxt = self.invoke_oracle(oracle, idx, obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
+        return actiontxt, _tasks
 
     def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True, objective='eat meal'):
         if idx == len(self.tw_oracles):
@@ -447,8 +390,13 @@ class QaitEnvWrapper(gym.Wrapper):
                     self.game_ids.append(game_id)
             self._init_oracle(game_id, idx, need_to_forget=need_to_forget, is_first_episode=(episode_counter == 0))
             # populate oracle recommended action
-            infos = self._update_oracle(self.tw_oracles[idx], idx, infos, obs[idx],
-                                        batch_size=batch_size, is_done=False, verbose=True)
+            if 'facts' in infos:
+                world_facts = infos['facts'][idx]
+            else:
+                world_facts = None
+            actiontxt, _tasks = self._update_oracle(self.tw_oracles[idx], idx, obs[idx],
+                                        world_facts, is_done=False, verbose=True)
+            _update_infos(infos, idx, actiontxt, _tasks, batch_size)
         return obs, infos
 
     def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback
@@ -459,7 +407,7 @@ class QaitEnvWrapper(gym.Wrapper):
                  enumerate(zip(self.game_ids, self.tw_oracles))])
             print(f"_end_episode[{self.episode_counter}] <Step {self.tw_oracles[0].step_num}> {all_endactions}")
 
-    def invoke_oracle(self, tw_oracle, idx, obstxt, infos, is_done, prev_action=None, verbose=False) -> str:
+    def invoke_oracle(self, tw_oracle, idx, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
         assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
         assert tw_oracle == self.tw_oracles[idx]
         # simplify the observation text if it includes notification about incremented score
@@ -476,12 +424,7 @@ class QaitEnvWrapper(gym.Wrapper):
         # if 'game_id' in infos:
         #     print("infos[game_id]=", infos['game_id'][idx])
 
-        if 'facts' in infos and prev_action != "do nothing":
-
-            world_facts = infos['facts'][idx]
-            # if world_facts:   # facts can be a list of Proposition or serialized (json) Propositions
-            #     if isinstance(world_facts[0], textworld.logic.Proposition):
-            #         world_facts = [f.serialize() for f in world_facts]
+        if world_facts:
 
             # TODO: remove ground_truth -- no longer needed
             tw_oracle.set_ground_truth(world_facts)
@@ -507,6 +450,21 @@ class QaitEnvWrapper(gym.Wrapper):
             # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
             print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] choose_next_action -> {actiontxt}")
         return actiontxt
+
+
+def _update_infos(infos, idx, actiontxt, taskstack, batch_size):
+    if actiontxt:
+        if 'tw_o_step' not in infos:
+            assert idx == 0, \
+                f"if tw_o_step is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{batch_size}]"
+            infos['tw_o_step'] = ['fake action'] * batch_size  # will be replaced before anyone sees these
+        infos['tw_o_step'][idx] = actiontxt
+
+    if 'tw_o_stack' not in infos:
+        assert idx == 0, \
+            f"if tw_o_stack is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{batch_size}]"
+        infos['tw_o_stack'] = ['(( )) [[ task ]]'] * batch_size  # will be replaced before anyone sees these
+    infos['tw_o_stack'][idx] = taskstack
 
 
 class QaitGym:

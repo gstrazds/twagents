@@ -6,6 +6,7 @@ tmp_*
 
 # generated playthrough data
 playthrus/
+tw_games/
 
 # console output files
 out/

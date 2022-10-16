@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 from textworld import Agent
+from symbolic.wrappers.gym_wrappers import TWoWrapper
 
 
 class WalkthroughDone(NameError):
@@ -13,6 +14,10 @@ class TwOracleAgent(Agent):
 
     def __init__(self, commands=None):
         self.commands = commands
+
+    @property
+    def wrappers(self):
+        return [TWoWrapper]
 
     def reset(self, env):
         env.display_command_during_render = True

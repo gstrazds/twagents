@@ -38,8 +38,6 @@ def main():
     if args.very_verbose:
         args.verbose = args.very_verbose
 
-    env = textworld.start(args.game)
-
     if args.mode == "random":
         agent = textworld.agents.NaiveAgent()
     elif args.mode == "random-cmd":
@@ -50,6 +48,9 @@ def main():
         agent = textworld.agents.WalkthroughAgent()
     elif args.mode == 'oracle':
         agent = TwOracleAgent()
+
+    env_infos = textworld.EnvInfos(facts=True)
+    env = textworld.start(args.game, infos=env_infos, wrappers=agent.wrappers)
 
     agent.reset(env)
     if args.viewer is not None:
