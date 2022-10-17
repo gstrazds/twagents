@@ -10,7 +10,7 @@ class WalkthroughDone(NameError):
 
 
 class TwOracleAgent(Agent):
-    """ Agent that simply follows a list of commands. """
+    """ Agent that uses TWOracle to play a TextWorld game. """
 
     def __init__(self, commands=None):
         self.commands = commands
