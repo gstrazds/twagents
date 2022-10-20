@@ -49,9 +49,10 @@ def main():
     elif args.mode == 'oracle':
         agent = TwOracleAgent()
 
-    env_infos = textworld.EnvInfos(facts=True)
-    env = textworld.start(args.game, infos=env_infos, wrappers=agent.wrappers)
-
+    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, inventory=True, location=True,
+                                   last_action=True, last_command=True)
+    env = textworld.start(args.game, wrappers=agent.wrappers, infos=env_infos)
+    print("tw-oracle env=", env)
     agent.reset(env)
     if args.viewer is not None:
         from textworld.envs.wrappers import HtmlViewer

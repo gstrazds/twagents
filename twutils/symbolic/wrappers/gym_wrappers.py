@@ -168,16 +168,19 @@ class TWoWrapper(textworld.core.Wrapper):
 
     def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
-        #print("QaitEnvWrapper.__init__", self.env, self.unwrapped)
+        print(f"###### TWoWrapper.__init__(randdom_seed={random_seed}, passive_mode={passive_oracle_mode})")
         if random_seed is None:
             random_seed = 42
         self.random_seed = random_seed
-        self.idx = None   # for more informative logging / debug out when running multiple agents in parallel (vector env)
+        self.idx = 0   # for more informative logging / debug out when running multiple agents in parallel (vector env)
         self.game_id: Optional[str] = None
         self.tw_oracle: Optional[TextGameAgent] = None
         self.passive_oracle_mode: bool = passive_oracle_mode
         self.episode_counter: int = -1
         self.next_command = None
+
+    # def _wrap(self, env):
+    #     super()._wrap(env)
 
     def set_game_id(self, game_id: str, idx: Optional[int] = None):
         if idx is not None and self.idx is not None:
@@ -194,80 +197,50 @@ class TWoWrapper(textworld.core.Wrapper):
             self.game_id = game_id
             return True
 
-    def reset(self, episode_num: Optional[int] = None):
-        if episode_num is not None:
-            self.episode_counter = episode_num
-        else:
-            self.episode_counter += 1
+    def reset(self):
+        print(f"@@@@@@@@@@@ TWoWrapper({self}).reset(env={self._wrapped_env}")
+
+        # if episode_num is not None:
+        #     self.episode_counter = episode_num
+        # else:
+        #     self.episode_counter += 1
 
         game_state = self._wrapped_env.reset()
-        obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
+        self._init_oracle(game_state, need_to_forget=False, is_first_episode=True, objective='eat meal')
+        # print(game_state)
+        # obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
+        self.episode_counter = -1
         return game_state
 
     def step(self, command: str):
-        #print(f"--------QAIT WRAPPER.step({commands})")
-        gs, reward, done = self.env.step(command)
-        #print(f"--------QAIT WRAPPER => obs:>>{obs}<<")
-        if self.tw_oracle:
+        self.episode_counter += 1
+        #print(f"--------.step({commands})")
+        gs, reward, done = self._wrapped_env.step(command)
+        obstxt = gs.feedback
+        print(f"--------obs:>>{obstxt}<<")
+        if obstxt is None:
+            obstxt = ''
+        if not self.tw_oracle:
+            actiontxt = "do something"
+        else:
             prev_action = command if command else None
             if prev_action == 'do nothing':
                 pass
             else:
-                self.tw_oracle.observe(reward, obs[idx], done,
-                               prev_action=prev_action, idx=self.idx)
+                self.tw_oracle.observe(reward, obstxt, done, prev_action=prev_action, idx=self.idx)
                 # populate oracle recommended action
             if prev_action != "do nothing":
                 world_facts = gs.get('facts', None)
             else:
                 world_facts = None
-            actiontxt, _tasks = self._update_oracle(self.tw_oracle, self.idx, obs, world_facts,
-                                        is_done=done, prev_action=prev_action, verbose=False)
+            actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
             self.next_command = actiontxt
             self._tasks = _tasks
+        gs.next_command = f"{actiontxt} [{self.episode_counter}]"
         return gs, reward, done
 
     def close(self):
-        self.env.close()
-
-    def _update_oracle(self, oracle, idx, obstxt, world_facts, is_done=False, prev_action=None, verbose=False):
-        # if is_done:   # if agent idx has already terminated, don't invoke it again
-        #     # actiontxt = 'do nothing'
-        # else:
-        _tasks = oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
-        if is_done:
-            print("_update_oracle is_done=True: ", _tasks)
-        actiontxt = self.invoke_oracle(oracle, idx, obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
-        return actiontxt, _tasks
-
-    def _init_oracle(self, game_id, idx=0, need_to_forget=False, is_first_episode=True, objective='eat meal'):
-        if idx == len(self.tw_oracles):
-            tw_game_oracle = TextGameAgent(
-                self.random_seed + idx,  # seed
-                "TW",  # rom_name
-                game_id,  # env_name
-                idx=idx,
-                game=None  # TODO: infos['game'][idx]  # for better logging
-            )
-            self.tw_oracles.append(tw_game_oracle)
-        else:
-            assert idx < len(self.tw_oracles)
-            if not is_first_episode:
-                if need_to_forget:
-                    self.tw_oracles[idx].setup_logging(game_id, idx)
-                self.tw_oracles[idx].reset(forget_everything=need_to_forget)
-        if objective == 'eat meal':
-            tw_o = self.tw_oracles[idx]
-            assert tw_o.step_num == 0
-            _gi = tw_o.gi
-            # FIXME: initialization HACK for MEAL
-            if not _gi.kg.get_entity('meal'):
-                meal = _gi.kg.create_new_object('meal', MEAL)
-                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
-            _use_groundtruth = False
-            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
-                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
-            for task in task_list:
-                tw_o.task_exec.queue_task(task)
+        self._wrapped_env.close()
 
     def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
@@ -294,17 +267,44 @@ class TWoWrapper(textworld.core.Wrapper):
             _update_infos(infos, idx, actiontxt, _tasks, batch_size)
         return obs, infos
 
-    def _on_episode_end(self) -> None:  # NOTE: this is *not* a PL callback
-        # Game has finished (either win, lose, or exhausted all the given steps).
-        if self.tw_oracles:
-            all_endactions = " ".join(
-                [":{}: [{}]".format(gameid, tw_oracle.last_action) for idx, (gameid, tw_oracle) in
-                 enumerate(zip(self.game_ids, self.tw_oracles))])
-            print(f"_end_episode[{self.episode_counter}] <Step {self.tw_oracles[0].step_num}> {all_endactions}")
 
-    def invoke_oracle(self, tw_oracle, idx, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
-        assert idx < len(self.tw_oracles), f"{idx} should be < {len(self.tw_oracles)}"
-        assert tw_oracle == self.tw_oracles[idx]
+    def _init_oracle(self, game_state, need_to_forget=False, is_first_episode=True, objective='eat meal'):
+        if not self.tw_oracle or need_to_forget:
+            self.tw_oracle = TextGameAgent(
+                self.random_seed + self.idx,  # seed
+                "TW",  # rom_name
+                self.game_id,  # env_name
+                idx=self.idx,
+                game=game_state.game  # for better logging
+            )
+        else:
+            if not is_first_episode:
+                self.tw_oracles.reset(forget_everything=False)
+        if objective == 'eat meal':
+            tw_o = self.tw_oracle
+            assert tw_o.step_num == 0
+            _gi = tw_o.gi
+            # FIXME: initialization HACK for MEAL
+            if not _gi.kg.get_entity('meal'):
+                meal = _gi.kg.create_new_object('meal', MEAL)
+                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
+            _use_groundtruth = False
+            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
+                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
+            for task in task_list:
+                tw_o.task_exec.queue_task(task)
+
+    def _update_oracle(self, obstxt, world_facts, is_done=False, prev_action=None, verbose=False):
+        # if is_done:   # if agent idx has already terminated, don't invoke it again
+        #     # actiontxt = 'do nothing'
+        # else:
+        _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
+        if is_done:
+            print("_update_oracle is_done=True: ", _tasks)
+        actiontxt = self.invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
+        return actiontxt, _tasks
+
+    def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
         # simplify the observation text if it includes notification about incremented score
         if obstxt:
             if "Your score has just" in obstxt:
@@ -322,7 +322,7 @@ class TWoWrapper(textworld.core.Wrapper):
         if world_facts:
 
             # TODO: remove ground_truth -- no longer needed
-            tw_oracle.set_ground_truth(world_facts)
+            self.tw_oracle.set_ground_truth(world_facts)
 
             observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
             print("FACTS IN SCOPE:")
@@ -333,32 +333,34 @@ class TWoWrapper(textworld.core.Wrapper):
             observable_facts = None
         if prev_action != "do nothing":
             # if prev_action=None -> uses oracle._last_action from oracle.observe()
-            tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
+            self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
         if self.passive_oracle_mode:
-            print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] passive oracle mode")
+            print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode")
             return None
         if is_done:
             actiontxt = "do nothing"
         else:
-            actiontxt = tw_oracle.select_next_action(obstxt, external_next_action=None)
+            actiontxt = self.tw_oracle.select_next_action(obstxt, external_next_action=None)
             # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
-            print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}] choose_next_action -> {actiontxt}")
+            print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] choose_next_action -> {actiontxt}")
         return actiontxt
 
 
 
 
-#-------------------------------------
-    def step(self, command: str) -> Tuple[GameState, float, bool]:
-        gs, reward, done = self._wrapped_env.step(command)
-        print(f"TWoWrapper.step({command}) -> {reward}, {done}, {gs.keys()}")
-        return gs, reward, done
 
-    def reset(self) -> GameState:
-        gs = self._wrapped_env.reset()
-        # print(f"TWoWrapper.reset() -> {gs}")
-        return gs
+
+#-------------------------------------
+    # def step(self, command: str) -> Tuple[GameState, float, bool]:
+    #     gs, reward, done = self._wrapped_env.step(command)
+    #     print(f"TWoWrapper.step({command}) -> {reward}, {done}, {gs.keys()}")
+    #     return gs, reward, done
+    #
+    # def reset(self) -> GameState:
+    #     gs = self._wrapped_env.reset()
+    #     # print(f"TWoWrapper.reset() -> {gs}")
+    #     return gs
 
     # def _get_gamestate_facts(self, game_state: GameState, infos):
     #     infos['extra._facts'] = game_state.get("_facts")

@@ -195,7 +195,7 @@ def add_attributes_for_predicate(entity, predicate, entity2=None, groundtruth=Fa
     elif predicate == 'open':
         entity.state.open()
     elif predicate == 'locked':
-        entity.state.locked()
+        entity.state.lock()
     elif predicate == 'cooked' \
       or predicate == 'fried' \
       or predicate == 'baked' \
