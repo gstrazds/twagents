@@ -46,17 +46,18 @@ class TwOracleAgent(Agent):
             self._commands = iter(game_state.get("extra.walkthrough"))
 
     def act(self, game_state, reward, done):
-        command = game_state.get("next_command", "NO NEXT COMMAND FOUND")
+        command = game_state.get("next_command", None)
         print("next_command =", command)
-        if self._commands:
-            try:
-                action = next(self._commands)
-                print("action from walkthrough =", action)
-                command = action
-            except StopIteration:
-                raise WalkthroughDone()
-
         if not command:
-            raise WalkthroughDone()
+            if self._commands:
+                try:
+                    action = next(self._commands)
+                    print("action from walkthrough =", action)
+                    command = action
+                except StopIteration:
+                    raise WalkthroughDone()
+
+            if not command:
+                raise WalkthroughDone()
         command = command.strip()  # Remove trailing \n, if any.
         return command  # will be followed by a call to env.step(command)

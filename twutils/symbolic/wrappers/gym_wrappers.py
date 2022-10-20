@@ -236,7 +236,7 @@ class TWoWrapper(textworld.core.Wrapper):
             actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
             self.next_command = actiontxt
             self._tasks = _tasks
-        gs.next_command = f"{actiontxt} [{self.episode_counter}]"
+        gs.next_command = f"{actiontxt}"
         return gs, reward, done
 
     def close(self):
