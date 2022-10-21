@@ -1,7 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT license.
 
-from textworld import Agent, Environment
+from typing import Optional
+from textworld import Agent, Environment, GameState
 from symbolic.wrappers.gym_wrappers import TWoWrapper
 
 
@@ -14,12 +15,16 @@ class TwOracleAgent(Agent):
 
     def __init__(self, commands=None, **kwargs):
         super().__init__(**kwargs)
+        self._game_state: Optional[GameState] = None
         self.commands = commands
         # self.env = None
 
     @property
     def wrappers(self):
         return [TWoWrapper]
+
+    def get_initial_state(self):
+        return self._game_state
 
     def reset(self, env: Environment):
         print(f"TwOracleAgent({self}).reset({env})")
@@ -28,7 +33,7 @@ class TwOracleAgent(Agent):
 
         print(env, env.reset)
         game_state = env.reset()
-        game_state.next_command = "do something"
+        self._game_state = game_state
         #print(game_state)
         if not hasattr(game_state, "next_command"):
             msg = "TwOracleAgent only works for games with a dynamic next_command property (e.g. from TWoWrapper)"

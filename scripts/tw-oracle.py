@@ -61,10 +61,16 @@ def main():
     if args.mode == "human" or args.very_verbose:
         print("Using {}.\n".format(env.__class__.__name__))
 
-    # game_state = env.reset()
-    game_state, _reward_, _done_ = env.step("look")
     if args.mode == "human" or args.verbose:
         env.render()
+
+    # # game_state = env.reset()
+    if hasattr(agent, 'get_initial_state'):
+        game_state = agent.get_initial_state()   # retrieve initial game_state (from agent.reset(env))
+    else:
+        # game_state, _reward_, _done_ = env.step("look")
+        assert False
+        game_state = env.reset()
 
     reward = 0
     done = False

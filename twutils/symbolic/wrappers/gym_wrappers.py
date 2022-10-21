@@ -160,19 +160,29 @@ class ConsistentFeedbackWrapper(gym.Wrapper):
         return observation, reward, done, infos
 
 
+def get_game_id_from_game_state(game_state: GameState):
+    game = None
+    game_id = None
+    if hasattr(game_state, 'game'):
+        game = game_state.game
+        if hasattr(game, 'metadata'):
+            game_id = game.metadata.get('uuid', None)
+    return game, game_id
+
+
 class TWoWrapper(textworld.core.Wrapper):
     """
     Environment wrapper to associate an active env with a TWOracle instance.
 
     """
 
-    def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = False, **kwargs):
+    def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = False, idx: int = 0, **kwargs):
         super().__init__(*args, **kwargs)
         print(f"###### TWoWrapper.__init__(randdom_seed={random_seed}, passive_mode={passive_oracle_mode})")
         if random_seed is None:
             random_seed = 42
         self.random_seed = random_seed
-        self.idx = 0   # for more informative logging / debug out when running multiple agents in parallel (vector env)
+        self.idx = idx   # for more informative logging / debug out when running multiple agents in parallel (vector env)
         self.game_id: Optional[str] = None
         self.tw_oracle: Optional[TextGameAgent] = None
         self.passive_oracle_mode: bool = passive_oracle_mode
@@ -206,7 +216,8 @@ class TWoWrapper(textworld.core.Wrapper):
         #     self.episode_counter += 1
 
         game_state = self._wrapped_env.reset()
-        self._init_oracle(game_state, need_to_forget=False, is_first_episode=True, objective='eat meal')
+        self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
+        game_state.next_command = self.next_command
         # print(game_state)
         # obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
         self.episode_counter = -1
@@ -236,13 +247,13 @@ class TWoWrapper(textworld.core.Wrapper):
             actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
             self.next_command = actiontxt
             self._tasks = _tasks
-        gs.next_command = f"{actiontxt}"
+        gs.next_command = self.next_command
         return gs, reward, done
 
     def close(self):
         self._wrapped_env.close()
 
-    def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
+    def _xx_on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
         # print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
 
@@ -268,18 +279,19 @@ class TWoWrapper(textworld.core.Wrapper):
         return obs, infos
 
 
-    def _init_oracle(self, game_state, need_to_forget=False, is_first_episode=True, objective='eat meal'):
-        if not self.tw_oracle or need_to_forget:
+    def _initialize_oracle(self, game_state, idx=0, is_first_episode=True, forget_everything=False, objective='eat meal'):
+        game, game_id = get_game_id_from_game_state(game_state)
+        is_different_game = self.set_game_id(game_id, idx)  # if playing the same game repeatedly, remember layout
+        if not self.tw_oracle or is_different_game or is_first_episode:   # or forget_everything
             self.tw_oracle = TextGameAgent(
                 self.random_seed + self.idx,  # seed
                 "TW",  # rom_name
                 self.game_id,  # env_name
-                idx=self.idx,
-                game=game_state.game  # for better logging
+                idx=self.idx,  # for logging
+                game=game      # for more detailed logging
             )
-        else:
-            if not is_first_episode:
-                self.tw_oracles.reset(forget_everything=False)
+        else:      # not is_first_episode
+            self.tw_oracle.reset(forget_everything=forget_everything)
         if objective == 'eat meal':
             tw_o = self.tw_oracle
             assert tw_o.step_num == 0
@@ -293,6 +305,14 @@ class TWoWrapper(textworld.core.Wrapper):
                          RecipeReaderTask(use_groundtruth=_use_groundtruth)]
             for task in task_list:
                 tw_o.task_exec.queue_task(task)
+
+        # prime the pump
+        world_facts = game_state.get('facts', None)
+        obstxt = game_state.feedback
+        actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
+        self.next_command = actiontxt
+        self._tasks = _tasks
+
 
     def _update_oracle(self, obstxt, world_facts, is_done=False, prev_action=None, verbose=False):
         # if is_done:   # if agent idx has already terminated, don't invoke it again

@@ -247,7 +247,9 @@ class TextGameAgent:
             idx = self._idx
         if prev_action and self._last_action:
             if prev_action.lower() != self._last_action.text().lower():
-                print(f"WARNING: observe() explicit prev_action:'{prev_action}' replacing self._last_action:{self._last_action}")
+                warnmsg = f"WARNING: observe() explicit prev_action:'{prev_action}' replacing self._last_action:{self._last_action}"
+                print(warnmsg)
+                assert False, warnmsg
                 self._last_action = StandaloneAction(prev_action)
         if not prev_action and self._last_action:
             prev_action = self._last_action.text()
