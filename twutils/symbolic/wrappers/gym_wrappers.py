@@ -188,6 +188,7 @@ class TWoWrapper(textworld.core.Wrapper):
         self.passive_oracle_mode: bool = passive_oracle_mode
         self.episode_counter: int = -1
         self.next_command = None
+        self._prev_state: Optional[GameState] = None
 
     # def _wrap(self, env):
     #     super()._wrap(env)
@@ -216,8 +217,12 @@ class TWoWrapper(textworld.core.Wrapper):
         #     self.episode_counter += 1
 
         game_state = self._wrapped_env.reset()
+        self._prev_state = game_state
         self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
         game_state.next_command = self.next_command
+        if not hasattr(game_state, 'score'):
+            game_state.score = 0
+        game_state.reward = game_state.score
         # print(game_state)
         # obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
         self.episode_counter = -1
@@ -226,7 +231,13 @@ class TWoWrapper(textworld.core.Wrapper):
     def step(self, command: str):
         self.episode_counter += 1
         #print(f"--------.step({commands})")
-        gs, reward, done = self._wrapped_env.step(command)
+        gs, score, done = self._wrapped_env.step(command)
+        score = int(score)
+        if self._prev_state is not None:
+            reward = score - self._prev_state.get('score', 0)
+        else:
+            reward = score
+        self._prev_state = gs
         obstxt = gs.feedback
         print(f"--------obs:>>{obstxt}<<")
         if obstxt is None:
@@ -246,7 +257,11 @@ class TWoWrapper(textworld.core.Wrapper):
                 world_facts = None
             actiontxt, _tasks_ = self.invoke_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
         gs.next_command = actiontxt
-        return gs, reward, done
+        if not hasattr(gs, 'score'):
+            gs.score = score
+        gs.reward = reward
+
+        return gs, score, done
 
     def close(self):
         self._wrapped_env.close()
@@ -410,6 +425,8 @@ request_step_infos = EnvInfos(
                                facts=True,
                                last_action=True,
                                admissible_commands=True,
+                               intermediate_reward=True,
+                            # policy_commands=True,   # list of commands to win game
 # static infos, don't change during the game:
                                game=True,
                                # verbs=True,

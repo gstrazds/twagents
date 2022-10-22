@@ -50,7 +50,7 @@ def main():
         agent = TwOracleAgent()
 
     env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, inventory=True, location=True,
-                                   last_action=True, last_command=True)
+                                   last_action=True, last_command=True, intermediate_reward=True)
     env = textworld.start(args.game, wrappers=agent.wrappers, infos=env_infos)
     print("tw-oracle env=", env)
     agent.reset(env)
