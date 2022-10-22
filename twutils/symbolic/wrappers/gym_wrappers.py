@@ -244,40 +244,12 @@ class TWoWrapper(textworld.core.Wrapper):
                 world_facts = gs.get('facts', None)
             else:
                 world_facts = None
-            actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
-            self.next_command = actiontxt
-            self._tasks = _tasks
-        gs.next_command = self.next_command
+            actiontxt, _tasks_ = self.invoke_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
+        gs.next_command = actiontxt
         return gs, reward, done
 
     def close(self):
         self._wrapped_env.close()
-
-    def _xx_on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
-        # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
-        # print(f"start_episode[{self.current_episode}] {_game_ids} {self.game_ids}")
-
-        batch_size = len(obs)
-        for idx in range(batch_size):
-            game_id = get_game_id_from_infos(infos, idx)
-            if game_id:
-                need_to_forget = self.set_game_id(game_id, idx)   # if playing the same game repeatedly, remember layout
-            else:
-                need_to_forget = False
-                game_id = str(idx)
-                if idx == len(self.game_ids):
-                    self.game_ids.append(game_id)
-            self._init_oracle(game_id, idx, need_to_forget=need_to_forget, is_first_episode=(episode_counter == 0))
-            # populate oracle recommended action
-            if 'facts' in infos:
-                world_facts = infos['facts'][idx]
-            else:
-                world_facts = None
-            actiontxt, _tasks = self._update_oracle(self.tw_oracles[idx], idx, obs[idx],
-                                        world_facts, is_done=False, verbose=True)
-            _update_infos(infos, idx, actiontxt, _tasks, batch_size)
-        return obs, infos
-
 
     def _initialize_oracle(self, game_state, idx=0, is_first_episode=True, forget_everything=False, objective='eat meal'):
         game, game_id = get_game_id_from_game_state(game_state)
@@ -309,22 +281,12 @@ class TWoWrapper(textworld.core.Wrapper):
         # prime the pump
         world_facts = game_state.get('facts', None)
         obstxt = game_state.feedback
-        actiontxt, _tasks = self._update_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
-        self.next_command = actiontxt
-        self._tasks = _tasks
-
-
-    def _update_oracle(self, obstxt, world_facts, is_done=False, prev_action=None, verbose=False):
-        # if is_done:   # if agent idx has already terminated, don't invoke it again
-        #     # actiontxt = 'do nothing'
-        # else:
-        _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
-        if is_done:
-            print("_update_oracle is_done=True: ", _tasks)
-        actiontxt = self.invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
+        actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
         return actiontxt, _tasks
 
     def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
+        _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
+        self._tasks = _tasks   # remember (only used for export to pthru data files)
         # simplify the observation text if it includes notification about incremented score
         if obstxt:
             if "Your score has just" in obstxt:
@@ -340,7 +302,6 @@ class TWoWrapper(textworld.core.Wrapper):
         #     print("infos[game_id]=", infos['game_id'][idx])
 
         if world_facts:
-
             # TODO: remove ground_truth -- no longer needed
             self.tw_oracle.set_ground_truth(world_facts)
 
@@ -357,14 +318,18 @@ class TWoWrapper(textworld.core.Wrapper):
 
         if self.passive_oracle_mode:
             print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode")
-            return None
-        if is_done:
+            # return None, _tasks
+            actiontxt = None
+        elif is_done:
+            print(f"--- current step: {self.tw_oracle.step_num} is_done=True: ", _tasks)
             actiontxt = "do nothing"
         else:
             actiontxt = self.tw_oracle.select_next_action(obstxt, external_next_action=None)
             # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
             print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] choose_next_action -> {actiontxt}")
-        return actiontxt
+
+        self.next_command = actiontxt
+        return actiontxt, _tasks
 
 
 
