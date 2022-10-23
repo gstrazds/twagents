@@ -346,7 +346,7 @@ def start_gym_for_playthrough(gamefiles,
     return _qgym_env, obs, infos
 
 
-def step_game_for_playthrough(gymenv, step_cmds:List[str]):
+def step_gym_for_playthrough(gymenv, step_cmds:List[str]):
     obs,rewards,dones,infos = gymenv.step(step_cmds)
     return obs, rewards, dones, infos
 
@@ -355,62 +355,75 @@ def step_game_for_playthrough(gymenv, step_cmds:List[str]):
 #     return f'step_{step_num:02d}'
 
 
-def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num, internal_names=False):
-    world_facts = infos['facts'][0]
-    observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0], internal_names=internal_names)
-    world_facts_serialized = [f.serialize() for f in world_facts]
-    observable_facts_serialized = [f.serialize() for f in observable_facts]
-    # step_key = format_stepkey(step_num)
-    oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
-    oracle_stack = infos['tw_o_stack'][0] if 'tw_o_stack' in infos else "(( )) [[ ]]"
-    step_json = {
-        # step_key: {
-            'reward': rewards[0],
-            'score': infos['game_score'][0],
-            'done': dones[0],
-            'player_location': player_room.name,
-            'obs': obs[0],
-            'feedback': infos['feedback'][0],
-            'description': infos['description'][0],
-            'inventory': infos['inventory'][0],
-            'prev_action': cmds[0],
-            'next_action': oracle_action,
-            'possible_actions': infos['admissible_commands'][0],
-            'obs_facts': observable_facts_serialized,
-            'GT_FACTS': world_facts_serialized,
-        # }
-    }
-    if oracle_stack:
-        # step_json[step_key]['tw_o_stack'] = oracle_stack
-        step_json['tw_o_stack'] = oracle_stack
-    # if step_num == 0 or dones[0]:  # at start of game or game over
-    #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
-    return step_json
+def playthrough_step_to_json(cmds: List[str],
+                             dones: List[bool],
+                             infos, # a dictionary of lists
+                             obs: List[Optional[str]],
+                             rewards: List[int],
+                             step_num: int,
+                             internal_names: bool = False) -> List[Any]:
+    step_json_list = []
+    for idx in len(dones):
+        world_facts = infos['facts'][idx]
+        observable_facts, player_room = filter_observables(world_facts, game=infos['game'][idx], internal_names=internal_names)
+        world_facts_serialized = [f.serialize() for f in world_facts]
+        observable_facts_serialized = [f.serialize() for f in observable_facts]
+        # step_key = format_stepkey(step_num)
+        oracle_action = infos['tw_o_step'][idx] if 'tw_o_step' in infos else None
+        oracle_stack = infos['tw_o_stack'][idx] if 'tw_o_stack' in infos else "(( )) [[ ]]"
+        step_json = {
+            # step_key: {
+                'reward': rewards[idx],
+                'score': infos['game_score'][idx],
+                'done': dones[idx],
+                'player_location': player_room.name,
+                'obs': obs[idx],
+                'feedback': infos['feedback'][idx],
+                'description': infos['description'][idx],
+                'inventory': infos['inventory'][idx],
+                'prev_action': cmds[idx],
+                'next_action': oracle_action,
+                'possible_actions': infos['admissible_commands'][idx],
+                'obs_facts': observable_facts_serialized,
+                'GT_FACTS': world_facts_serialized,
+            # }
+        }
+        if oracle_stack:
+            # step_json[step_key]['tw_o_stack'] = oracle_stack
+            step_json['tw_o_stack'] = oracle_stack
+        # if step_num == 0 or dones[0]:  # at start of game or game over
+        #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
+        step_json_list.append(step_json)
+    return step_json_list
 
 
 def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, internal_names=False):
-    step_array_list = []  # a list of lists: of step info from playing a single game
-    step_array = []
-    step_array_list.append(step_array)
+    def append_step_data(array_list: List[List[Any]], step_list: List[Any]):
+        assert len(array_list) == len(step_list), f"Batch size should match {len(array_list)} {len(step_list)}"
+        for idx, step_data in enumerate(step_list):   # an entry for each game in the batch (can be None if game is_done)
+            if step_data:                             # games that have finished will have None
+                array_list[idx].append(step_data)     # result is ragged: differing length lists of step data for each game
+
+    batch_size = len(gamefiles)
     num_steps = 0
-    game_over = -1
-    _dones = [0]
-    _rewards = [0]
-    next_cmds = ['start']
+    _dones = [0] * batch_size
+    _rewards = [0] * batch_size
+    next_cmds = ['start'] * batch_size
     env, _obs, _infs = start_gym_for_playthrough(gamefiles, random_seed=randseed)
     playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
-    step_array.append( playthru_step_data)
+    step_array_list = [playthru_step_data]  # Expecting that every game will always have at least one initial step
+    #step_array_list: List[List[Any]]  # a list of lists: of step info from playing a single game
 
     next_cmds = _infs['tw_o_step']
-    while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
+    while not all(_dones) and num_steps < MAX_PLAYTHROUGH_STEPS+1:
         num_steps += 1
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
-        _obs, _rewards, _dones, _infs = step_game_for_playthrough(env, next_cmds)
+        _obs, _rewards, _dones, _infs = step_gym_for_playthrough(env, next_cmds)
         playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, internal_names=internal_names)
-        step_array.append(playthru_step_data)
+        append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
     env.close()
     return step_array_list
@@ -645,13 +658,6 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                 dsfile.write('}\n')
     num_files += 1
     return num_files
-
-
-def _get_skills_list(data: dict):
-    print("_get_skills_list:", data['game'], skills)
-    return {'skills': skills, 'gid': gid}
-    # tokenized_ds = tokenized_ds.map(_get_skills_list, batched=False)
-    # print(tokenized_ds['valid'][0:10]['skills'])
 
 
 def retrieve_playthrough_json(gamename, ptdir=None, gindex: GamesIndex = None, ptid=None):
