@@ -233,7 +233,7 @@ class TextGameAgent:
         self._last_action = next_action
         return next_action.text()
 
-    def observe(self, reward, new_obs, done, prev_action=None, idx=None):
+    def observe(self, reward: float, new_obs, done: bool, prev_action=None, idx=None):
         """ Observe could be used for learning from rewards. """
 #GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
 #        p_valid = self._valid_detector.action_valid(action, new_obs)

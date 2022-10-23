@@ -81,7 +81,7 @@ class ToTensor(gym.Wrapper):
 
 
 class ScoreToRewardWrapper(gym.RewardWrapper):
-    """ Converts returned cumulative score into per-step incrmenttal reward.
+    """ Converts returned cumulative score into per-step incrmental reward.
     Compatible only with vector envs (TW gym env wrapper produces such by default)
     """
     def __init__(self, env):
@@ -91,7 +91,7 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
     def reset(self, **kwargs):
         obs, infos = self.env.reset(**kwargs)
         assert isinstance(obs, (list, tuple))   # for use only with vector envs (TW gym env wrapper produces such by default)
-        self._prev_score = [0] * len(obs)
+        self._prev_score = [0.0] * len(obs)
         if 'game_score' not in infos:
             infos['game_score'] = self._prev_score
         return obs, infos
@@ -105,7 +105,7 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
         #if 'game_score' in infos:
         #     assert infos['game_score'] == score, f"{infos['game_score']} should== {score}" #FAILS: infos from prev step
         # else:
-        infos['game_score'] = score
+        infos['game_score'] = list(map(float, score))
         return observation, self.reward(score), done, infos
 
     def reward(self, score):
@@ -113,8 +113,9 @@ class ScoreToRewardWrapper(gym.RewardWrapper):
         assert len(score) == len(self._prev_score)
         _reward = []
         for _i in range(len(score)):
-            _reward.append(score[_i] - self._prev_score[_i])
-            self._prev_score[_i] = score[_i]
+            _score = float(score[_i])
+            _reward.append(_score - self._prev_score[_i])
+            self._prev_score[_i] = _score
         return tuple(_reward)
 
 
@@ -189,6 +190,7 @@ class TWoWrapper(textworld.core.Wrapper):
         self.episode_counter: int = -1
         self.next_command = None
         self._prev_state: Optional[GameState] = None
+        self._initial_state: Optional[GameState] = None
 
     # def _wrap(self, env):
     #     super()._wrap(env)
@@ -208,6 +210,9 @@ class TWoWrapper(textworld.core.Wrapper):
             self.game_id = game_id
             return True
 
+    def get_initial_state(self):
+        return self._initial_state
+
     def reset(self):
         print(f"@@@@@@@@@@@ TWoWrapper({self}).reset(env={self._wrapped_env}")
 
@@ -217,11 +222,15 @@ class TWoWrapper(textworld.core.Wrapper):
         #     self.episode_counter += 1
 
         game_state = self._wrapped_env.reset()
+        self._initial_state = game_state
         self._prev_state = game_state
         self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
+        if not hasattr(game_state, 'last_command'):
+            print("TWoOracle.reset(): SETTING DEFAULT game_state.last_command = 'start'")
+            game_state.last_command = 'start'
         game_state.next_command = self.next_command
         if not hasattr(game_state, 'score'):
-            game_state.score = 0
+            game_state.score = 0.0
         game_state.reward = game_state.score
         # print(game_state)
         # obs, infos = self._on_episode_start(obs, infos, episode_counter=self.episode_counter)
@@ -232,11 +241,11 @@ class TWoWrapper(textworld.core.Wrapper):
         self.episode_counter += 1
         #print(f"--------.step({commands})")
         gs, score, done = self._wrapped_env.step(command)
-        score = int(score)
+        score = float(score)
         if self._prev_state is not None:
-            reward = score - self._prev_state.get('score', 0)
+            reward = score - self._prev_state.get('score', 0.0)
         else:
-            reward = score
+            reward = float(score)
         self._prev_state = gs
         obstxt = gs.feedback
         print(f"--------obs:>>{obstxt}<<")
@@ -244,6 +253,7 @@ class TWoWrapper(textworld.core.Wrapper):
             obstxt = ''
         if not self.tw_oracle:
             actiontxt = "do something"
+            _tasks = ''
         else:
             prev_action = command if command else None
             if prev_action == 'do nothing':
@@ -255,10 +265,11 @@ class TWoWrapper(textworld.core.Wrapper):
                 world_facts = gs.get('facts', None)
             else:
                 world_facts = None
-            actiontxt, _tasks_ = self.invoke_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
+            actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=done, prev_action=prev_action, verbose=False)
         gs.next_command = actiontxt
+        gs._tasks = _tasks
         if not hasattr(gs, 'score'):
-            gs.score = score
+            gs.score = float(score)
         gs.reward = reward
 
         return gs, score, done

@@ -16,6 +16,7 @@ from twutils.twlogic import filter_observables
 from twutils.feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
 from symbolic.knowledge_graph import KnowledgeGraph
+from symbolic.wrappers.gym_wrappers import TWoWrapper
 
 
 # default directory paths, usually overriden by env, config or cmd line args
@@ -351,19 +352,96 @@ def step_gym_for_playthrough(gymenv, step_cmds:List[str]):
     return obs, rewards, dones, infos
 
 
-# def format_stepkey(step_num: int):
-#     return f'step_{step_num:02d}'
+def start_twenv_for_playthrough(gamefiles,
+                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
+                                passive_oracle_mode=False,  # if True, don't predict next action
+                                max_episode_steps=MAX_PLAYTHROUGH_STEPS,
+                                random_seed=DEFAULT_PTHRU_SEED
+                                ):
+    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, inventory=True, location=True,
+                                   last_action=True, last_command=True, intermediate_reward=True)
+    batch_size = len(gamefiles)
+    assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
+    twenv = textworld.start(gamefiles[0], wrappers=[TWoWrapper], infos=env_infos)
+    game_state = twenv.reset()
+    # game_state = twenv.get_initial_state()
+    print(game_state.keys())
+    rewards = [game_state.reward]
+    dones = [False] * batch_size
+    start_cmds = ['start'] * batch_size
+    obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds)
+    return twenv, obs, infos
+
+
+def step_twenv_for_playthrough(twenv, step_cmds:List[str]):
+    assert len(step_cmds) == 1, f"Currently, only support batch_size=1 {step_cmds}"
+    game_state, reward, done = twenv.step(step_cmds[0])
+    game_states = [game_state]
+    rewards = [reward]
+    dones = [done]
+    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)
+    return obs, rewards, dones, infos
+
+
+def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
+                                  rewards: List[float],
+                                  dones: List[bool],
+                                  step_cmds: List[str],
+                                  use_internal_names=False):
+    infos = {
+        # ------- standard TextWorld
+        'game': [],
+        'facts': [],
+        'feedback': [],
+        'description': [],
+        'inventory': [],
+        'prev_action': [],
+        'admissible_commands': [],
+        # ------- custom from TWoWrapper
+        'reward': [],
+        'game_score': [],
+        'done': [],
+        'tw_o_step': [],
+        'tw_o_stack': [],
+        # 'admissible_commands': [],
+    }
+    obs = []
+    for idx, gs in enumerate(game_states):
+        if dones[idx] and gs.last_command == 'do nothing':   # stop appending to infos for finished games
+            obs.append(None)
+            rewards.append(0.0)
+        else:
+            # ------- standard TextWorld
+            infos['game'].append(gs.game)
+            infos['facts'].append(gs.facts)
+            infos['feedback'].append(gs.feedback)
+            infos['description'].append(gs.description)
+            infos['inventory'].append(gs.inventory)
+            infos['prev_action'].append(gs.last_command)
+            infos['admissible_commands'].append(gs.admissible_commands)   # sorted(set(gs["_valid_commands"])))
+            # ------- custom from TWoWrapper
+            infos['reward'].append(gs.reward)
+            infos['game_score'].append(gs.score)
+            infos['tw_o_step'].append(gs.next_command)
+            infos['tw_o_stack'].append(gs._tasks)
+
+            obs.append(gs.feedback)
+            rewards.append(gs.reward)
+    # if oracle_stack:
+    #     infos['tw_o_stack'] = []
+
+    return obs, rewards, dones, infos
 
 
 def playthrough_step_to_json(cmds: List[str],
                              dones: List[bool],
                              infos, # a dictionary of lists
                              obs: List[Optional[str]],
-                             rewards: List[int],
+                             rewards: List[float],
                              step_num: int,
                              internal_names: bool = False) -> List[Any]:
     step_json_list = []
-    for idx in len(dones):
+    for idx in range(len(dones)):
         world_facts = infos['facts'][idx]
         observable_facts, player_room = filter_observables(world_facts, game=infos['game'][idx], internal_names=internal_names)
         world_facts_serialized = [f.serialize() for f in world_facts]
@@ -409,7 +487,7 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, intern
     _dones = [0] * batch_size
     _rewards = [0] * batch_size
     next_cmds = ['start'] * batch_size
-    env, _obs, _infs = start_gym_for_playthrough(gamefiles, random_seed=randseed)
+    env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed)
     playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
@@ -421,7 +499,7 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, intern
         num_steps += 1
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
-        _obs, _rewards, _dones, _infs = step_gym_for_playthrough(env, next_cmds)
+        _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds)
         playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, internal_names=internal_names)
         append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
