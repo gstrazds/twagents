@@ -10,7 +10,10 @@ def normalize_feedback_vs_obs_description(act:str, obs:str, feedback:str, descri
             new_feedback = 'You look around'
         elif feedback:
             clean_feedback = feedback.strip()
-            clean_descr = description.strip()
+            if description:
+                clean_descr = description.strip()
+            else:
+                clean_descr = ''
             # print("clean_feedback", clean_feedback)
             # print("clean_descr", clean_descr)
             if clean_feedback.endswith(clean_descr):

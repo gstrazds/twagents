@@ -387,7 +387,7 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
                                   rewards: List[float],
                                   dones: List[bool],
                                   step_cmds: List[str],
-                                  use_internal_names=False):
+                                  ):
     infos = {
         # ------- standard TextWorld
         'game': [],
@@ -409,13 +409,13 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
     for idx, gs in enumerate(game_states):
         if dones[idx] and gs.last_command == 'do nothing':   # stop appending to infos for finished games
             obs.append(None)
-            rewards.append(0.0)
+            # rewards.append(0.0)
         else:
             # ------- standard TextWorld
             infos['game'].append(gs.game)
             infos['facts'].append(gs.facts)
-            infos['feedback'].append(gs.feedback)
-            infos['description'].append(gs.description)
+            infos['feedback'].append(gs.feedback if gs.feedback else '')
+            infos['description'].append(gs.description if gs.description else '')
             infos['inventory'].append(gs.inventory)
             infos['prev_action'].append(gs.last_command)
             infos['admissible_commands'].append(gs.admissible_commands)   # sorted(set(gs["_valid_commands"])))
@@ -426,10 +426,9 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
             infos['tw_o_stack'].append(gs._tasks)
 
             obs.append(gs.feedback)
-            rewards.append(gs.reward)
+            # rewards.append(gs.reward)
     # if oracle_stack:
     #     infos['tw_o_stack'] = []
-
     return obs, rewards, dones, infos
 
 
@@ -545,6 +544,8 @@ def format_taskstack(stackstr):
 def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
+    # for k in stepdata.keys():
+    #     print(f"\t{k}: {stepdata[k]}")
     if simplify_raw_obs_feedback:
         new_feedback = normalize_feedback_vs_obs_description(prev_action,
                                                              stepdata['obs'],
@@ -638,13 +639,16 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])
     end_score = playthru[-1]['score']
+    # print(f"export_playthru num_steps:{len(playthru)} max_score:{max_score} end_score:{end_score}")
     return_to_go = end_score  # max_score
     for i, stepdata in enumerate(playthru):
         is_last_step = (i >= len(playthru)-1)
         prev_action = stepdata['prev_action']
         if rtg:
             stepdata['rtg'] = return_to_go
+        # print(f"export_playthru return_to_go={return_to_go} reward={stepdata['reward']}")
         return_to_go -= stepdata['reward']
+        # print( "export_playthru:", return_to_go == max_score - stepdata['score'], f"max_score:{max_score} score:{stepdata['score']} rtg:{return_to_go}")
         assert return_to_go == max_score - stepdata['score'], f"max_score:{max_score} score:{stepdata['score']} rtg:{return_to_go}"
         if prev_action and " the " in prev_action:
             prev_action = prev_action.replace(" the ", " ")

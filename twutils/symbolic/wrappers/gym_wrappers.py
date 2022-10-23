@@ -272,7 +272,7 @@ class TWoWrapper(textworld.core.Wrapper):
             gs.score = float(score)
         gs.reward = reward
 
-        return gs, score, done
+        return gs, reward, done
 
     def close(self):
         self._wrapped_env.close()

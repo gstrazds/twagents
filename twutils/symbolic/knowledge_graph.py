@@ -345,7 +345,7 @@ class KnowledgeGraph:
             inventory_items = list(self.inventory.entities)  # pass a copy, for safey
         else:
             inventory_items = []
-        exits_descr = self.describe_exits(loc, mention_tracker=mention_tracker, options=self._formatting_options)
+        exits_descr = self.describe_exits(loc, mention_tracker=mention_tracker)
         room_descr += describe_visible_objects(loc, inventory_items, exits_descr=exits_descr,
                                                mention_tracker=mention_tracker, groundtruth=self.groundtruth,
                                                options=self._formatting_options)
