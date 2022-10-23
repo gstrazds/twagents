@@ -310,17 +310,22 @@ QAIT_VOCAB = '~/work2/twdata/qait/qait_word_vocab.txt'
 
 
 MAX_PLAYTHROUGH_STEPS = 150
-def start_game_for_playthrough(gamefile,
+def start_gym_for_playthrough(gamefiles,
                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
                                passive_oracle_mode=False,  # if True, don't predict next action
                                max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                random_seed=DEFAULT_PTHRU_SEED
                                ):  #
+    if isinstance(gamefiles, str):
+        print("DEPRECATION WARNING: expecting a list of gamefile paths, but got a single str=", gamefiles)
+        gamefiles_list = [gamefiles]
+    else:
+        gamefiles_list = gamefiles
     _word_vocab = WordVocab(vocab_file=None) # QAIT_VOCAB)
     _qgym_ = QaitGym(random_seed=random_seed,
                      raw_obs_feedback=raw_obs_feedback,
                      passive_oracle_mode=passive_oracle_mode)
-    _qgym_env = _qgym_.make_batch_env([gamefile],
+    _qgym_env = _qgym_.make_batch_env(gamefiles_list,
                                    _word_vocab,  # vocab not really needed by Oracle, just for gym.space
                                    request_infos=textworld.EnvInfos(
                                         feedback=True,
@@ -334,7 +339,7 @@ def start_game_for_playthrough(gamefile,
                                         game=True,
                                         extras=["recipe", "uuid"]
                                    ),
-                                   batch_size=1,
+                                   batch_size=len(gamefiles_list),
                                    max_episode_steps=max_episode_steps)
     obs, infos = _qgym_env.reset()
     _word_vocab.init_from_infos_lists(infos['verbs'], infos['entities'])
@@ -346,8 +351,8 @@ def step_game_for_playthrough(gymenv, step_cmds:List[str]):
     return obs, rewards, dones, infos
 
 
-def format_stepkey(step_num:int):
-    return f'step_{step_num:02d}'
+# def format_stepkey(step_num: int):
+#     return f'step_{step_num:02d}'
 
 
 def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num, internal_names=False):
@@ -355,11 +360,11 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num, interna
     observable_facts, player_room = filter_observables(world_facts, game=infos['game'][0], internal_names=internal_names)
     world_facts_serialized = [f.serialize() for f in world_facts]
     observable_facts_serialized = [f.serialize() for f in observable_facts]
-    step_key = format_stepkey(step_num)
+    # step_key = format_stepkey(step_num)
     oracle_action = infos['tw_o_step'][0] if 'tw_o_step' in infos else None
     oracle_stack = infos['tw_o_stack'][0] if 'tw_o_stack' in infos else "(( )) [[ ]]"
     step_json = {
-        step_key: {
+        # step_key: {
             'reward': rewards[0],
             'score': infos['game_score'][0],
             'done': dones[0],
@@ -373,39 +378,42 @@ def playthrough_step_to_json(cmds, dones, infos, obs, rewards, step_num, interna
             'possible_actions': infos['admissible_commands'][0],
             'obs_facts': observable_facts_serialized,
             'GT_FACTS': world_facts_serialized,
-        }
+        # }
     }
     if oracle_stack:
-        step_json[step_key]['tw_o_stack'] = oracle_stack
+        # step_json[step_key]['tw_o_stack'] = oracle_stack
+        step_json['tw_o_stack'] = oracle_stack
     # if step_num == 0 or dones[0]:  # at start of game or game over
     #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
     return step_json
 
 
-def generate_playthru(gamefile, randseed=DEFAULT_PTHRU_SEED, internal_names=False):
-    step_array = []  # convert json dict data (with redundant keys) to an array for convenience
-
+def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, internal_names=False):
+    step_array_list = []  # a list of lists: of step info from playing a single game
+    step_array = []
+    step_array_list.append(step_array)
     num_steps = 0
     game_over = -1
     _dones = [0]
     _rewards = [0]
     next_cmds = ['start']
-    gymenv, _obs, _infos = start_game_for_playthrough(gamefile, random_seed=randseed)
-    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps)
+    env, _obs, _infs = start_gym_for_playthrough(gamefiles, random_seed=randseed)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
+    # playthru_step_data is a list of list of json dicts (with data for a single game step),
+    #   one entry for each game in the batch
+    step_array.append( playthru_step_data)
 
-    step_array.append(playthru_step_data[format_stepkey(num_steps)])
-
-    next_cmds = _infos['tw_o_step']
+    next_cmds = _infs['tw_o_step']
     while not _dones[0] and num_steps < MAX_PLAYTHROUGH_STEPS+1:
         num_steps += 1
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
-        _obs, _rewards, _dones, _infos = step_game_for_playthrough(gymenv, next_cmds)
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infos, _obs, _rewards, num_steps, internal_names=internal_names)
-        step_array.append(playthru_step_data[format_stepkey(num_steps)])
-        next_cmds = _infos['tw_o_step']
-    gymenv.close()
-    return step_array
+        _obs, _rewards, _dones, _infs = step_game_for_playthrough(env, next_cmds)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, internal_names=internal_names)
+        step_array.append(playthru_step_data)
+        next_cmds = _infs['tw_o_step']
+    env.close()
+    return step_array_list
 
 
 def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):

@@ -2,7 +2,7 @@ import os
 import os.path
 import json
 from pathlib import Path
-from twutils.playthroughs import generate_playthru, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
+from twutils.playthroughs import generate_playthrus, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
 from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
 from train_tokenizer import build_tokenizer, save_tokenizer_to_json
 
@@ -39,7 +39,9 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if do_generate:
-        step_array = generate_playthru(_gamefile, randseed=randseed, internal_names=internal_names)
+        step_array_list = generate_playthrus([_gamefile], randseed=randseed, internal_names=internal_names)
+        # for step_array in step_array_list:
+        step_array = step_array_list[0]
         _jsonstr = json.dumps(step_array, indent=2)
         if os.path.exists(_ptjson):
             warn_prefix = "SKIPPING - PT file exists:" if skip_existing else "WARNING - OVERWRITING PT:"
