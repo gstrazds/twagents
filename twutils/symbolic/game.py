@@ -52,8 +52,8 @@ class GameInstance:
             old_graph.event_stream = None
         if graph is not None:
             graph.event_stream = self.event_stream
-            assert graph.groundtruth == groundtruth
-            graph.groundtruth = groundtruth
+            assert graph.is_groundtruth == groundtruth
+            graph.is_groundtruth = groundtruth
             graph.set_logger(self._logger)
             graph.set_random_number_generator(self.rng)
         if groundtruth:

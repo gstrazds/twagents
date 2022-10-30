@@ -187,7 +187,7 @@ class Location(Entity):
     # @property    # use inherited version from Entity
     # def is_known(self):
     #     self._discovered
-    #     assert self._visit_count > 0 unless kg.groundtruth
+    #     assert self._visit_count > 0 unless kg.is_groundtruth
 
     def visit(self):
         newly_discovered = self.unvisited

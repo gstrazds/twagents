@@ -241,7 +241,7 @@ class KnowledgeGraph:
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
         self.event_stream        = event_stream
         self.rng                 = rng   # random number generator
-        self.groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
+        self.is_groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
         self.use_ids_as_names = internal_names
         self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
 
@@ -284,7 +284,7 @@ class KnowledgeGraph:
             self._entities_by_name[name] = entity
 
     def __str__(self):
-        s = "Knowledge Graph{}\n".format('[GT]' if self.groundtruth else '')
+        s = "Knowledge Graph{}\n".format('[GT]' if self.is_groundtruth else '')
         if self.player_location == None:
             s += "PlayerLocation: None"
         else:
@@ -347,7 +347,7 @@ class KnowledgeGraph:
             inventory_items = []
         exits_descr = self.describe_exits(loc, mention_tracker=mention_tracker)
         room_descr += describe_visible_objects(loc, inventory_items, exits_descr=exits_descr,
-                                               mention_tracker=mention_tracker, groundtruth=self.groundtruth,
+                                               mention_tracker=mention_tracker, groundtruth=self.is_groundtruth,
                                                options=self._formatting_options)
         return room_descr
 
@@ -361,7 +361,7 @@ class KnowledgeGraph:
         self._update_entity_index(new_location)
         if is_new and new_location.parent is None and new_location is not self._unknown_location:
             self._locations.add(new_location)
-            return NewLocationEvent(new_location, groundtruth=self.groundtruth)
+            return NewLocationEvent(new_location, groundtruth=self.is_groundtruth)
         return None
 
     def locations_with_name(self, location_name):
@@ -507,19 +507,19 @@ class KnowledgeGraph:
 
     def add_entity_at_location(self, entity, location):
         if location.add_entity(entity):
-            if self.event_stream and not self.groundtruth:
+            if self.event_stream and not self.is_groundtruth:
                 ev = NewEntityEvent(entity)
                 self.broadcast_event(ev)
 
     def act_on_entity(self, action, entity, rec: ActionRec):
-        if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.groundtruth:
+        if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.is_groundtruth:
             ev = NewActionRecordEvent(entity, action, rec.result_text)
             self.broadcast_event(ev)
 
     def action_at_current_location(self, action, p_valid, result_text):
         loc = self.player_location
         loc.action_records[action] = ActionRec(p_valid, result_text)
-        if not self.groundtruth:
+        if not self.is_groundtruth:
             ev = NewActionRecordEvent(loc, action, result_text)
             self.broadcast_event(ev)
 
@@ -531,14 +531,14 @@ class KnowledgeGraph:
         elif create_if_notfound:
             new_loc = Location(name=roomname, entitytype=entitytype)
             ev = self.add_location(new_loc)
-            # if self.groundtruth: DISCARD NewLocationEvent else gi.broadcast_event(ev)
-            if self.groundtruth:
+            # if self.is_groundtruth: DISCARD NewLocationEvent else gi.broadcast_event(ev)
+            if self.is_groundtruth:
                 new_loc._discovered = True   # HACK for GT: all locations (except the UnknownLocation) are known
-            else:  # not self.groundtruth:
+            else:  # not self.is_groundtruth:
                 assert ev, "Adding a newly created Location should return a NewLocationEvent"
                 self.broadcast_event(ev)
-            # if not self.groundtruth:
-            #     print("created new {}Location:".format('GT ' if self.groundtruth else ''), new_loc)
+            # if not self.is_groundtruth:
+            #     print("created new {}Location:".format('GT ' if self.is_groundtruth else ''), new_loc)
             return new_loc
         if self._debug:
             print("LOCATION NOT FOUND:", roomname)
@@ -555,7 +555,7 @@ class KnowledgeGraph:
         loc_set = set(locations)
         for loc in loc_set:
             if loc.add_entity(entity):
-                if not self.groundtruth and not Location.is_unknown(loc):
+                if not self.is_groundtruth and not Location.is_unknown(loc):
                     if entity.location == entity._init_loc:
                         if self._debug:
                             print(f"\tDISCOVERED NEW entity: {entity} at {loc}")
@@ -608,7 +608,7 @@ class KnowledgeGraph:
         if not obj:
             obj = self.create_new_object(o.name, entitytype)  #, locations=loc_list)
             maybe_new_entities_list.append(obj)
-            if not self.groundtruth:
+            if not self.is_groundtruth:
                 if self._debug:
                     print("\tADDED NEW Object {} :{}: {}".format(obj, fact.name, h.name))
                 # print("DISCOVERED NEW entity:", obj)
@@ -657,7 +657,7 @@ class KnowledgeGraph:
 
     def update_facts(self, obs_facts, prev_action=None):
         if self._debug:
-            print(f"*********** {'GROUND TRUTH' if self.groundtruth else 'observed'} FACTS *********** ")
+            print(f"*********** {'GROUND TRUTH' if self.is_groundtruth else 'observed'} FACTS *********** ")
         player_loc = None
         door_facts = []
         at_facts = []
@@ -670,7 +670,7 @@ class KnowledgeGraph:
         for fact in obs_facts:
             a0 = fact.arguments[0]
             a1 = fact.arguments[1] if len(fact.arguments) > 1 else None
-            if fact.name == 'link' and self.groundtruth:
+            if fact.name == 'link' and self.is_groundtruth:
                 door_facts.append(fact)
             elif fact.name == 'at':
                 if a0.type == 'P' and a1.type == 'r':
@@ -687,7 +687,7 @@ class KnowledgeGraph:
                 else:
                     in_facts.append(fact)
             elif fact.name in DIRECTION_ACTIONS:
-                if a0.type == 'r' and a1.type == 'r' and self.groundtruth:
+                if a0.type == 'r' and a1.type == 'r' and self.is_groundtruth:
                     # During this initial pass we create locations and connections among them
                     # print('++CONNECTION:', fact)
                     loc0 = self.get_location(a0.name, create_if_notfound=True)
@@ -722,7 +722,7 @@ class KnowledgeGraph:
                 assert r0.type == 'r'
                 assert r1.type == 'r'
                 assert d.type == 'd'
-                if not self.groundtruth:
+                if not self.is_groundtruth:
                     assert False, f"UNEXPECTED: link fact in non-groundtruth door_facts: {fact}"
                     continue   # link
             elif len(fact.arguments) == 2:
@@ -731,7 +731,7 @@ class KnowledgeGraph:
                 assert fact.name in DIRECTION_ACTIONS
                 assert r0.type == 'r'
                 assert d.type == 'd' or d.type == 'e'
-                if self.groundtruth:
+                if self.is_groundtruth:
                     continue   # rely on 'link' facts to create doors
             if r0:
                 loc0 = self.get_location(r0.name, create_if_notfound=False)
@@ -754,17 +754,17 @@ class KnowledgeGraph:
                 direction = fact.name
                 if door:
                     door.add_direction_rel(ConnectionRelation(from_location=loc0, direction=direction))
-                if not self.groundtruth:
+                if not self.is_groundtruth:
                     door_connection = Connection(loc0, DIRECTION_ACTIONS[fact.name], self._unknown_location, doorway=door)
                     self.add_connection(door_connection, with_inverse=True)  # does nothing if connection already present
             if r1:  #len(door_locations) == 2:
-                assert self.groundtruth
+                assert self.is_groundtruth
                 # NOTE: here we rely on the fact that we added a connection while processing GT DIRECTION_ACTIONS above
                 linkpath = self.connections.shortest_path(loc0, loc1)
                 assert len(linkpath) == 1
                 connection = linkpath[0]
                 connection.doorway = door  # add this DOOR to the Connection
-            if self.groundtruth and door:
+            if self.is_groundtruth and door:
                 door.state.open()   # assume that it's open, until we find a closed() fact...
         # for fact in other_facts:
         #     if fact.name == 'closed' and fact.arguments[0].type == 'd':
@@ -777,7 +777,7 @@ class KnowledgeGraph:
         if player_loc:  # UPDATE player_location
             prev_loc = self.player_location
             if self.set_player_location(player_loc):
-                if self.groundtruth:
+                if self.is_groundtruth:
                     if self._debug:
                         print(f"GT knowledge graph updating player location from {prev_loc} to {player_loc}")
                 else:
@@ -837,13 +837,13 @@ class KnowledgeGraph:
                 print("DEBUG on_fact:", fact)
             o1, o2 = self.add_obj_to_obj(fact, maybe_new_entities, rel='on')
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'on', o2, groundtruth=self.groundtruth)
+                add_attributes_for_predicate(o1, 'on', o2, groundtruth=self.is_groundtruth)
         for fact in in_facts:
             if self._debug:
                 print("DEBUG in_fact:", fact)
             o1, o2 = self.add_obj_to_obj(fact, maybe_new_entities, rel='in')
             if o1 and o2:
-                add_attributes_for_predicate(o1, 'in', o2, groundtruth=self.groundtruth)
+                add_attributes_for_predicate(o1, 'in', o2, groundtruth=self.is_groundtruth)
         for fact in inventory_facts:
             if self._debug:
                 print("DEBUG inventory fact:", fact)
@@ -875,7 +875,7 @@ class KnowledgeGraph:
             if a1:
                 o2 = self.get_entity(a1.name, entitytype=entity_type_for_twvar(a1.type))
             if o1:
-                add_attributes_for_predicate(o1, predicate, entity2=o2, groundtruth=self.groundtruth)
+                add_attributes_for_predicate(o1, predicate, entity2=o2, groundtruth=self.is_groundtruth)
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
@@ -940,7 +940,7 @@ class ConnectionGraph:
         to_location = connection.to_location
         direction = map_action_to_direction(connection.action)
         added_new = []
-        # kg.broadcast_event(NewConnectionEvent(connection, groundtruth=kg.groundtruth))
+        # kg.broadcast_event(NewConnectionEvent(connection, groundtruth=kg.is_groundtruth))
         if from_location not in self._out_graph:
             added_new.append(f"out_graph[{from_location.name}]")
             self._out_graph[from_location] = {direction: connection}
@@ -998,8 +998,8 @@ class ConnectionGraph:
                 self.add(reverse_connection, kg, assume_inverse=False)
                 assume_inverse = False   # since we've just built a reverse connection, skip default inverse logic
 
-        # if added_new and not kg.groundtruth:
-        #         print("\tADDED NEW {}CONNECTION".format('GT ' if kg.groundtruth else ''), added_new, connection)
+        # if added_new and not kg.is_groundtruth:
+        #         print("\tADDED NEW {}CONNECTION".format('GT ' if kg.is_groundtruth else ''), added_new, connection)
 
         if assume_inverse:  # assume that 180 inverse direction connects to_location => from_location
             if not Location.is_unknown(connection.to_location):
