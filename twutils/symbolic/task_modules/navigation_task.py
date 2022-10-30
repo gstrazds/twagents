@@ -153,6 +153,14 @@ class PathTask(SequentialTasks):
     def maybe_GT(self):
         return "GT " if self.use_groundtruth else ""
 
+    @property
+    def description(self) -> str:
+        description = f"PathTask({self.goal_name})"
+        if self.path:
+            link_desc = ','.join(["goto({})".format(link.to_location.name) for link in self.path])
+            description +=  f"[{link_desc}]"
+        return description
+
     def set_goal(self, kg: KnowledgeGraph) -> bool:
         super().reset_all()
         # print("PathTask.set_goal()", self.goal_name)
@@ -175,8 +183,6 @@ class PathTask(SequentialTasks):
         print("{}PathTask set_goal({}) => {}".format(self.maybe_GT, self.goal_name, self.path))
 
         if self.path:
-            link_desc = ','.join(["goto({})".format(link.to_location.name) for link in self.path])
-            self.description = f"PathTask({self.goal_name})[{link_desc}]"
             self.tasks = []   #ExploreHereTask(use_groundtruth=self.use_groundtruth)]
             self.tasks += [GoToNextRoomTask(link) for link in self.path]
             if self.goal_name == 'NearestUnexplored':

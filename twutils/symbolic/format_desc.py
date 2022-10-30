@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any
+from typing import List, Iterable, Mapping, Tuple, Any
 
 from .action import Portable
 from .entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINER, SUPPORT, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
@@ -98,8 +98,13 @@ def _format_entity_name(entity, include_entity_type):
         state_descr = entity.state.format_descr()
         if state_descr:
             out_str += state_descr
-    if include_entity_type and entity._type:
-        out_str += f"_{entity._type}_ "
+    if include_entity_type:
+        if entity._type:
+            out_str += f"_{entity._type}_ "
+        else:
+            errmsg = f"WARNING _format_entity_name: entity: {entity} has no _type"
+            print(errmsg)
+            assert False, errmsg
     out_str += f"{entity.name}"
     return out_str
 
@@ -141,10 +146,11 @@ def format_entities_descr(entity_list, idx, groundtruth=False, options=None):
     return descr_str, idx
 
 
-def format_exits(exits_list:List[str], options:str):
+def format_exits(exits_list: Iterable[str], options:str):
     if not exits_list:   # None or empty list
         if options == 'parsed-obs' or not ALWAYS_LIST_EXITS:
             return ""
         else:  # if there are no exits,
             exits_list = ["none"]
     return "Exits : " + f" {ITEM_SEPARATOR} ".join(exits_list) + f" {END_OF_LIST}{LINE_SEPARATOR}"
+

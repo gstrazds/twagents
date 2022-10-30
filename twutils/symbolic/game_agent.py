@@ -3,11 +3,11 @@ import logging
 import random
 
 from symbolic.decision_modules import TaskExec
-# from symbolic.event import GroundTruthComplete   # NewTransitionEvent
-from symbolic.entity import Location
+# from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
+from twutils.twlogic import get_name2idmap
 
 
 class TextGameAgent:
@@ -19,16 +19,20 @@ class TextGameAgent:
     decision modules. The modules then update how eager they are to take control.
 
     """
-    def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.'):
+    def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.', use_internal_names=False):
         self._idx = idx
         self.setup_logging(env_name, idx, output_subdir)
+        self._game = game  # if provided, can do nicer logging
         if game:
-            self._game = game  # if provided, can do nicer logging
+            self.map_names2ids = get_name2idmap(game)
+        else:
+            self.map_names2ids = None
         self.dbg("RandomSeed: {}".format(seed))
         rng = random.Random()  # each game instance gets its own random number generator
         rng.seed(seed)
-        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger())
-        groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())
+        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger(), rng=rng,
+                                                  use_internal_names=use_internal_names, names2ids=self.map_names2ids)
+        groundtruth_graph = None  # KnowledgeGraph(None, groundtruth=True, logger=self.get_logger(), names2ids=names2ids, rng=rng)
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, rng=rng, logger=self.get_logger())
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
@@ -40,6 +44,9 @@ class TextGameAgent:
         self.step_num = 0
         self._valid_detector  = None  #LearnedValidDetector()
         self._last_action = None
+        self.use_internal_names = use_internal_names
+        if self.use_internal_names:
+            assert self._game is not None
         if env_name:
             self.env_name = env_name
             # self.rom_name = rom_name
@@ -49,10 +56,16 @@ class TextGameAgent:
     def last_action(self) -> str:
         return self._last_action.text() if self._last_action else None
 
+    def get_game_data(self):
+        return self._game
+
     def reset(self, forget_everything=False):
-        groundtruth_graph = KnowledgeGraph(None, groundtruth=True, logger=self.get_logger())    # start fresh with empty graph
+        names2ids = get_name2idmap(self._game) if self._game else None
+
+        # groundtruth_graph = KnowledgeGraph(None, groundtruth=True, names2ids=names2ids, logger=self.get_logger())    # start fresh with empty graph
+        groundtruth_graph = None
         if forget_everything:
-            observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger())    # start fresh with empty graph
+            observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, names2ids=names2ids, logger=self.get_logger())    # start fresh with empty graph
         else:
             observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
             observed_knowledge_graph.reset()        # bet restore to initial state (start of episode)
@@ -183,12 +196,25 @@ class TextGameAgent:
                     self.elect_new_active_module()
         return next_action
 
-    def choose_next_action(self, observation, observable_facts=None, prev_action=None):
-        print("DEPRECATION WARNING: game_agent.choose_next_action()")
-        self.update_kg(observation, observable_facts=observable_facts, prev_action=prev_action)
-        return self.select_next_action(observation, external_next_action=None)
+    # def choose_next_action(self, observation, observable_facts=None, prev_action=None):
+    #     print("DEPRECATION WARNING: game_agent.choose_next_action()")
+    #     assert False
+    #     self.update_kg(observation, observable_facts=observable_facts, prev_action=prev_action)
+    #     return self.select_next_action(observation, external_next_action=None)
+
+    def preprocess_observation(self, obstxt:str) -> str:
+        if obstxt:
+            obstxt.strip()
+            if "Your score has just" in obstxt:
+                obstxt = '\n'.join(
+                    [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
+                ).strip()
+        else:
+            obstxt = ''
+        return obstxt
 
     def update_kg(self, observation, observable_facts=None, prev_action=None):
+
         if prev_action and self._last_action:
             if prev_action.lower() != self._last_action.text().lower() and \
                     not self._last_action.text().startswith("answer:"):
@@ -206,22 +232,12 @@ class TextGameAgent:
         # with open(os.path.join(self.kgs_dir_path, str(self.step_num) + '.kng'), 'w') as f:
         #     f.write(str(self.knowledge_graph)+'\n\n')
 
+        obstxt = self.preprocess_observation(observation)
         if observable_facts and self.gi.kg:
-            self.gi.kg.update_facts(observable_facts, prev_action=prev_action)
-
-        observation = observation.strip()
-        if self.first_step:
-            self.dbg("[game_agent] {}".format(observation))
-            self.first_step = False
-            # if not self.gi.kg.player_location:
-            #     assert False, "This code is no longer used"
-            #     loc = Location(description=observation)
-            #     ev = self.gi.kg.add_location(loc)
-            #     self.gi.kg.set_player_location(loc)
-
+            obstxt = self.gi.kg.update_facts(obstxt, observable_facts, prev_action=prev_action)
         self.step_num += 1
-
         self.consume_event_stream()
+        return obstxt
 
     def select_next_action(self, observation, external_next_action=None):
         if external_next_action:
@@ -263,10 +279,14 @@ class TextGameAgent:
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
         # Reinitialize, build complete GT KG from scratch each time
-        self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True, logger=self.get_logger()), groundtruth=True)
-        #TODO (Disabled ground truth)
-        # self.gi.gt.update_facts(gt_facts)
+        # names2ids = get_name2idmap(self._game) if self._game else None
+        # self.gi.set_knowledge_graph(KnowledgeGraph(None, groundtruth=True, logger=self.get_logger()), groundtruth=True, names2ids=names2ids)
+        #TODO/DONE (Disabled ground truth)
+        # self.gi.gt.update_facts(None, gt_facts)
         # self.gi.event_stream.push(GroundTruthComplete(groundtruth=True))
+
+        print("IGNORING set_ground_truth(gt_facts)")
+        pass
 
     def finalize(self):
         # with open(self.logpath+'.kng', 'w') as f:

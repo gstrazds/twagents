@@ -91,7 +91,7 @@ class MentionIndex:
                         span_list.remove(span0)
 
     def get_first_mention(self, name: str) -> int:
-        if name in self.mentions:
+        if name in self.mentions and self.mentions[name]:
             return self.mentions[name][0][0]   # start position of first mention
         return -1   # mention not found
 
@@ -150,16 +150,3 @@ class MentionIndex:
         zip_list = sorted(zip_list)
         sorted_list = [entity for (start, entity) in zip_list]
         return sorted_list
-
-    def subst_names(self, name_ids: List[Tuple[str, str]]) -> str:
-        """ Returns a copy of the observation text with variable ids
-         in place of entity names"""
-        edited_obs = str(self._observ_str)
-        # replace longer names first
-        sorted_list = list(sorted(name_ids, key=lambda tup: len(tup[0]), reverse=True))
-        for varname, varid in sorted_list:
-            if varname in self.mentions:
-                print(f"Replacing {varname}<-{varid} for spans {self.mentions[name]}")
-                edited_obs = edited_obs.replace(varname, varid)
-                print("\t-> ", edited_obs)
-        return edited_obs

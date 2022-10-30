@@ -55,7 +55,7 @@ class GameInstance:
             assert graph.is_groundtruth == groundtruth
             graph.is_groundtruth = groundtruth
             graph.set_logger(self._logger)
-            graph.set_random_number_generator(self.rng)
+            graph.set_random_number_generator(self.rng)   # everybody shares the same random number generator
         if groundtruth:
             self.gt = graph
         else:

@@ -1,14 +1,15 @@
 # import os, sys
 # from itertools import chain
-from typing import Tuple, List
+from typing import Tuple, List, Mapping
 
 import random
+# from textworld.logic import Proposition, Variable
 from .event import *
 from .action import *
 from .entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
 from .entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINER, SUPPORT, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
 from .format_desc import describe_visible_objects, format_exits
-from twutils.twlogic import reverse_direction
+from twutils.twlogic import reverse_direction, remap_observation_and_facts
 from .mention_index import MentionIndex
 
 DIRECTION_ACTIONS = {
@@ -230,7 +231,9 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream, groundtruth=False, logger=None, debug=False, rng=None, internal_names=False):
+    def __init__(self, event_stream,
+                 groundtruth=False, names2ids: Mapping[str,str] = None,
+                 logger=None, debug=False, rng=None, use_internal_names=False):
         self._logger = logger
         self._debug = debug
         self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
@@ -242,11 +245,12 @@ class KnowledgeGraph:
         self.event_stream        = event_stream
         self.rng                 = rng   # random number generator
         self.is_groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
-        self.use_ids_as_names = internal_names
+        self.use_ids_as_names = use_internal_names
+        if use_internal_names:
+            assert names2ids is not None
+        self._names2ids = names2ids
         self._entities_by_name   = {}   # index: name => entity (many to one: each entity might have more than one name)
-
         self._unknown_location.add_entity(self._player)
-
         self._update_entity_index(self._unknown_location)
         self._update_entity_index(self._player)
         self._update_entity_index(self._player.inventory)  # add the player's inventory to index of Locations
@@ -655,7 +659,13 @@ class KnowledgeGraph:
         else:
             return random.choice(self.inventory.entities)
 
-    def update_facts(self, obs_facts, prev_action=None):
+    def update_facts(self, obstxt, observed_facts, prev_action=None):
+        if self.use_ids_as_names and self._names2ids:
+            print("REMAPPING", observed_facts)
+            obstxt, obs_facts = remap_observation_and_facts(obstxt, observed_facts, self._names2ids)
+        else:
+            print("NOT REMAPPING", self.use_ids_as_names, self._names2ids)
+            obs_facts = observed_facts
         if self._debug:
             print(f"*********** {'GROUND TRUTH' if self.is_groundtruth else 'observed'} FACTS *********** ")
         player_loc = None
@@ -891,6 +901,7 @@ class KnowledgeGraph:
         self.handle_gone_from_inventory(inventory_items)
         if self._debug:
             print(f"---------------- update FACTS end -------------------")
+        return obstxt
 
     def handle_gone_from_inventory(self, in_inventory_items, prev_action=None):
         # if self._debug:

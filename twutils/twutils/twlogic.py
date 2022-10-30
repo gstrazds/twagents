@@ -1,4 +1,5 @@
-from typing import Iterable, List, Tuple
+import re
+from typing import Iterable, Mapping, List, Tuple, Dict
 from collections import defaultdict, OrderedDict
 from textworld.logic import Proposition, Variable, Signature, State
 from textworld.generator import World
@@ -102,7 +103,7 @@ def reconstitute_facts(facts_list):
     return facts_list
 
 
-def filter_observables(world_facts: List[Proposition], verbose=False, game=None, internal_names=False):
+def filter_observables(world_facts: Iterable[Proposition], verbose=False, game=None):
     fixups = defaultdict(set)
     if not world_facts:
         return None
@@ -114,6 +115,7 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None,
         for v in fact.arguments:
             #     print('\t\t{}:{}'.format(v.name, v.type))
             if not v.name:
+                assert False, f"fact.arguments are all expected to have a non-empty .name property {v} / {fact}"
                 v_count = len(fixups[v.type])
                 assert v not in fixups[v.type]
                 if v.type == 'P' or v.type == 'I' or v.type == 'RECIPE' or v.type == 'MEAL':
@@ -123,7 +125,10 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None,
                 else:
                     v.name = '~{}_{}'.format(v.type, v_count)
                     fixups[v.type].add(v)
-
+    # print("((((( filter_observables:")
+    # for key in fixups.keys():
+    #     print(f"\t{key}: {fixups[key]}")
+    # print(")))))")
     world = World.from_facts(world_facts)
     world_state = world.state
 
@@ -171,29 +176,49 @@ def filter_observables(world_facts: List[Proposition], verbose=False, game=None,
                                                                     Variable("exit_{}".format(e), 'e'),
                                                                     world.player_room   # the_player
                                                                     )))
-    # REFACTORING: the following is now handled within add_extra_door_facts()
-    #     else:  # probably a closed door
-    #         door_facts = world.state.facts_with_signature(Signature('link', ('r', 'd', 'r')))
-    #         for df in door_facts:
-    #             if df.arguments[0] == player_location:
-    #                 the_door = df.arguments[1]
-    #                 observable_facts.append(Proposition("{}_of".format(e), (
-    #                                                                 the_player,
-    #                                                                 the_door
-    #                                                                 )))
-    #                 if world.state.is_fact(Proposition('closed', [the_door])):
-    #                     observable_facts.append(Proposition('closed', [the_door]))
-
+    # REFACTORING: adding e.g. closed(door) and [north|east|west|south_of](P,door) now in add_extra_door_facts()
     add_extra_door_facts(world, world_facts, local_facts=observable_facts, where_fact=where_fact)
 
     if verbose:
         print("++WORLD FACTS++:")
         for fact in world_facts:
             prettyprint_fact(fact, game=game)
-    if internal_names and game:
-        observable_facts = [human_readable_to_internal(game, f) for f in observable_facts]
 
     return observable_facts, player_location
+
+
+def remap_proposition(prop: Proposition, names2ids_map: Mapping[str,str]) -> Proposition:
+    def _remap_var(arg: Variable, names2ids_map) -> Variable:
+        _name = names2ids_map.get(arg.name, arg.name)
+        return Variable(_name, arg.type)
+    args_new = [_remap_var(arg, names2ids_map) for arg in prop.arguments]
+    prop_new = Proposition(prop.name, args_new)
+    print(f"remap_proposition: {prop} --> {prop_new}")
+    return prop_new
+
+
+def subst_names(obstxt:str, rename_map: Mapping[str,str]) -> str:
+    sorted_list = list(sorted(rename_map.items(), key=lambda tup: len(tup[0]), reverse=True))
+    edited_str = obstxt
+    # replace longer names first
+    print(sorted_list)
+    for varname, varid in sorted_list:
+        assert varname and varid, f"varname:{varname} varid:{varid} EXPECTED TO BE NONEMPTY!"
+        # TODO: ?better handling of special objs [meal, rooms, etc]
+        if varname != varid and not varid.startswith(varname+'_'):    # don't substitute meal->meal_0, stove->stove_0, etc
+            print(f"Replacing {varname}<-{varid}")
+            edited_str = re.sub(varname, varid, edited_str, flags=re.IGNORECASE)   #TODO: could optimize by precompiling and remembering
+        # print("\t-> ", edited_str)
+    print("MODIFIED observation: >>>", edited_str)
+    print("<<<----------end of MODIFIED observation")
+    return edited_str
+
+
+def remap_observation_and_facts(obstxt, observed_facts, rename_map: Mapping[str,str]):
+    obs_facts = [remap_proposition(f, rename_map) for f in observed_facts]
+    if obstxt:
+        obstxt = subst_names(obstxt, rename_map)
+    return obstxt, obs_facts
 
 
 def human_readable_to_internal(game:Game, fact:Proposition) -> Proposition:
@@ -307,10 +332,15 @@ def lookup_internal_info(game, arg) -> Tuple[str, str]:
 
 def lookup_internal_id(game, var_name) -> str:
     info = _find_info(game, var_name)
-    _name = info.id  if info else None
-    print(f"lookup_internal_id: {var_name} -> {_name}")
-    return _name
+    _name_id = info.id  if info else None
+    print(f"lookup_internal_id: {var_name} -> {_name_id}")
+    return _name_id
 
+
+def get_name2idmap(game) -> Dict[str,str]:
+    names2ids =  {info.name if info.name else info.id:info.id for key, info in game.infos.items() }
+    print("get_name2idmap: ", names2ids)
+    return names2ids
 
 def print_variable(game, arg):
     _name, _type_ = lookup_internal_info(game, arg)

@@ -113,7 +113,7 @@ class Task:
         self.use_groundtruth = use_groundtruth
         if not description:
             description = "{classname}".format(classname=type(self).__name__)
-        self.description = description
+        self._description = description
         self.prereq = Preconditions(task=self)
         self.missing = Preconditions(task=self)
         self._postcondition_checks = []  # partial funcs (or closures), invoked with one positional arg = KnowledgeGraph
@@ -130,6 +130,10 @@ class Task:
         if self.use_groundtruth:
             return gi.gt
         return gi.kg
+
+    @property
+    def description(self) -> str:
+        return self._description
 
     @property
     def is_done(self) -> bool:

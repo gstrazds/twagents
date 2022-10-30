@@ -5,14 +5,14 @@ import os.path
 import glob
 from pathlib import Path
 
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Mapping, Optional, Any
 
 import textworld
 import textworld.gym
 from textworld.logic import Proposition  #, Variable, Signature, State
 
 from twutils.file_helpers import count_iter_items, split_gamename  # , parse_gameid
-from twutils.twlogic import filter_observables
+from twutils.twlogic import filter_observables, subst_names
 from twutils.feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
 from symbolic.knowledge_graph import KnowledgeGraph
@@ -356,29 +356,35 @@ def start_twenv_for_playthrough(gamefiles,
                                 raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
                                 passive_oracle_mode=False,  # if True, don't predict next action
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
-                                random_seed=DEFAULT_PTHRU_SEED
+                                random_seed=DEFAULT_PTHRU_SEED,
+                                use_internal_names=False
                                 ):
     env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, inventory=True, location=True,
                                    last_action=True, last_command=True, intermediate_reward=True)
     batch_size = len(gamefiles)
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
     twenv = textworld.start(gamefiles[0], wrappers=[TWoWrapper], infos=env_infos)
+    # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
+    # (names get remapped to internal ids in gather_infos_for_playthroughs( remap_names=names2ids )
+    twenv.use_internal_names = False   #use_internal_names
     game_state = twenv.reset()
     # game_state = twenv.get_initial_state()
     print(game_state.keys())
     rewards = [game_state.reward]
     dones = [False] * batch_size
     start_cmds = ['start'] * batch_size
+    # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
     obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds)
     return twenv, obs, infos
 
 
-def step_twenv_for_playthrough(twenv, step_cmds:List[str]):
+def step_twenv_for_playthrough(twenv, step_cmds:List[str], use_internal_names=False):
     assert len(step_cmds) == 1, f"Currently, only support batch_size=1 {step_cmds}"
     game_state, reward, done = twenv.step(step_cmds[0])
     game_states = [game_state]
     rewards = [reward]
     dones = [done]
+    # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
     obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)
     return obs, rewards, dones, infos
 
@@ -438,11 +444,11 @@ def playthrough_step_to_json(cmds: List[str],
                              obs: List[Optional[str]],
                              rewards: List[float],
                              step_num: int,
-                             internal_names: bool = False) -> List[Any]:
+                             use_internal_names: bool = False) -> List[Any]:
     step_json_list = []
     for idx in range(len(dones)):
         world_facts = infos['facts'][idx]
-        observable_facts, player_room = filter_observables(world_facts, game=infos['game'][idx], internal_names=internal_names)
+        observable_facts, player_room = filter_observables(world_facts, game=infos['game'][idx])
         world_facts_serialized = [f.serialize() for f in world_facts]
         observable_facts_serialized = [f.serialize() for f in observable_facts]
         # step_key = format_stepkey(step_num)
@@ -474,7 +480,7 @@ def playthrough_step_to_json(cmds: List[str],
     return step_json_list
 
 
-def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, internal_names=False):
+def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, use_internal_names=False):
     def append_step_data(array_list: List[List[Any]], step_list: List[Any]):
         assert len(array_list) == len(step_list), f"Batch size should match {len(array_list)} {len(step_list)}"
         for idx, step_data in enumerate(step_list):   # an entry for each game in the batch (can be None if game is_done)
@@ -486,8 +492,8 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, intern
     _dones = [0] * batch_size
     _rewards = [0] * batch_size
     next_cmds = ['start'] * batch_size
-    env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed)
-    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
+    env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed, use_internal_names=use_internal_names)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, use_internal_names=use_internal_names)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
     step_array_list = [playthru_step_data]  # Expecting that every game will always have at least one initial step
@@ -498,12 +504,12 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, intern
         num_steps += 1
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
-        _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds)
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, internal_names=internal_names)
+        _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds, use_internal_names=use_internal_names)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, use_internal_names=use_internal_names)
         append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
     env.close()
-    return step_array_list
+    return step_array_list, [env.tw_oracle.get_game_data()]
 
 
 def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
@@ -513,7 +519,7 @@ def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
 
     if kg is None:
         kg = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
-    kg.update_facts(facts_list, prev_action=prev_action)
+    obs_descr = kg.update_facts(obs_descr, facts_list, prev_action=prev_action)
     #return str(kg)
     return kg.describe_room(kg.player_location.name, obs_descr=obs_descr)
 
@@ -534,7 +540,9 @@ def get_kg_descr(kg_accum, stepdata):
     # print(f"     >>>> NEXT_ACT:", stepdata['next_action'])
     # #print(f"     **** FACTS:",    stepdata[obs_facts_key])
     # print( "========= KG_VISIBLE ====================================================")
-    kg_descr = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['description'])
+    # print(stepdata.keys())
+    # print(stepdata['description'])
+    kg_descr = format_facts(observed_facts, kg=kg_accum, prev_action=prev_action, obs_descr=stepdata['obs'])
     return kg_descr
 
 
@@ -624,7 +632,8 @@ def format_taskstack_for_json(playthru):
     return ''
 
 
-def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_name=None):
+def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
+                    map_names2ids: Optional[Mapping[str,str]] = None, dataset_name=None):
 
     # gn = 'tw-cooking-recipe3+take3+cut+go6-Z7L8CvEPsO53iKDg'
     # gn = 'tw-cooking-recipe1+cook+cut+open+drop+go6-xEKyIJpqua0Gsm0q'
@@ -635,7 +644,10 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
     othru_all = []   # similar, but without using any knowledge from previous observations
     raw_all = []
     tstacks_all = []
-    kg_accum = KnowledgeGraph(None, debug=True)   # suppress excessive print() outs
+
+    use_internal_names = True if map_names2ids else False
+    kg_accum = KnowledgeGraph(None, names2ids=map_names2ids, use_internal_names=use_internal_names,
+                              debug=True)   # debug=False suppresses excessive print() outs
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])
     end_score = playthru[-1]['score']
@@ -662,11 +674,17 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
 
         # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
         _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
-
+        if map_names2ids:
+            pthru0 = subst_names(pthru0, map_names2ids)
         taskstack = format_taskstack(stepdata['tw_o_stack']) if 'tw_o_stack' in stepdata else ''
+        if map_names2ids:
+            taskstack = subst_names(taskstack, map_names2ids)
         tstacks_all.append(taskstack)
 
         outstr, pthru = format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True)
+        if map_names2ids:
+            pthru = subst_names(pthru, map_names2ids)
+            outstr = subst_names(outstr, map_names2ids)
         pthru_all.append(pthru)
         othru_all.append(pthru0)
         raw_all.append(outstr)
@@ -718,7 +736,10 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True, dataset_
                 rtg_json_str = format_rtg_for_json(playthru, rtg=True)
                 if rtg_json_str:
                     dsfile.write(',"rtg":' + rtg_json_str)
-                dsfile.write(',"taskstack":' + format_taskstack_for_json(playthru))
+                taskstackjson = format_taskstack_for_json(playthru)
+                if map_names2ids:
+                    taskstackjson = subst_names(taskstackjson, map_names2ids)
+                dsfile.write(',"taskstack":' + taskstackjson)
                 lines = []
                 for line in accum_pthru.split('\n'):
                     line = line.strip()

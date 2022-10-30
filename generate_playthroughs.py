@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from twutils.playthroughs import generate_playthrus, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
 from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
+from twutils.twlogic import get_name2idmap
 from train_tokenizer import build_tokenizer, save_tokenizer_to_json
 
 def generate_and_export_pthru(gamename, gamedir, outdir,
@@ -15,7 +16,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               do_export=True,
                               dry_run=False,  # do everything according to other args, but don't write to disk
                               dataset_name=None,
-                              internal_names=False):
+                              use_internal_names=False):
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:
@@ -39,9 +40,10 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if do_generate:
-        step_array_list = generate_playthrus([_gamefile], randseed=randseed, internal_names=internal_names)
+        step_array_list, games_list = generate_playthrus([_gamefile], randseed=randseed, use_internal_names=use_internal_names)
         # for step_array in step_array_list:
         step_array = step_array_list[0]
+        game = games_list[0]
         _jsonstr = json.dumps(step_array, indent=2)
         if os.path.exists(_ptjson):
             warn_prefix = "SKIPPING - PT file exists:" if skip_existing else "WARNING - OVERWRITING PT:"
@@ -60,7 +62,12 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
         else:
             warn_prefix = None
         if not warn_prefix or not skip_existing:  # file doesn't exist, or write even if it does
-            export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run, dataset_name=dataset_name)
+            if use_internal_names:
+                if not do_generate:
+                    game = None    #TODO: get the game data from somewhere
+                assert do_generate, "Reexport with --internal-names is NOT YET supported"
+                names2ids = get_name2idmap(game)  # we got the game data from generate_playthrus()
+            export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run, dataset_name=dataset_name, map_names2ids=names2ids)
     return num_steps, step_array
 
 
@@ -171,7 +178,11 @@ if __name__ == "__main__":
 
                     playthru = retrieve_playthrough_json(gname, ptdir=args.input_dir, gindex=games_index, ptid=None)
                     if args.do_write:
-                        total_files += export_playthru(gname, playthru, destdir=destdir, dataset_name=args.which)
+                        if args.internal_names:
+                            assert False, "reexport with --internal-names NOT YET SUPPORTED"
+                            _game_ = None   # TODO: need to retrieve game data from somewhere (e.g. gamefile)
+                            names2ids = get_name2idmap(_game_)
+                        total_files += export_playthru(gname, playthru, destdir=destdir, dataset_name=args.which, map_names2ids=names2ids)
                 else:
                     if args.which == 'extra':
                         print(f"[{i}] {gname}")
@@ -185,7 +196,7 @@ if __name__ == "__main__":
                                                   do_export=args.do_write,
                                                   dry_run=dry_run,
                                                   dataset_name=args.which,
-                                                  internal_names=args.internal_names,
+                                                  use_internal_names=args.internal_names,
                                             )
                     total_files += 1
 

@@ -191,6 +191,7 @@ class TWoWrapper(textworld.core.Wrapper):
         self.next_command = None
         self._prev_state: Optional[GameState] = None
         self._initial_state: Optional[GameState] = None
+        self.use_internal_names = False
 
     # def _wrap(self, env):
     #     super()._wrap(env)
@@ -214,7 +215,7 @@ class TWoWrapper(textworld.core.Wrapper):
         return self._initial_state
 
     def reset(self):
-        print(f"@@@@@@@@@@@ TWoWrapper({self}).reset(env={self._wrapped_env}")
+        print(f"@@@@@@@@@@@ TWoWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
 
         # if episode_num is not None:
         #     self.episode_counter = episode_num
@@ -225,10 +226,17 @@ class TWoWrapper(textworld.core.Wrapper):
         self._initial_state = game_state
         self._prev_state = game_state
         self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
+        # prime the pump
+        world_facts = game_state.get('facts', None)
+        obstxt = game_state.feedback
+        _actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
+        # _actiontxt, _tasks also get stored into self.next_command, self._tasks by .invoke_oracle
+
         if not hasattr(game_state, 'last_command'):
             print("TWoOracle.reset(): SETTING DEFAULT game_state.last_command = 'start'")
             game_state.last_command = 'start'
-        game_state.next_command = self.next_command
+        game_state.next_command = self.next_command   # = _actiontxt
+        game_state._tasks = _tasks
         if not hasattr(game_state, 'score'):
             game_state.score = 0.0
         game_state.reward = game_state.score
@@ -277,7 +285,8 @@ class TWoWrapper(textworld.core.Wrapper):
     def close(self):
         self._wrapped_env.close()
 
-    def _initialize_oracle(self, game_state, idx=0, is_first_episode=True, forget_everything=False, objective='eat meal'):
+    def _initialize_oracle(self, game_state, idx=0, objective='eat meal',
+                           is_first_episode=True, forget_everything=False):
         game, game_id = get_game_id_from_game_state(game_state)
         is_different_game = self.set_game_id(game_id, idx)  # if playing the same game repeatedly, remember layout
         if not self.tw_oracle or is_different_game or is_first_episode:   # or forget_everything
@@ -286,7 +295,8 @@ class TWoWrapper(textworld.core.Wrapper):
                 "TW",  # rom_name
                 self.game_id,  # env_name
                 idx=self.idx,  # for logging
-                game=game      # for more detailed logging
+                game=game,      # for more detailed logging
+                use_internal_names=self.use_internal_names
             )
         else:      # not is_first_episode
             self.tw_oracle.reset(forget_everything=forget_everything)
@@ -304,23 +314,10 @@ class TWoWrapper(textworld.core.Wrapper):
             for task in task_list:
                 tw_o.task_exec.queue_task(task)
 
-        # prime the pump
-        world_facts = game_state.get('facts', None)
-        obstxt = game_state.feedback
-        actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
-        return actiontxt, _tasks
-
     def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
         _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
         self._tasks = _tasks   # remember (only used for export to pthru data files)
         # simplify the observation text if it includes notification about incremented score
-        if obstxt:
-            if "Your score has just" in obstxt:
-                obstxt = '\n'.join(
-                    [line for line in obstxt.split('\n') if not line.startswith("Your score has just")]
-                ).strip()
-            else:
-                obstxt = obstxt.strip()
         # print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt}]")
         # if 'inventory' in infos:
         #     print("\tINVENTORY:", infos['inventory'][idx])
@@ -328,10 +325,11 @@ class TWoWrapper(textworld.core.Wrapper):
         #     print("infos[game_id]=", infos['game_id'][idx])
 
         if world_facts:
-            # TODO: remove ground_truth -- no longer needed
+            # TODO:DONE remove ground_truth -- no longer used (but might still be useful for debugging)
             self.tw_oracle.set_ground_truth(world_facts)
 
             observable_facts, player_room = filter_observables(world_facts, verbose=verbose)
+
             print("FACTS IN SCOPE:")
             for fact in observable_facts:
                 print('\t', fact)
@@ -340,7 +338,7 @@ class TWoWrapper(textworld.core.Wrapper):
             observable_facts = None
         if prev_action != "do nothing":
             # if prev_action=None -> uses oracle._last_action from oracle.observe()
-            self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
+            obstxt = self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
         if self.passive_oracle_mode:
             print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode")
