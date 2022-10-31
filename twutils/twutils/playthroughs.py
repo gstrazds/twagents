@@ -628,7 +628,7 @@ def format_taskstack_for_json(playthru):
     if 'tw_o_stack' in playthru[0]:
         tasks_list = [ format_taskstack(stepdata['tw_o_stack']) for stepdata in playthru ]
 
-        return '["' + '", "'.join(tasks_list) + '"]'
+        return json.dumps(tasks_list)
     return ''
 
 
@@ -739,19 +739,20 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
                 taskstackjson = format_taskstack_for_json(playthru)
                 if map_names2ids:
                     taskstackjson = subst_names(taskstackjson, map_names2ids)
-                dsfile.write(',"taskstack":' + taskstackjson)
+                if True:
+                    dsfile.write(',"taskstack":' + taskstackjson)
                 lines = []
                 for line in accum_pthru.split('\n'):
                     line = line.strip()
                     if line:
                         lines.append(line)
-                dsfile.write(f',"text":"{JSON_LINE_SEP.join(lines)}"')
+                dsfile.write(f',"text":{json.dumps(JSON_LINE_SEP.join(lines))}')
                 lines = []
                 for line in accum_othru.split('\n'):
                     line = line.strip()
                     if line:
                         lines.append(line)
-                dsfile.write(f',"text0":"{JSON_LINE_SEP.join(lines)}"')
+                dsfile.write(f',"text0":{json.dumps(JSON_LINE_SEP.join(lines))}')
                 # lines = []
                 # raw_accum = "\n".join(raw_all)
                 # for line in raw_accum.split('\n'):

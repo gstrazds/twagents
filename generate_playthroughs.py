@@ -66,7 +66,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                 if not do_generate:
                     game = None    #TODO: get the game data from somewhere
                 assert do_generate, "Reexport with --internal-names is NOT YET supported"
-                names2ids = get_name2idmap(game)  # we got the game data from generate_playthrus()
+            names2ids = get_name2idmap(game) if use_internal_names else None # we got the game data from generate_playthrus()
             export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run, dataset_name=dataset_name, map_names2ids=names2ids)
     return num_steps, step_array
 
