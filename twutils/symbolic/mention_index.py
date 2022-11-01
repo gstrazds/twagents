@@ -1,10 +1,10 @@
 from typing import Tuple, List
 import re    # regular expressions, for finding mentions of entities
 
-# from symbolic.action import *
-# from symbolic.entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
-# from symbolic.entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
-from symbolic.entity import Entity
+# from .action import *
+# from .entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
+# from .entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
+from .entity import Entity
 
 def _span_len(span: Tuple):
     return span[1] - span[0]

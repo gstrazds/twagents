@@ -11,9 +11,9 @@ import textworld
 import textworld.gym
 from textworld.logic import Proposition  #, Variable, Signature, State
 
-from twutils.file_helpers import count_iter_items, split_gamename  # , parse_gameid
-from twutils.twlogic import filter_observables, subst_names
-from twutils.feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
+from .file_helpers import count_iter_items, split_gamename  # , parse_gameid
+from .twlogic import filter_observables, subst_names
+from .feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.wrappers.gym_wrappers import TWoWrapper
@@ -353,13 +353,13 @@ def step_gym_for_playthrough(gymenv, step_cmds:List[str]):
 
 
 def start_twenv_for_playthrough(gamefiles,
-                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
+                                raw_obs_feedback=False,  # don't apply ConsistentFeedbackWrapper
                                 passive_oracle_mode=False,  # if True, don't predict next action
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
                                 use_internal_names=False
                                 ):
-    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, inventory=True, location=True,
+    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
                                    last_action=True, last_command=True, intermediate_reward=True)
     batch_size = len(gamefiles)
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
@@ -560,7 +560,7 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
                                                              stepdata['feedback'],
                                                              stepdata['description'])
         if new_feedback:
-            # print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
+            print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
             feedback = new_feedback
 
    # print(f"[{i}] {gn} .....")

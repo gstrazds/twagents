@@ -9,10 +9,10 @@ import textworld.gym
 from textworld import EnvInfos
 from textworld.core import GameState  #, Environment, Wrapper
 
-from symbolic.game_agent import TextGameAgent
-from symbolic.task_modules import RecipeReaderTask
-from symbolic.task_modules.navigation_task import ExploreHereTask
-from symbolic.entity import MEAL
+from ..game_agent import TextGameAgent
+from ..task_modules import RecipeReaderTask
+from ..task_modules.navigation_task import ExploreHereTask
+from ..entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from twutils.file_helpers import parse_gameid
 from twutils.twlogic import filter_observables
