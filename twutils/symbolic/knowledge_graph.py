@@ -3,7 +3,7 @@
 from typing import Tuple, List, Mapping
 
 import random
-# from textworld.logic import Proposition, Variable
+from textworld.logic import Proposition, Variable
 from .event import *
 from .action import *
 from .entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
@@ -933,6 +933,30 @@ class KnowledgeGraph:
                 elif prev_action_words[0] == 'close':
                     oven.close()
 
+    def cannonicalize_command(self, cmdstr: str) -> str:
+        """
+        Removes all occurences of 'the'. 
+        Adds a 'from' phrase if the target object is in a container or on a supporting thing.
+        """
+        # cmdstr = cmdstr.lower()
+        cmdstr = cmdstr.replace(" the ", " ")
+        words = cmdstr.split()
+        if words and words[0] == 'take' and not 'from' in words:
+            objname = ' '.join(words[1:])   # consider everything after the verb to be the direct object
+            entity = self.get_entity(objname)
+            if not entity:
+                print("WARNING: cannonicalize_command cannot find direct obj", objname)
+            else:
+                container_or_support = self.get_holding_entity(entity)
+                if container_or_support:   # None if entity is not IN or ON something (other than the floor of a room)
+                    if container_or_support == self.inventory:  # Unexpected, because cmd is 'take' (redundant)
+                        errmsg = f"UNEXPECTED - cannonicalize_command: '{cmdstr}' but {objname} is already in Inventory"
+                        print("WARNING:", errmsg)
+                        assert False, errmsg
+                    else:
+                        words.append('from')
+                        cmdstr = ' '.join(words) + f" {container_or_support.name}"
+        return cmdstr
 
 class ConnectionGraph:
     """

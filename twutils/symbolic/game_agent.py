@@ -1,6 +1,7 @@
 import os
 import logging
 import random
+from typing import Optional
 
 from symbolic.decision_modules import TaskExec
 # from symbolic.entity import Location
@@ -247,9 +248,12 @@ class TextGameAgent:
                 self.elect_new_active_module()
             next_action = self.generate_next_action(observation)
         self._last_action = next_action
-        return next_action.text()
+        cmdstr = next_action.text()
+        if self.gi.kg:
+            cmdstr = self.gi.kg.cannonicalize_command(cmdstr)
+        return cmdstr
 
-    def observe(self, reward: float, new_obs, done: bool, prev_action=None, idx=None):
+    def observe(self, reward: float, new_obs, done: bool, prev_action:str = Optional[None], idx=None):
         """ Observe could be used for learning from rewards. """
 #GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
@@ -265,7 +269,8 @@ class TextGameAgent:
             if prev_action.lower() != self._last_action.text().lower():
                 warnmsg = f"WARNING: observe() explicit prev_action:'{prev_action}' replacing self._last_action:{self._last_action}"
                 print(warnmsg)
-                assert False, warnmsg
+                if not prev_action.startswith(self._last_action.text().lower()):
+                    assert False, warnmsg
                 self._last_action = StandaloneAction(prev_action)
         if not prev_action and self._last_action:
             prev_action = self._last_action.text()

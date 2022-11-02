@@ -205,7 +205,7 @@ def subst_names(obstxt:str, rename_map: Mapping[str,str]) -> str:
     for varname, varid in sorted_list:
         assert varname and varid, f"varname:{varname} varid:{varid} EXPECTED TO BE NONEMPTY!"
         # TODO: ?better handling of special objs [meal, rooms, etc]
-        if varname != varid and not varid.startswith(varname+'_'):    # don't substitute meal->meal_0, stove->stove_0, etc
+        if varname != varid and not varid.startswith(varname+'_0'):    # don't substitute meal->meal_0, stove->stove_0, etc
             print(f"Replacing {varname}<-{varid}")
             edited_str = re.sub(varname, varid, edited_str, flags=re.IGNORECASE)   #TODO: could optimize by precompiling and remembering
         # print("\t-> ", edited_str)
@@ -338,7 +338,10 @@ def lookup_internal_id(game, var_name) -> str:
 
 
 def get_name2idmap(game) -> Dict[str,str]:
-    names2ids =  {info.name if info.name else info.id:info.id for key, info in game.infos.items() }
+    names2ids:Dict[str,str] = {}
+    for key, info in game.infos.items():
+        if info.name and info.name != info.id and not info.id.startswith(info.name+'_0'):    # don't substitute meal->meal_0, stove->stove_0, etc
+            names2ids[info.name] = info.id
     print("get_name2idmap: ", names2ids)
     return names2ids
 

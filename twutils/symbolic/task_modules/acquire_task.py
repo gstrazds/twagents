@@ -1,6 +1,6 @@
 from typing import List
 from .navigation_task import GoToTask
-from ..action import Take, Drop, Open #, Portable
+from ..action import Take, TakeFrom, Drop, Open #, Portable
 from ..task import Task  #, SequentialTasks
 from ..action import Action
 
@@ -38,9 +38,12 @@ class TakeItemTask(Task):
         entity = kg.get_entity(entityName)
         # assert Portable in entity.attributes
         container = kg.get_holding_entity(entity)
-        if container and container.state.openable and not container.state.is_open:
-            response = yield Open(container)
-        take_action = Take(entity)
+        if container:
+            if container.state.openable and not container.state.is_open:
+                response = yield Open(container)
+            take_action = TakeFrom(entity, container)
+        else:
+            take_action = Take(entity)
         response = yield take_action
         if "carrying too many" in response \
            or "need to drop" in response \
