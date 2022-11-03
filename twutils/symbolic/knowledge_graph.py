@@ -57,8 +57,9 @@ def get_attributes_for_type(twvartype:str):
         attrib_list.append(Openable)
         # attrib_list.append(Lockable)
     elif twvartype == 'oven':
-        attrib_list.append(Container)
-        attrib_list.append(Openable)
+        attrib_list.append(Cooker)
+    #     attrib_list.append(Container)
+    #     attrib_list.append(Openable)
     elif twvartype == 'stove':
         attrib_list.append(Support)
     elif twvartype == 'bbq':
@@ -924,6 +925,8 @@ class KnowledgeGraph:
         else:
             prev_action_words = prev_action.split()
         if prev_action_words[0] in ['open', 'close'] and 'oven' in prev_action_words:
+            print("WARNING: in TextWorld, oven is not openable!")
+            return   #DON'T DO ANYTHING
             if self._debug:
                 print(f"SPECIAL CASE FOR prev_action: {prev_action_words}")
             oven = self.player_location.get_entity_by_name('oven')

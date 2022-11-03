@@ -8,6 +8,7 @@ import textworld.gym
 
 from textworld import EnvInfos
 from textworld.core import GameState  #, Environment, Wrapper
+from textworld.envs.tw import DEFAULT_OBSERVATION
 
 from ..game_agent import TextGameAgent
 from ..task_modules import RecipeReaderTask
@@ -15,7 +16,7 @@ from ..task_modules.navigation_task import ExploreHereTask
 from ..entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from twutils.file_helpers import parse_gameid
-from twutils.twlogic import filter_observables
+from twutils.twlogic import filter_observables, get_recipe
 from twutils.twlogic import parse_ftwc_recipe
 from twutils.feedback_utils import normalize_feedback_vs_obs_description
 from .vocab import WordVocab
@@ -224,7 +225,7 @@ class TWoWrapper(textworld.core.Wrapper):
 
         game_state = self._wrapped_env.reset()
         self._initial_state = game_state
-        self._prev_state = game_state
+        # self._prev_state = game_state
         self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
         # prime the pump
         world_facts = game_state.get('facts', None)
@@ -250,13 +251,18 @@ class TWoWrapper(textworld.core.Wrapper):
         #print(f"--------.step({commands})")
         gs, score, done = self._wrapped_env.step(command)
         score = float(score)
-        if self._prev_state is not None:
-            reward = score - self._prev_state.get('score', 0.0)
+        if self._wrapped_env._prev_state is not None:
+            reward = score - self._wrapped_env._prev_state.get('score', 0.0)
         else:
             reward = float(score)
         self._prev_state = gs
         obstxt = gs.feedback
+        if obstxt and obstxt.startswith("Invalid"):
+            print("WARNING - INVALID COMMAND:", (gs.admissible_commands if hasattr(gs, 'admissible_commands') else 'admissible_commands NOT AVAILABLE'))
         print(f"--------obs:>>{obstxt}<<")
+        #TODO: Fix this, this is currently a crude hack!
+        if command == "examine cookbook" and obstxt == DEFAULT_OBSERVATION:
+            obstxt = get_recipe(self.tw_oracle._game)
         if obstxt is None:
             obstxt = ''
         if not self.tw_oracle:

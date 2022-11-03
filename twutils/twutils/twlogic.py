@@ -384,18 +384,20 @@ def format_adj(adj):
     return 'None' if adj is None else "'{}'".format(adj)
 
 
-def get_recipe(game, verbose=False):   # HACK: In TW-cooking games, the first object is always the recipe
-    RECIPE_OID = 'o_0'
+def get_recipe(game, verbose=False):
     recipe = None
-    if RECIPE_OID in game.infos and game.infos[RECIPE_OID].desc:
-        if game.infos[RECIPE_OID].desc.find("Recipe #1") > -1:
-            recipe = game.infos[RECIPE_OID].desc
-    if verbose:
-        print("----------BEGIN-RECIPE---------")
-        print(recipe)
-        print("---------END-OF-RECIPE------")
+    # RECIPE_OID = 'o_0'  # HACK: In TW-cooking games, the first object is always the cookbook
+    # if RECIPE_OID in game.infos and game.infos[RECIPE_OID].desc:
+    #     cookbook_info = game.infos[RECIPE_OID]
+    cookbook_info = _find_info(game, 'cookbook')
+    if cookbook_info and cookbook_info.desc and cookbook_info.desc.find("Recipe #1") > -1:
+        recipe = cookbook_info.desc
+        if verbose:
+            print("----------BEGIN-RECIPE---------")
+            print(recipe)
+            print("---------END-OF-RECIPE------")
     else:
-        print("Recipe NOT FOUND")
+        print("WARNING: get_recipe() - Recipe NOT FOUND")
     return recipe
 
 

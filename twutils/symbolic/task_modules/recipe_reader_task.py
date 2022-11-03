@@ -94,7 +94,7 @@ class RecipeReaderTask(SingleActionTask):
     The Recipe Reader module activates when the player finds the cookbook.
     """
     def __init__(self, use_groundtruth=False):
-        super().__init__(act=StandaloneAction("read cookbook"),
+        super().__init__(act=StandaloneAction("examine cookbook"),
             description="RecipeReaderTask", use_groundtruth=use_groundtruth)
         self.ingredients = []
         self.recipe_steps = []
