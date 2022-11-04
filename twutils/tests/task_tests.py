@@ -21,7 +21,7 @@ def create_simple_tasks(start_num=1, count=4):
 
 def _consume_event_stream(module, gi):
     print("CONSUME EVENTS")
-    module.process_event_stream(gi)
+    # module.process_event_stream(gi)
     gi.event_stream.clear()
 
 

@@ -329,27 +329,9 @@ class TaskExec(DecisionModule):
                 # print(f"handle precondition: {task}")
                 self.start_prereq_task(task, parent_task)
 
-    # def rescind_broadcasted_preconditions(self, task):
-    #     gi = self._gi
-    #     use_groundtruth = task.use_groundtruth
-    #     prereqs = task.prereq
-    #     if prereqs.required_inventory:
-    #         print("rescind_broadcasted_preconditions INVENTORY:", task, prereqs.required_inventory)
-    #         gi.event_stream.push(NoLongerNeed(prereqs.required_inventory, groundtruth=use_groundtruth))
-    #     if prereqs.required_objects:
-    #         print("rescind_broadcasted_preconditions OBJECTS:", task, prereqs.required_objects)
-    #         gi.event_stream.push(NoLongerNeed(objnames=prereqs.required_objects, groundtruth=use_groundtruth))
-
-    def process_event(self, event, gi: GameInstance):
-        """ Process an event from the event stream. """
-        pass   # need to implement because this is an abstractmethod of DecisionModule
-    #     # print("TaskExecutor PROCESS EVENT: ", event)
-    #     if isinstance(event, NeedToDo):
-    #         print("TaskExecutor PROCESS EVENT: ", event)
-    #         assert False, "NeedToDo is no longer used"
-    #         self._gi = gi
-    #         self.start_prereq_task(event.task, None)
-    #         self.activate(gi)
+    # def process_event(self, event, gi: GameInstance):
+    #     """ Process an event from the event stream. """
+    #     pass   # need to implement because this is an abstractmethod of DecisionModule
 
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction

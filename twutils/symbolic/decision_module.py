@@ -17,10 +17,10 @@ class DecisionModule(ABC):
         self._succ_cnt = 0
         self._fail_cnt = 0
 
-    def process_event_stream(self, gi: GameInstance):
-        for event in gi.event_stream.read():
-            # print(event)
-            self.process_event(event, gi)
+    # def process_event_stream(self, gi: GameInstance):
+    #     for event in gi.event_stream.read():
+    #         # print(event)
+    #         self.process_event(event, gi)
 
     def get_eagerness(self, gi: GameInstance):
         """ Returns a float in [0,1] indicating how eager this module is to take
@@ -43,10 +43,10 @@ class DecisionModule(ABC):
             return 0
 
 
-    @abstractmethod
-    def process_event(self, event, gi: GameInstance):
-        """ Process an event from the event stream. """
-        pass
+    # @abstractmethod
+    # def process_event(self, event, gi: GameInstance):
+    #     """ Process an event from the event stream. """
+    #     pass
 
 
     @abstractmethod

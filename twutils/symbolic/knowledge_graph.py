@@ -4,7 +4,7 @@ from typing import Tuple, List, Mapping
 
 import random
 from textworld.logic import Proposition, Variable
-from .event import *
+from .event import NewEntityEvent, NewLocationEvent
 from .action import *
 from .entity import ConnectionRelation, Entity, Thing, Location, Person, UnknownLocation, Door
 from .entity import DOOR, ROOM, PERSON, INVENTORY, CONTAINER, SUPPORT, CONTAINED_LOCATION, SUPPORTED_LOCATION, NONEXISTENCE_LOC
@@ -232,8 +232,7 @@ class KnowledgeGraph:
     Knowledge Representation consists of visisted locations.
 
     """
-    def __init__(self, event_stream,
-                 groundtruth=False, names2ids: Mapping[str,str] = None,
+    def __init__(self, groundtruth=False, names2ids: Mapping[str,str] = None,
                  logger=None, debug=False, rng=None, use_internal_names=False):
         self._logger = logger
         self._debug = debug
@@ -243,7 +242,7 @@ class KnowledgeGraph:
         self._player             = Person(name="You", description="The Protagonist")
         self._locations          = set()   # a set of top-level locations (rooms)
         self._connections        = ConnectionGraph()  # navigation links connecting self._locations
-        self.event_stream        = event_stream
+        # self.event_stream        = event_stream
         self.rng                 = rng   # random number generator
         self.is_groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
         self.use_ids_as_names = use_internal_names
@@ -274,11 +273,12 @@ class KnowledgeGraph:
             print("### WARNING:", msg)
 
     def broadcast_event(self, ev):
-        if self.event_stream:
-            self.event_stream.push(ev)
-        else:
-            if self._debug:
-                print("KG: No Event Stream! event not sent:", ev)
+        pass
+        # if self.event_stream:
+        #     self.event_stream.push(ev)
+        # else:
+        #    if self._debug:
+        #       print("KG: No Event Stream! event not sent:", ev)
 
     # ASSUMPTION: names are stable. A given name will always refer to the same entity. Entity names don't change over time.
     def _update_entity_index(self, entity):
@@ -383,7 +383,7 @@ class KnowledgeGraph:
 
     # @player_location.setter
     def set_player_location(self, new_location):
-        """ Changes player location and broadcasts a LocationChangedEvent. """
+        """ Changes player location """
         prev_location = self._player.location
         # print(f"set_player_location: {prev_location} {self._player.location} {new_location}", prev_location.entities)
         if new_location == prev_location:
@@ -395,7 +395,7 @@ class KnowledgeGraph:
             # if not Location.is_unknown(prev_location):  # Don't bother broadcasting spawn location
             #     self.broadcast_event(LocationChangedEvent(new_location))
             #IMPORTANT: this is the correct way to set location for an entity
-            new_location.add_entity(self._player)  #THIS IS WRONG: player.location = new_location
+            new_location.add_entity(self._player)  #WRONG: player.location = new_location
         return True
 
     @property
@@ -511,22 +511,25 @@ class KnowledgeGraph:
         return ancestor
 
     def add_entity_at_location(self, entity, location):
-        if location.add_entity(entity):
-            if self.event_stream and not self.is_groundtruth:
-                ev = NewEntityEvent(entity)
-                self.broadcast_event(ev)
+        is_new = location.add_entity(entity)
+        if is_new:
+            print(NewEntityEvent(entity))
+            pass
+            # if self.event_stream and not self.is_groundtruth:
+            #     ev = NewEntityEvent(entity)
+            #     self.broadcast_event(ev)
 
-    def act_on_entity(self, action, entity, rec: ActionRec):
-        if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.is_groundtruth:
-            ev = NewActionRecordEvent(entity, action, rec.result_text)
-            self.broadcast_event(ev)
+    # def act_on_entity(self, action, entity, rec: ActionRec):
+    #     if entity.add_action_record(action, rec) and rec.p_valid > 0.5 and not self.is_groundtruth:
+    #         ev = NewActionRecordEvent(entity, action, rec.result_text)
+    #         self.broadcast_event(ev)
 
-    def action_at_current_location(self, action, p_valid, result_text):
-        loc = self.player_location
-        loc.action_records[action] = ActionRec(p_valid, result_text)
-        if not self.is_groundtruth:
-            ev = NewActionRecordEvent(loc, action, result_text)
-            self.broadcast_event(ev)
+    # def action_at_current_location(self, action, p_valid, result_text):
+    #     loc = self.player_location
+    #     loc.action_records[action] = ActionRec(p_valid, result_text)
+    #     if not self.is_groundtruth:
+    #         ev = NewActionRecordEvent(loc, action, result_text)
+    #         self.broadcast_event(ev)
 
     def get_location(self, roomname, create_if_notfound=False, entitytype=ROOM):
         locations = self.locations_with_name(roomname)

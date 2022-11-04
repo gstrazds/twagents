@@ -1,27 +1,27 @@
 from symbolic import util
 
 
-class EventStream:
-    """
-    An event stream keeps track of incoming events.
+# class EventStream:
+#     """
+#     An event stream keeps track of incoming events.
 
-    """
-    def __init__(self, logger):
-        self._stream = []
-        self._logger = logger
+#     """
+#     def __init__(self, logger):
+#         self._stream = []
+#         self._logger = logger
 
-    def push(self, event):
-        if not event.is_groundtruth:
-            self._logger.debug("[LOG]({}) {}".format(type(event).__name__, event.message))
-        self._stream.append(event)
+#     def push(self, event):
+#         if not event.is_groundtruth:
+#             self._logger.debug("[LOG]({}) {}".format(type(event).__name__, event.message))
+#         self._stream.append(event)
 
-    def clear(self):
-        del self._stream[:]
+#     def clear(self):
+#         del self._stream[:]
 
-    def read(self):
-        """ Iterate through the events in the stream. """
-        for event in self._stream:
-            yield event
+#     def read(self):
+#         """ Iterate through the events in the stream. """
+#         for event in self._stream:
+#             yield event
 
 
 class Event:
@@ -55,21 +55,14 @@ class NewEntityEvent(Event):
         super().__init__(message, groundtruth=groundtruth)
         self.new_entity = new_entity
 
-class NewActionRecordEvent(Event):
-    """ Generated whenever a new action is applied. """
-    def __init__(self, entity, action_record, result_text, groundtruth=False):
-        message = "{} ==({})==> {}".format(entity, action_record, util.clean(result_text))
-        super().__init__(message, groundtruth=groundtruth)
-        self.entity = entity
-        self.action_record = action_record
-        self.result_text = result_text
-
-# class NewConnectionEvent(Event):
-#     """ Generated whenever a new connection is discovered. """
-#     def __init__(self, connection, groundtruth=False):
-#         message = "{} ==({})==> {}".format(connection.from_location, connection.action, connection.to_location)
+# class NewActionRecordEvent(Event):
+#     """ Generated whenever a new action is applied. """
+#     def __init__(self, entity, action_record, result_text, groundtruth=False):
+#         message = "{} ==({})==> {}".format(entity, action_record, util.clean(result_text))
 #         super().__init__(message, groundtruth=groundtruth)
-#         self.connection = connection
+#         self.entity = entity
+#         self.action_record = action_record
+#         self.result_text = result_text
 
 class LocationChangedEvent(Event):
     """ Generated whenever the player's location changes. """
@@ -77,73 +70,44 @@ class LocationChangedEvent(Event):
         super().__init__(new_location.name, groundtruth=groundtruth)
         self.new_location = new_location
 
-# class EntityMovedEvent(Event):
-#     """ Generated whenever an entity moves. """
-#     def __init__(self, entity, origin, destination, groundtruth=False):
-#         super().__init__("EntityMoved", groundtruth=groundtruth)
-#         self.entity = entity
-#         self.origin = origin
-#         self.destination = destination
-
-# class NewAttributeEvent(Event):
-#     """ Generated whenever an object is given an attribute. """
-#     def __init__(self, entity, new_attribute, groundtruth=False):
-#         message = "{} is {}".format(entity.name, new_attribute.name)
-#         super().__init__(message, groundtruth=groundtruth)
-#         self.new_attribute = new_attribute
-
-# class GroundTruthComplete(Event):
-#     """ Generated after all world facts have been incorporated into the Ground Truth knowledge graph. """
-#     def __init__(self, groundtruth=True):
-#         message = "Finished processing {}input facts".format('GT ' if groundtruth else '')
+# class NeedToAcquire(Event):
+#     """ Generated whenever a decision module determines that one or more specific items should be obtained (into inventory). """
+#     def __init__(self, objnames=None, groundtruth=False):
+#         self.objnames = objnames
+#         message = "Need to acquire: {}".format(objnames)
 #         super().__init__(message, groundtruth=groundtruth)
 
-class NeedToAcquire(Event):
-    """ Generated whenever a decision module determines that one or more specific items should be obtained (into inventory). """
-    def __init__(self, objnames=None, groundtruth=False):
-        self.objnames = objnames
-        message = "Need to acquire: {}".format(objnames)
-        super().__init__(message, groundtruth=groundtruth)
-
-class NeedToFind(Event):
-    """ Generated whenever a decision module determines that one or more specific items should be located. """
-    def __init__(self, objnames=None, groundtruth=False):
-        self.objnames = objnames
-        message = "Need to find: {}".format(objnames)
-        super().__init__(message, groundtruth=groundtruth)
-
-class NoLongerNeed(Event):
-    """ Generated whenever a decision module determines that one or more required items are no longer required. """
-    def __init__(self, objnames=None, groundtruth=False):
-        self.objnames = objnames
-        message = "No longer need: {}".format(objnames)
-        super().__init__(message, groundtruth=groundtruth)
-
-class NeedSequentialSteps(Event):
-    """ Generated whenever a decision module determines a series of sequential actions should be performed. """
-    def __init__(self, steps, groundtruth=False):
-        self.steps = steps
-        message = "Need to perform: {}".format(steps)
-        super().__init__(message, groundtruth=groundtruth)
-
-class NeedToGoTo(Event):
-    """ Generated when a decision module determines that the agent should navigate to a specific location. """
-    def __init__(self, target_location, groundtruth=False):
-        self.target_location = target_location
-        message = "Need to go to: {}".format(target_location)
-        super().__init__(message, groundtruth=groundtruth)
-
-class NeedToDo(Event):
-    """ Generated when a decision module determines that the agent needs to perform a specific Task. """
-    def __init__(self, task, groundtruth=False):
-        self.task = task
-        message = "Need to do: {}".format(task)
-        super().__init__(message, groundtruth=groundtruth)
-
-# class AlreadyDone(Event):
-#     """ Generated whenever a decision module determines that a recipe step is redundant. """
-#     def __init__(self, instr_step=None, groundtruth=False):
-#         self.instr_step = instr_step
-#         message = "Already Done: {}".format(instr_step)
+# class NeedToFind(Event):
+#     """ Generated whenever a decision module determines that one or more specific items should be located. """
+#     def __init__(self, objnames=None, groundtruth=False):
+#         self.objnames = objnames
+#         message = "Need to find: {}".format(objnames)
 #         super().__init__(message, groundtruth=groundtruth)
 
+# class NoLongerNeed(Event):
+#     """ Generated whenever a decision module determines that one or more required items are no longer required. """
+#     def __init__(self, objnames=None, groundtruth=False):
+#         self.objnames = objnames
+#         message = "No longer need: {}".format(objnames)
+#         super().__init__(message, groundtruth=groundtruth)
+
+# class NeedSequentialSteps(Event):
+#     """ Generated whenever a decision module determines a series of sequential actions should be performed. """
+#     def __init__(self, steps, groundtruth=False):
+#         self.steps = steps
+#         message = "Need to perform: {}".format(steps)
+#         super().__init__(message, groundtruth=groundtruth)
+
+# class NeedToGoTo(Event):
+#     """ Generated when a decision module determines that the agent should navigate to a specific location. """
+#     def __init__(self, target_location, groundtruth=False):
+#         self.target_location = target_location
+#         message = "Need to go to: {}".format(target_location)
+#         super().__init__(message, groundtruth=groundtruth)
+
+# class NeedToDo(Event):
+#     """ Generated when a decision module determines that the agent needs to perform a specific Task. """
+#     def __init__(self, task, groundtruth=False):
+#         self.task = task
+#         message = "Need to do: {}".format(task)
+#         super().__init__(message, groundtruth=groundtruth)

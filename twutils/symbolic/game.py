@@ -1,5 +1,5 @@
 import random
-from symbolic import event
+# from symbolic import event
 from symbolic import util
 
 
@@ -39,7 +39,7 @@ class GameInstance:
             rng = random.Random()
             rng.seed(42)  # default seed for Random number generator
         self.rng = rng
-        self.event_stream = event.EventStream(logger)
+        # self.event_stream = event.EventStream(logger)
         self._unrecognized_words = ILLEGAL_ACTIONS[:]  #makes a copy of list
         self.kg = None
         self.gt = None
@@ -51,7 +51,7 @@ class GameInstance:
         if old_graph is not None:
             old_graph.event_stream = None
         if graph is not None:
-            graph.event_stream = self.event_stream
+            # graph.event_stream = self.event_stream
             assert graph.is_groundtruth == groundtruth
             graph.is_groundtruth = groundtruth
             graph.set_logger(self._logger)

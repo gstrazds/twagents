@@ -31,9 +31,9 @@ class TextGameAgent:
         self.dbg("RandomSeed: {}".format(seed))
         rng = random.Random()  # each game instance gets its own random number generator
         rng.seed(seed)
-        observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, logger=self.get_logger(), rng=rng,
+        observed_knowledge_graph = KnowledgeGraph(groundtruth=False, logger=self.get_logger(), rng=rng,
                                                   use_internal_names=use_internal_names, names2ids=self.map_names2ids)
-        groundtruth_graph = None  # KnowledgeGraph(None, groundtruth=True, logger=self.get_logger(), names2ids=names2ids, rng=rng)
+        groundtruth_graph = None  # KnowledgeGraph(groundtruth=True, logger=self.get_logger(), names2ids=names2ids, rng=rng)
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, rng=rng, logger=self.get_logger())
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
@@ -66,7 +66,7 @@ class TextGameAgent:
         # groundtruth_graph = KnowledgeGraph(None, groundtruth=True, names2ids=names2ids, logger=self.get_logger())    # start fresh with empty graph
         groundtruth_graph = None
         if forget_everything:
-            observed_knowledge_graph = KnowledgeGraph(None, groundtruth=False, names2ids=names2ids, logger=self.get_logger())    # start fresh with empty graph
+            observed_knowledge_graph = KnowledgeGraph(groundtruth=False, names2ids=names2ids, logger=self.get_logger())    # start fresh with empty graph
         else:
             observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
             observed_knowledge_graph.reset()        # bet restore to initial state (start of episode)
@@ -168,9 +168,10 @@ class TextGameAgent:
 
     def consume_event_stream(self):
         """ Each module processes stored events then the stream is cleared. """
-        for module in self.modules:
-            module.process_event_stream(self.gi)
-        self.gi.event_stream.clear()
+        pass
+        # for module in self.modules:
+        #     module.process_event_stream(self.gi)
+        # self.gi.event_stream.clear()
 
     def generate_next_action(self, observation):
         """Returns the action selected by the current active module and

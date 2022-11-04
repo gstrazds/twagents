@@ -518,7 +518,7 @@ def format_facts(facts_list, prev_action=None, obs_descr=None, kg=None):
         facts_list = [Proposition.deserialize(fact_json) for fact_json in facts_list]
 
     if kg is None:
-        kg = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+        kg = KnowledgeGraph(debug=False)   # suppress excessive print() outs
     obs_descr = kg.update_facts(obs_descr, facts_list, prev_action=prev_action)
     #return str(kg)
     return kg.describe_room(kg.player_location.name, obs_descr=obs_descr)
@@ -646,7 +646,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
     tstacks_all = []
 
     use_internal_names = True if map_names2ids else False
-    kg_accum = KnowledgeGraph(None, names2ids=map_names2ids, use_internal_names=use_internal_names,
+    kg_accum = KnowledgeGraph(names2ids=map_names2ids, use_internal_names=use_internal_names,
                               debug=True)   # debug=False suppresses excessive print() outs
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])

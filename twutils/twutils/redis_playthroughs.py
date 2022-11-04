@@ -625,7 +625,7 @@ def export_playthru(gn, playthru, destdir='.'):
 
     # ! NB: the following code modifies the contents of the retrieved playthru json in memory (but not in Redis)
     pthru_all = ''
-    kg_accum = KnowledgeGraph(None, debug=False)   # suppress excessive print() outs
+    kg_accum = KnowledgeGraph(debug=False)   # suppress excessive print() outs
     num_files = 0
     for i, stepdata in enumerate(playthru):
         prev_action = stepdata['prev_action']
