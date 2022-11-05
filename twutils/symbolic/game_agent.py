@@ -166,12 +166,12 @@ class TextGameAgent:
         self.action_generator = self.active_module.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
 
-    def consume_event_stream(self):
-        """ Each module processes stored events then the stream is cleared. """
-        pass
-        # for module in self.modules:
-        #     module.process_event_stream(self.gi)
-        # self.gi.event_stream.clear()
+    # def consume_event_stream(self):
+    #     """ Each module processes stored events then the stream is cleared. """
+    #     pass
+    #     # for module in self.modules:
+    #     #     module.process_event_stream(self.gi)
+    #     # self.gi.event_stream.clear()
 
     def generate_next_action(self, observation):
         """Returns the action selected by the current active module and
@@ -194,7 +194,7 @@ class TextGameAgent:
                         msg = f"[game_agent] Step:{self.step_num} (generate_next_action): ({type(self.active_module).__name__}) -> |{next_action}|"
                         self.dbg(msg)
                 except StopIteration:
-                    self.consume_event_stream()
+                    # self.consume_event_stream()
                     self.elect_new_active_module()
         return next_action
 
@@ -238,7 +238,7 @@ class TextGameAgent:
         if observable_facts and self.gi.kg:
             obstxt = self.gi.kg.update_facts(obstxt, observable_facts, prev_action=prev_action)
         self.step_num += 1
-        self.consume_event_stream()
+        # self.consume_event_stream()
         return obstxt
 
     def select_next_action(self, observation, external_next_action=None):

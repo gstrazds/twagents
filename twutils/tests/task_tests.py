@@ -19,12 +19,6 @@ def create_simple_tasks(start_num=1, count=4):
     return [SingleActionTask(act=StandaloneAction(f"action{i}")) for i in range(start_num, start_num+count)]
 
 
-def _consume_event_stream(module, gi):
-    print("CONSUME EVENTS")
-    # module.process_event_stream(gi)
-    gi.event_stream.clear()
-
-
 def _reactivate_task_executor(task_exec, gi):
     """ Selects the most eager module to take control. """
     print("_reactivate_task_executor:", "[UNITTEST](elect): {} Eagerness: {}".format(type(task_exec).__name__, task_exec.get_eagerness(gi)))
@@ -46,10 +40,8 @@ def _generate_next_action(action_generator, module, gi, observation):
             print(f"[tests] generate_next_action FAILED {failed_counter} times! BREAKING LOOP")
             return None
         try:
-            _consume_event_stream(module, gi)
             next_action = action_generator.send(observation)  # None)
         except StopIteration:
-            _consume_event_stream(module, gi)
             reactivate_count += 1
             if reactivate_count < 5:
                 action_generator = _reactivate_task_executor(module, gi)
@@ -396,7 +388,7 @@ class TaskTests(unittest.TestCase):
 
     def test_taskexec_prereq_location(self):
         print("......... TaskExec missing prereq location ...")
-        kg = KnowledgeGraph(None, groundtruth=True)
+        kg = KnowledgeGraph(groundtruth=True)
         gi = GameInstance(gt=kg)
         kitchen = Location(description="kitchen")
         kg.add_location(kitchen)
@@ -440,7 +432,6 @@ class TaskTests(unittest.TestCase):
         te.queue_task(t1)
 
         print("kg.player_location=", kg.player_location)
-        _consume_event_stream(te, gi)
 
         te.activate(gi)
         self.assertTrue(te._active)
@@ -468,7 +459,7 @@ class TaskTests(unittest.TestCase):
 
     def test_explore_here(self):
         print("......... ExloreHereTask ...")
-        kg = KnowledgeGraph(None, groundtruth=False)
+        kg = KnowledgeGraph(groundtruth=False)
         t = ExploreHereTask()
         self.assertEqual(str(t), "ExploreHereTask(idle)")
         gen1 = t.activate(kg, None)
@@ -478,7 +469,7 @@ class TaskTests(unittest.TestCase):
         self.assertFalse(t.is_active)
 
         print("......... ExloreHereTask(look_first=True) ...")
-        kg = KnowledgeGraph(None, groundtruth=False)
+        kg = KnowledgeGraph(groundtruth=False)
         t = ExploreHereTask(look_first=True)
         self.assertEqual(str(t), "ExploreHereTask(idle)")
         gen2 = t.activate(kg, None)
@@ -491,7 +482,7 @@ class TaskTests(unittest.TestCase):
 
     def test_seqtask_subtask_postconds(self):
         print("......... Sequential Subtasks w/ Postconditions ...")
-        kg = KnowledgeGraph(None, groundtruth=False)
+        kg = KnowledgeGraph(groundtruth=False)
         tasklist = create_simple_tasks(start_num=1, count=4)
         t1,t2,t3,t4 = tasklist
         self.assertFalse(t1.is_done)
