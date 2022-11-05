@@ -221,6 +221,12 @@ def remap_observation_and_facts(obstxt, observed_facts, rename_map: Mapping[str,
     return obstxt, obs_facts
 
 
+def remap_command(cmdstr: str, rename_map: Mapping[str,str]):
+    if cmdstr:
+        cmdstr = subst_names(cmdstr, rename_map)
+    return cmdstr
+
+
 def human_readable_to_internal(game:Game, fact:Proposition) -> Proposition:
     def _human_readable_to_internal_var(game:Game, arg:Variable) -> Variable:
         _name, _type = lookup_internal_info(game, arg)

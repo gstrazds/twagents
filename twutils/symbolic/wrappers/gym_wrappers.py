@@ -190,8 +190,8 @@ class TWoWrapper(textworld.core.Wrapper):
         self.passive_oracle_mode: bool = passive_oracle_mode
         self.episode_counter: int = -1
         self.next_command = None
-        self._prev_state: Optional[GameState] = None
-        self._initial_state: Optional[GameState] = None
+        self._prev_gamestate: Optional[GameState] = None
+        self._initial_gamestate: Optional[GameState] = None
         self.use_internal_names = False
 
     # def _wrap(self, env):
@@ -213,7 +213,7 @@ class TWoWrapper(textworld.core.Wrapper):
             return True
 
     def get_initial_state(self):
-        return self._initial_state
+        return self._initial_gamestate
 
     def reset(self):
         print(f"@@@@@@@@@@@ TWoWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
@@ -224,8 +224,7 @@ class TWoWrapper(textworld.core.Wrapper):
         #     self.episode_counter += 1
 
         game_state = self._wrapped_env.reset()
-        self._initial_state = game_state
-        # self._prev_state = game_state
+        self._initial_gamestate = game_state
         self._initialize_oracle(game_state, idx=self.idx, forget_everything=False, is_first_episode=True, objective='eat meal')
         # prime the pump
         world_facts = game_state.get('facts', None)
@@ -251,11 +250,11 @@ class TWoWrapper(textworld.core.Wrapper):
         #print(f"--------.step({commands})")
         gs, score, done = self._wrapped_env.step(command)
         score = float(score)
-        if self._wrapped_env._prev_state is not None:
-            reward = score - self._wrapped_env._prev_state.get('score', 0.0)
+        if self._prev_gamestate is not None:
+            reward = score - self._prev_gamestate.get('score', 0.0)
         else:
             reward = float(score)
-        self._prev_state = gs
+        self._prev_gamestate = gs
         obstxt = gs.feedback
         if obstxt and obstxt.startswith("Invalid"):
             print("WARNING - INVALID COMMAND:", (gs.admissible_commands if hasattr(gs, 'admissible_commands') else 'admissible_commands NOT AVAILABLE'))
