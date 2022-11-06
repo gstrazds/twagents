@@ -422,7 +422,7 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
             infos['facts'].append(gs.facts)
             infos['feedback'].append(gs.feedback if gs.feedback else '')
             infos['description'].append(gs.description if gs.description else '')
-            infos['inventory'].append(gs.inventory)
+            infos['inventory'].append(gs.inventory if gs.inventory else '')
             infos['prev_action'].append(gs.last_command)
             infos['admissible_commands'].append(gs.admissible_commands)   # sorted(set(gs["_valid_commands"])))
             # ------- custom from TWoWrapper
@@ -578,8 +578,9 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     pthru += simplify_feedback(feedback) + '\n'
     pthru += kg_descr + '\n'
     # outstr += '\n' + stepdata['obs']
-    outstr += '\n' + stepdata['description']
-    outstr += '\n\n' + stepdata['inventory'] + '\n'
+    outstr += '\n' + stepdata['description'] + '\n'
+    if 'inventory' in stepdata and stepdata['inventory']:
+        outstr += '\n' + stepdata['inventory'] + '\n'
     return outstr, pthru
 
 
