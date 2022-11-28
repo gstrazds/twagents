@@ -6,12 +6,15 @@
 
 import sys
 import argparse
+import json
+from pathlib import Path, PurePath
 from typing import Optional, Any
 
 from textworld.generator import Game, KnowledgeBase, GameOptions
 from textworld import GameMaker
+from textworld.generator.inform7 import Inform7Game
 
-def rewrite_game(game, options:Optional[GameOptions]):
+def rebuild_game(game, options:Optional[GameOptions]):
  
     # Load knowledge base specific to this challenge.
     settings = game.metadata.get('settings', None)
@@ -31,87 +34,8 @@ def rewrite_game(game, options:Optional[GameOptions]):
         # options.kb = KnowledgeBase.load(logic_path=KB_LOGIC_PATH, grammar_path=KB_GRAMMAR_PATH)
 
     if not options or not options.path:
-        print(f"{options}")
+        print(f"MISSING options.path: {options}")
         # assert options.path, f"{options}"
-
-    # rngs = options.rngs
-    # rng_map = rngs['map']
-    # rng_objects = rngs['objects']
-    # rng_grammar = rngs['grammar']
-    # rng_quest = rngs['quest']
-    # rng_recipe = np.random.RandomState(settings["recipe_seed"])
-
-    # M = GameMaker(options)
-
-    # ...
-
-    # M.grammar = textworld.generator.make_grammar(options.grammar, rng=rng_grammar, kb=options.kb)
-
-    # M.quests = quests
-
-    # G = compute_graph(M)  # Needed by the move(...) function called below.
-
-    # Build walkthrough.
-    # current_room = start_room
-
-    # cookbook_desc = "You open the copy of 'Cooking: A Modern Approach (3rd Ed.)' and start reading:\n"
-    # recipe = textwrap.dedent(
-    #     """
-    #     Recipe #1
-    #     ---------
-    #     Gather all following ingredients and follow the directions to prepare this tasty meal.
-
-    #     Ingredients:
-    #     {ingredients}
-
-    #     Directions:
-    #     {directions}
-    #     """
-    # )
-    # recipe_ingredients = "\n  ".join(ingredient[0].name for ingredient in ingredients)
-
-    # recipe_directions = []
-    # for ingredient in ingredients:
-    #     cutting_verb = TYPES_OF_CUTTING_VERBS.get(ingredient[2])
-    #     if cutting_verb:
-    #         recipe_directions.append(cutting_verb + " the " + ingredient[0].name)
-
-    #     cooking_verb = TYPES_OF_COOKING_VERBS.get(ingredient[1])
-    #     if cooking_verb:
-    #         recipe_directions.append(cooking_verb + " the " + ingredient[0].name)
-
-    # recipe_directions.append("prepare meal")
-    # recipe_directions = "\n  ".join(recipe_directions)
-    # recipe = recipe.format(ingredients=recipe_ingredients, directions=recipe_directions)
-    # cookbook.infos.desc = cookbook_desc + recipe
-
-    # game = M.build()
-
-    # Collect infos about this game.
-    # metadata = {
-    #     "seeds": options.seeds,
-    #     "goal": cookbook.infos.desc,
-    #     "recipe": recipe,
-    #     "ingredients": [(food.name, cooking, cutting) for food, cooking, cutting in ingredients],
-    #     "settings": settings,
-    #     "entities": [e.name for e in M._entities.values() if e.name],
-    #     "nb_distractors": nb_distractors,
-    #     "walkthrough": walkthrough,
-    #     "max_score": sum(quest.reward for quest in game.quests),
-    # }
-
-    # objective = ("You are hungry! Let's cook a delicious meal. Check the cookbook"
-    #              " in the kitchen for the recipe. Once done, enjoy your meal!")
-    # game.objective = objective
-
-    # game.metadata = metadata
-    # skills_uuid = "+".join("{}{}".format(k, "" if settings[k] is True else settings[k])
-    #                        for k in SKILLS if k in settings and settings[k])
-    # uuid = "tw-cooking{split}-{specs}-{seeds}"
-    # uuid = uuid.format(split="-{}".format(settings["split"]) if settings.get("split") else "",
-    #                    specs=skills_uuid,
-    #                    seeds=encode_seeds([options.seeds[k] for k in sorted(options.seeds)]))
-    # game.metadata["uuid"] = uuid
     return game
 
 
@@ -122,27 +46,57 @@ if __name__ == "__main__":
     parser.add_argument("--simplify-grammar", action="store_true",
                         help="Regenerate tw-cooking games with simpler text grammar.")
 
+    parser.add_argument("--output", default="./tw_games2/", metavar="PATH",
+                                help="Path for the regenerated games. It should point to a folder,"
+                                    " output filenames will be derived from the input filenames.")
+    parser.add_argument('--format', choices=["ulx", "z8", "json"], default="z8",
+                                help="Which format to use when compiling the game. Default: %(default)s")
+
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose mode.")
     args = parser.parse_args()
+    outpath = Path(args.output)
+    if outpath.exists():
+        assert outpath.is_dir(), f"Output path >>{args.output}<< should be a directory!"
+    else:
+        outpath.mkdir(mode=0o775, parents=True)
 
     objectives = {}
     names = set()
     for game_filename in args.games:
         try:
-            game_filename = game_filename.replace(".ulx", ".json")
-            game_filename = game_filename.replace(".z8", ".json")
-            game = Game.load(game_filename)
+            input_filename = game_filename.replace(".ulx", ".json")
+            input_filename = input_filename.replace(".z8", ".json")
+            game = Game.load(input_filename)
         except Exception as e:
-            print("Cannot load {}.".format(game))
-            if args.verbose:
-                print(e)
+            print("**** Failed: Game.load({}).".format(input_filename))
+            print(e)
             continue
+        output_file = (outpath / PurePath(input_filename).name).with_suffix(".facts")  #filename without path or suffix
+        print("FACTS OUT:", output_file)
+        with open(output_file, "w") as outfile:
+            _inform7 = Inform7Game(game)
+            hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
+            #  game.kb.logic.serialize()
+            json_out = {
+                "rules": sorted([str(rule) for rule in game.kb.logic.rules.values()]),
+                "types": game.kb.types.serialize(),
+                "infos": [info.serialize() for info in game._infos.values()],
+                "facts": [str(fact) for fact in game.world.facts],
+                "hfacts": [str(fact) for fact in hfacts]
+            }
+            outfile.write(json.dumps(json_out, indent=2))
         if args.simplify_grammar:
-            new_game = rewrite_game(game, None)
+            output_file = (outpath / PurePath(input_filename).name).with_suffix("."+args.format)  #filename without path or suffix
+            print("OUTPUT SIMPLIFIED GAME:", output_file)
+            options:GameOptions = None
+            new_game = rebuild_game(game, options)
             print(f"NEW GAME (KB): {new_game.kb}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
             print(f"NEW GAME (grammar): {new_game.grammar}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
         if args.verbose:
             print("ORIG GAME:", game.serialize())
+
+        # Path(destdir).mkdir(parents=True, exist_ok=True)
+        # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
 
 
