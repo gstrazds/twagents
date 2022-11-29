@@ -10,7 +10,7 @@ import json
 from pathlib import Path, PurePath
 from typing import Optional, Any
 
-from textworld.generator import Game, KnowledgeBase, GameOptions
+from textworld.generator import Game, KnowledgeBase, GameOptions, compile_game, make_grammar
 from textworld import GameMaker
 from textworld.generator.inform7 import Inform7Game
 
@@ -36,6 +36,16 @@ def rebuild_game(game, options:Optional[GameOptions]):
     if not options or not options.path:
         print(f"MISSING options.path: {options}")
         # assert options.path, f"{options}"
+    grammar = make_grammar(options.grammar, rng=options.rngs['grammar'], kb=options.kb)
+    print(options.grammar)
+    for inf_id in game.infos:
+        print(inf_id, game.infos[inf_id].desc)
+        if "cookbook" != game.infos[inf_id].name:
+            game.infos[inf_id].desc = None  # wipe the full text descriptions to cause them to get regenerated
+    print("======================================================")
+    game.change_grammar(grammar)
+    for inf_id in game.infos:
+        print(inf_id, game.infos[inf_id].desc)
     return game
 
 
@@ -72,6 +82,38 @@ if __name__ == "__main__":
             print("**** Failed: Game.load({}).".format(input_filename))
             print(e)
             continue
+
+        if args.verbose:
+            print("ORIG GAME:", game.serialize())
+
+        if args.simplify_grammar:
+            output_file = (outpath / PurePath(input_filename).name).with_suffix("."+args.format)  #filename without path or suffix
+            print("OUTPUT SIMPLIFIED GAME:", output_file)
+            options:GameOptions = GameOptions()
+            # options.seeds = args.seed
+            # dirname, basename = os.path.split(args.output)
+            options.path = output_file
+            options.file_ext = "." + args.format
+            options.force_recompile = True
+
+            options.grammar.theme = "simpler"
+            options.kb = game.kb
+            # options.grammar.include_adj = args.include_adj
+            # options.grammar.only_last_action = args.only_last_action
+            # options.grammar.blend_instructions = args.blend_instructions
+            # options.grammar.blend_descriptions = args.blend_descriptions
+            # options.grammar.ambiguous_instructions = args.ambiguous_instructions
+            # options.grammar.allowed_variables_numbering = args.entity_numbering
+
+
+            objective0 = game.objective
+            game = rebuild_game(game, options)
+            game.objective = objective0
+            game_file = compile_game(game, options)
+
+            print(f"NEW GAME (KB): {game.kb}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
+            print(f"NEW GAME (grammar): {game.grammar}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
+
         output_file = (outpath / PurePath(input_filename).name).with_suffix(".facts")  #filename without path or suffix
         print("FACTS OUT:", output_file)
         with open(output_file, "w") as outfile:
@@ -82,19 +124,11 @@ if __name__ == "__main__":
                 "rules": sorted([str(rule) for rule in game.kb.logic.rules.values()]),
                 "types": game.kb.types.serialize(),
                 "infos": [info.serialize() for info in game._infos.values()],
+                "quests": [json.dumps(quest.serialize()) for quest in game.quests],
                 "facts": [str(fact) for fact in game.world.facts],
                 "hfacts": [str(fact) for fact in hfacts]
             }
             outfile.write(json.dumps(json_out, indent=2))
-        if args.simplify_grammar:
-            output_file = (outpath / PurePath(input_filename).name).with_suffix("."+args.format)  #filename without path or suffix
-            print("OUTPUT SIMPLIFIED GAME:", output_file)
-            options:GameOptions = None
-            new_game = rebuild_game(game, options)
-            print(f"NEW GAME (KB): {new_game.kb}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
-            print(f"NEW GAME (grammar): {new_game.grammar}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
-        if args.verbose:
-            print("ORIG GAME:", game.serialize())
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
