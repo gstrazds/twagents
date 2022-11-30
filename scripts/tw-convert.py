@@ -4,48 +4,53 @@
 # Licensed under the MIT license.
 
 
-import sys
 import argparse
+import inspect
 import json
 from pathlib import Path, PurePath
 from typing import Optional, Any
 
-from textworld.generator import Game, KnowledgeBase, GameOptions, compile_game, make_grammar
+from textworld.challenges import CHALLENGES
 from textworld import GameMaker
+from textworld.generator import Game, KnowledgeBase, GameOptions, compile_game, make_grammar
 from textworld.generator.inform7 import Inform7Game
 
-def rebuild_game(game, options:Optional[GameOptions]):
+def rebuild_game(game, options:Optional[GameOptions], verbose=False):
  
     # Load knowledge base specific to this challenge.
     settings = game.metadata.get('settings', None)
-    print(settings)
+    # print(settings)
     if not settings:
-        print("UNKNOWN SETTINGS")
+        print("WARNING: UNKNOWN SETTINGS")
         # print(game.metadata)
         if 'uuid' in game.metadata and '+drop+' in game.metadata['uuid']:
-            print(f"DROP : {game.metadata['uuid']}")
+            if verbose:
+                print(f"DROP : {game.metadata['uuid']}")
         else:
-            print(f"NO DROP : {game.metadata['uuid']}")
+            if verbose:
+               print(f"NO DROP : {game.metadata['uuid']}")
     elif settings.get("drop"):
-        print("DROP")
+        if verbose:
+            print("DROP")
         # options.kb = KnowledgeBase.load(logic_path=KB_LOGIC_DROP_PATH, grammar_path=KB_GRAMMAR_PATH)
     else:
-        print("NO DROP")
+        if verbose:
+            print("NO DROP")
         # options.kb = KnowledgeBase.load(logic_path=KB_LOGIC_PATH, grammar_path=KB_GRAMMAR_PATH)
 
-    if not options or not options.path:
-        print(f"MISSING options.path: {options}")
+    assert options, f"MISSING REQUIRED options: {options}"
+    assert options.path, f"MISSING REQUIRED options.path: {options.path}"
         # assert options.path, f"{options}"
     grammar = make_grammar(options.grammar, rng=options.rngs['grammar'], kb=options.kb)
-    print(options.grammar)
+    # print(options.grammar)
     for inf_id in game.infos:
-        print(inf_id, game.infos[inf_id].desc)
+        # print(inf_id, game.infos[inf_id].desc)
         if "cookbook" != game.infos[inf_id].name:
             game.infos[inf_id].desc = None  # wipe the full text descriptions to cause them to get regenerated
-    print("======================================================")
+    # print("======================================================")
     game.change_grammar(grammar)
-    for inf_id in game.infos:
-        print(inf_id, game.infos[inf_id].desc)
+    # for inf_id in game.infos:
+    #     print(inf_id, game.infos[inf_id].desc)
     return game
 
 
@@ -53,17 +58,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert games to use a different grammar, or to ASP code")
     parser.add_argument("games", metavar="game", nargs="+",
                         help="JSON files containing infos about a game.")
-    parser.add_argument("--simplify-grammar", action="store_true",
+    parser.add_argument("-c", "--challenge", choices=CHALLENGES, default=None,
+                                help="Selects grammar for regenerating text descriptions")
+    parser.add_argument("-s", "--simplify-grammar", action="store_true",
                         help="Regenerate tw-cooking games with simpler text grammar.")
 
-    parser.add_argument("--output", default="./tw_games2/", metavar="PATH",
+    parser.add_argument("-o", "--output", default="./tw_games2/", metavar="PATH",
                                 help="Path for the regenerated games. It should point to a folder,"
                                     " output filenames will be derived from the input filenames.")
-    parser.add_argument('--format', choices=["ulx", "z8", "json"], default="z8",
-                                help="Which format to use when compiling the game. Default: %(default)s")
+    parser.add_argument("-f", "--format", choices=["ulx", "z8", "json"], default="z8",
+                                help="Output format to use when recompiling games with --simplify-grammar. Default: %(default)s")
 
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Verbose mode.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode.")
+
     args = parser.parse_args()
     outpath = Path(args.output)
     if outpath.exists():
@@ -83,12 +90,10 @@ if __name__ == "__main__":
             print(e)
             continue
 
-        if args.verbose:
-            print("ORIG GAME:", game.serialize())
-
         if args.simplify_grammar:
             output_file = (outpath / PurePath(input_filename).name).with_suffix("."+args.format)  #filename without path or suffix
-            print("OUTPUT SIMPLIFIED GAME:", output_file)
+            if args.verbose:
+                print("OUTPUT SIMPLIFIED GAME:", output_file)
             options:GameOptions = GameOptions()
             # options.seeds = args.seed
             # dirname, basename = os.path.split(args.output)
@@ -98,6 +103,11 @@ if __name__ == "__main__":
 
             options.grammar.theme = "simpler"
             options.kb = game.kb
+            if args.challenge:
+                challenge_file_path = Path(inspect.getfile(CHALLENGES[args.challenge][1])).parent
+                # print(challenge_file_path)
+                options.kb.text_grammars_path = f"{challenge_file_path}/textworld_data/text_grammars"
+ 
             # options.grammar.include_adj = args.include_adj
             # options.grammar.only_last_action = args.only_last_action
             # options.grammar.blend_instructions = args.blend_instructions
@@ -107,15 +117,19 @@ if __name__ == "__main__":
 
 
             objective0 = game.objective
-            game = rebuild_game(game, options)
+            game = rebuild_game(game, options, verbose=args.verbose)
             game.objective = objective0
-            game_file = compile_game(game, options)
+            if args.format == 'json':
+                game.save(output_file) # output game as .json file
+            else:
+                game_file = compile_game(game, options)
 
-            print(f"NEW GAME (KB): {game.kb}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
-            print(f"NEW GAME (grammar): {game.grammar}") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
+            if args.verbose:
+                print(f"--- NEW GAME KB:\n{game.kb}\n ---") # keys() = version, world, grammar, quests, infos, KB, metadata, objective 
 
         output_file = (outpath / PurePath(input_filename).name).with_suffix(".facts")  #filename without path or suffix
-        print("FACTS OUT:", output_file)
+        if args.verbose:
+            print(f"OUTPUT {'SIMPLIFIED ' if args.simplify_grammar else ''}FACTS: {output_file}")
         with open(output_file, "w") as outfile:
             _inform7 = Inform7Game(game)
             hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
