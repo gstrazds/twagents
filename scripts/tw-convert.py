@@ -23,7 +23,7 @@ def rebuild_game(game, options:Optional[GameOptions], verbose=False):
     if not settings:
         print("WARNING: UNKNOWN SETTINGS")
         # print(game.metadata)
-        if 'uuid' in game.metadata and '+drop+' in game.metadata['uuid']:
+        if 'uuid' in game.metadata and '+drop' in game.metadata['uuid']:
             if verbose:
                 print(f"DROP : {game.metadata['uuid']}")
         else:
