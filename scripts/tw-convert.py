@@ -7,6 +7,7 @@
 import argparse
 import inspect
 import json
+import re
 from pathlib import Path, PurePath
 from typing import Optional, Any
 
@@ -54,6 +55,15 @@ def rebuild_game(game, options:Optional[GameOptions], verbose=False):
     return game
 
 
+def fact_to_asp(fact, hfact=None) -> str:
+    """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
+    asp_fact_str = re.sub(r":[^,)]*", '', f"{str(fact)}.")
+
+    if hfact:
+        asp_fact_str = f"{asp_fact_str} % {str(hfact)}"
+    return asp_fact_str
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert games to use a different grammar, or to ASP code")
     parser.add_argument("games", metavar="game", nargs="+",
@@ -69,6 +79,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--format", choices=["ulx", "z8", "json"], default="z8",
                                 help="Output format to use when recompiling games with --simplify-grammar. Default: %(default)s")
 
+    parser.add_argument("-a", "--asp", action="store_true", help="Output ASP logic program.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode.")
 
     args = parser.parse_args()
@@ -143,6 +154,16 @@ if __name__ == "__main__":
                 "hfacts": [str(fact) for fact in hfacts]
             }
             outfile.write(json.dumps(json_out, indent=2))
+        if args.asp:
+            asp_file = output_file.with_suffix(".lp")
+            if args.verbose:
+                print(f"ASP out: {asp_file}")
+            with open(asp_file, "w") as aspfile:
+            #  game.kb.logic.serialize()
+                for fact, hfact in zip(game.world.facts, hfacts):
+                    aspfile.write(fact_to_asp(fact, hfact))
+                    aspfile.write('\n')
+
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
