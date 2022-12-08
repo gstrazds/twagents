@@ -13,7 +13,9 @@ from typing import Optional, Any
 
 from textworld.challenges import CHALLENGES
 from textworld import GameMaker
+from textworld.logic import Proposition, Variable
 from textworld.generator import Game, KnowledgeBase, GameOptions, compile_game, make_grammar
+from textworld.generator.vtypes import VariableType, VariableTypeTree
 from textworld.generator.inform7 import Inform7Game
 
 def rebuild_game(game, options:Optional[GameOptions], verbose=False):
@@ -55,13 +57,73 @@ def rebuild_game(game, options:Optional[GameOptions], verbose=False):
     return game
 
 
-def fact_to_asp(fact, hfact=None) -> str:
+def objname_to_asp(name:str) -> str:
+    if name == 'P':
+        aspname = 'player'
+    elif name == 'I':
+        aspname = 'inventory'
+    else:
+        aspname = name.lower()
+    return aspname
+
+
+def fact_to_asp(fact:Proposition, hfact=None) -> str:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
-    asp_fact_str = re.sub(r":[^,)]*", '', f"{str(fact)}.")
+    asp_args = [Variable(objname_to_asp(v.name), v.type) for v in fact.arguments]
+    asp_fact = Proposition(fact.name, asp_args)
+    asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")
 
     if hfact:
         asp_fact_str = f"{asp_fact_str} % {str(hfact)}"
     return asp_fact_str
+
+
+def twtype_to_typename(type:str) -> str:
+    return 'thing' if type == 't' else objname_to_asp(type)
+
+
+eg_types_to_asp = """
+"types": [
+    "I: I",
+    "P: P",
+    "RECIPE: RECIPE",
+    "c: c -> t",
+    "d: d -> t",
+    "f: f -> o",
+    "ingredient: ingredient -> t",
+    "k: k -> o",
+    "meal: meal -> f",
+    "o: o -> t",
+    "object: object",
+    "oven: oven -> c",
+    "r: r",
+    "s: s -> t",
+    "slot: slot",
+    "stove: stove -> s",
+    "t: t",
+    "toaster: toaster -> c"
+  ],
+ """
+
+TYPE_RULES = "subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).\n" \
+             "instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).\n" \
+             "\n"
+
+def types_to_asp(typestree: VariableTypeTree) -> str:
+    # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
+    def _vtype_info(vtype:Variable) -> str:
+        info_tuple = (twtype_to_typename(vtype.name), twtype_to_typename(vtype.parent) if vtype.parent else None)
+        return info_tuple
+    type_infos = [_vtype_info(vtype) for vtype in typestree.variables_types.values()]
+    return type_infos
+
+
+def info_to_asp(info) -> str:
+    type_name = twtype_to_typename(info.type)
+    info_type_str = f"{type_name}({objname_to_asp(info.id)})."
+    if info.name:
+        info_type_str += f" % {(info.adj if info.adj else '')} {info.name}"
+    return info_type_str
 
 
 if __name__ == "__main__":
@@ -159,7 +221,20 @@ if __name__ == "__main__":
             if args.verbose:
                 print(f"ASP out: {asp_file}")
             with open(asp_file, "w") as aspfile:
+                aspfile.write("% ------- Types -------\n")
+                aspfile.write(TYPE_RULES)
+                type_infos = types_to_asp(game.kb.types)
+                for typename, _ in type_infos:
+                    aspfile.write(f"class({typename}). instance_of(X,{typename}) :- {typename}(X).\n")
+                for typename, parent_type in type_infos:
+                    if parent_type:
+                        aspfile.write(f"subclass_of({typename},{parent_type}).\n")
+                aspfile.write("\n% ------- Things -------\n")
+                for info in game._infos.values():
+                    aspfile.write(info_to_asp(info))
+                    aspfile.write('\n')
             #  game.kb.logic.serialize()
+                aspfile.write("\n% ------- Facts -------\n")
                 for fact, hfact in zip(game.world.facts, hfacts):
                     aspfile.write(fact_to_asp(fact, hfact))
                     aspfile.write('\n')
