@@ -107,7 +107,26 @@ eg_types_to_asp = """
 
 TYPE_RULES = "subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).\n" \
              "instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).\n" \
+             "direction(east). direction(west). direction(north). direction(south).\n" \
              "\n"
+            #  "class(A) :- instance_of(I,A).\n" \
+
+MAP_RULES = \
+"""
+connected(R1,R2,west) :- west_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,north) :- north_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,south) :- south_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,east) :- east_of(R1, R2), r(R1), r(R2).
+
+% all doors/exits can be traversed in both directions
+connected(R1,R2,east) :- connected(R2,R1,west).
+connected(R1,R2,west) :- connected(R2,R1,east).
+connected(R1,R2,south) :- connected(R2,R1,north).
+connected(R1,R2,north) :- connected(R2,R1,south).
+
+connected(R1,R2) :- connected(R1,R2,_).
+
+"""
 
 def types_to_asp(typestree: VariableTypeTree) -> str:
     # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
@@ -225,9 +244,10 @@ if __name__ == "__main__":
                 aspfile.write(TYPE_RULES)
                 type_infos = types_to_asp(game.kb.types)
                 for typename, _ in type_infos:
-                    aspfile.write(f"class({typename}). instance_of(X,{typename}) :- {typename}(X).\n")
+                    # aspfile.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
+                    aspfile.write(f"instance_of(X,{typename}) :- {typename}(X).\n")
                 for typename, parent_type in type_infos:
-                    if parent_type:
+                    if parent_type:  # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
                         aspfile.write(f"subclass_of({typename},{parent_type}).\n")
                 aspfile.write("\n% ------- Things -------\n")
                 for info in game._infos.values():
@@ -238,6 +258,8 @@ if __name__ == "__main__":
                 for fact, hfact in zip(game.world.facts, hfacts):
                     aspfile.write(fact_to_asp(fact, hfact))
                     aspfile.write('\n')
+                aspfile.write("\n% ------- Navigation -------\n")
+                aspfile.write(MAP_RULES)
 
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
