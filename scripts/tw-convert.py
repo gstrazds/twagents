@@ -67,11 +67,18 @@ def objname_to_asp(name:str) -> str:
     return aspname
 
 
-def fact_to_asp(fact:Proposition, hfact=None) -> str:
+#FLUENT_FACTS = ['at', 'on', 'in', 'open', 'closed', 'locked',
+#  'uncut', 'raw', 'roasted', 'edible', 'inedible', 'sliced', 'diced', 'chopped']
+STATIC_FACTS = ['cuttable', 'cookable', 'edible', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
+
+def fact_to_asp(fact:Proposition, hfact=None, step=0) -> str:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
     asp_args = [Variable(objname_to_asp(v.name), v.type) for v in fact.arguments]
     asp_fact = Proposition(fact.name, asp_args)
     asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")
+    if fact.name not in STATIC_FACTS \
+        and 'ingredient' not in asp_fact_str:   #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
+        asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add the time step
 
     if hfact:
         asp_fact_str = f"{asp_fact_str} % {str(hfact)}"
@@ -105,11 +112,14 @@ eg_types_to_asp = """
   ],
  """
 
-TYPE_RULES = "subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).\n" \
-             "instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).\n" \
-             "direction(east). direction(west). direction(north). direction(south).\n" \
-             "\n"
-            #  "class(A) :- instance_of(I,A).\n" \
+TYPE_RULES = \
+"""
+subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).
+instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).
+direction(east). direction(west). direction(north). direction(south).
+
+"""
+#  "class(A) :- instance_of(I,A).
 
 MAP_RULES = \
 """
@@ -125,6 +135,140 @@ connected(R1,R2,south) :- connected(R2,R1,north).
 connected(R1,R2,north) :- connected(R2,R1,south).
 
 connected(R1,R2) :- connected(R1,R2,_).
+
+"""
+
+
+NAV_RULES = \
+"""
+1 {at(player,R,T):r(R)} 1 :- at(player,_,T-1), T<=maxT.   % player is in exactly one room at any given time
+0 {at(player,R2,T+1)} 1 :- at(player,R1,T), connected(R1,R2), r(R1), r(R2), T<maxT.  % player can move only to an adjacent room
+movedP(T,R1,R2) :- at(player,R1,T), r(R1), r(R2), at(player,R2,T+1), R1!=R2.   % alias for player moved at time t
+:- movedP(_,R1,R2), r(R1), r(R2), not connected(R1,R2).  % can't move from one room to another if they are not connected
+at(player,R,T) :- at(player,R,T-1), r(R), not movedP(T-1,R,_), T<=maxT.   % if didn't move, then still in the same room
+atP(T,R) :- at(player,R,T).  %, T<=maxT.                                       % Alias for current room
+
+"""
+
+
+
+GAME_RULES_OLD = \
+"""
+% ------ MAKE ------
+% make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
+% make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
+% make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
+% make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
+% make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
+
+
+% ------ CONSUME ------
+% drink :: in(f, I) & drinkable(f) -> consumed(f)
+% eat :: in(f, I) & edible(f) -> consumed(f)
+
+% ------ TAKE ------
+% take :: $at(P, r) & at(o, r) -> in(o, I)
+% take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
+% take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
+
+% ------ DROP/PUT ------
+% put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
+% drop :: $at(P, r) & in(o, I) -> at(o, r)
+% insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
+
+"""
+
+
+GAME_RULES_COMMON = \
+"""
+% ------ LOOK ------
+% examine/I :: $at(o, I) -> 
+% examine/c :: $at(P, r) & $at(c, r) & $open(c) & $in(o, c) -> 
+% examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
+% examine/t :: $at(P, r) & $at(t, r) -> 
+% look :: $at(P, r) -> 
+% inventory :: $at(P, r) -> 
+
+% ------ GO ------
+% go/east :: at(P, r) & $west_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
+% go/north :: at(P, r) & $north_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
+% go/south :: at(P, r) & $north_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
+% go/west :: at(P, r) & $west_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
+
+
+% ------ OPEN/CLOSE UNLOCK/LOCK ------
+% close/c :: $at(P, r) & $at(c, r) & open(c) -> closed(c)
+% close/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & open(d) & free(r, r') & free(r', r) -> closed(d)
+% open/c :: $at(P, r) & $at(c, r) & closed(c) -> open(c)
+% open/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & closed(d) -> open(d) & free(r, r') & free(r', r)
+% lock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & closed(c) -> locked(c)
+% lock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & closed(d) -> locked(d)
+% unlock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & locked(c) -> closed(c)
+% unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
+
+% ------ COOK ------
+% cook/oven/burned :: $at(P, r) & $at(oven, r) & $in(f, I) & cooked(f) & edible(f) -> burned(f) & inedible(f)
+% cook/oven/cooked/needs_cooking :: $at(P, r) & $at(oven, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> roasted(f) & edible(f) & cooked(f)
+% cook/oven/cooked/raw :: $at(P, r) & $at(oven, r) & $in(f, I) & raw(f) -> roasted(f) & cooked(f)
+% cook/stove/burned :: $at(P, r) & $at(stove, r) & $in(f, I) & cooked(f) & edible(f) -> burned(f) & inedible(f)
+% cook/stove/cooked/needs_cooking :: $at(P, r) & $at(stove, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> fried(f) & edible(f) & cooked(f)
+% cook/stove/cooked/raw :: $at(P, r) & $at(stove, r) & $in(f, I) & raw(f) -> fried(f) & cooked(f)
+% cook/toaster/burned :: $at(P, r) & $at(toaster, r) & $in(f, I) & cooked(f) & edible(f) -> burned(f) & inedible(f)
+% cook/toaster/cooked/needs_cooking :: $at(P, r) & $at(toaster, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> grilled(f) & edible(f) & cooked(f)
+% cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
+
+% ------ CUT ------
+% chop :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> chopped(f)
+% dice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> diced(f)
+% slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
+
+
+% ------ CONSTRAINTS ------
+:- open(X,t); closed(X,t).    % any door or container can be either open or closed but not both
+:- locked(X,t), open(X,t).    % can't be both locked and open at the same time
+
+"""
+
+GAME_RULES_NEW = \
+"""
+% ------ MAKE ------
+%- make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
+%+ make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)",
+%- make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
+%+  make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) & $used(slot) & used(slot') -> in(meal, I) & free(slot') & edible(meal) & used(f) & used(f') & raw(meal)",
+%- make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
+%+ make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') -> in(meal, I) & free(slot') & free(slot'') & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)",
+%- make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
+%+ make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') & used(slot'') -> in(meal, I) & free(slot') & free(slot'') & free(slot''') & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)",
+%- make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
+%+ make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') & used(slot''') & used(slot'''') -> in(meal, I) & free(slot') & free(slot'') & free(slot''') & free(slot'''') & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)",
+
+
+% ------ CONSUME ------
+% drink :: in(f, I) & drinkable(f) -> consumed(f)
+%+ drink :: in(f, I) & drinkable(f) & used(slot) -> consumed(f) & free(slot)",
+% eat :: in(f, I) & edible(f) -> consumed(f)
+%+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
+
+
+% ------ TAKE ------
+%- take :: $at(P, r) & at(o, r) -> in(o, I)
+%+ take :: $at(P, r) & at(o, r) & free(slot) -> in(o, I) & used(slot)",
+%- take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
+%+ take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) & free(slot) -> in(o, I) & used(slot)",
+%- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
+%+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
+
+% ------ DROP/PUT ------
+% put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
+%+ put :: $at(P, r) & $at(s, r) & in(o, I) & used(slot) -> on(o, s) & free(slot)",
+% drop :: $at(P, r) & in(o, I) -> at(o, r)
+%+ drop :: $at(P, r) & in(o, I) & used(slot) -> at(o, r) & free(slot)",
+% insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
+%+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
+
+--------------------------------------------------------------------------------
+
 
 """
 
@@ -247,7 +391,8 @@ if __name__ == "__main__":
                     # aspfile.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
                     aspfile.write(f"instance_of(X,{typename}) :- {typename}(X).\n")
                 for typename, parent_type in type_infos:
-                    if parent_type:  # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
+                    if parent_type:  
+                        # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
                         aspfile.write(f"subclass_of({typename},{parent_type}).\n")
                 aspfile.write("\n% ------- Things -------\n")
                 for info in game._infos.values():
@@ -256,10 +401,24 @@ if __name__ == "__main__":
             #  game.kb.logic.serialize()
                 aspfile.write("\n% ------- Facts -------\n")
                 for fact, hfact in zip(game.world.facts, hfacts):
-                    aspfile.write(fact_to_asp(fact, hfact))
+                    aspfile.write(fact_to_asp(fact, hfact, step=0))
                     aspfile.write('\n')
                 aspfile.write("\n% ------- Navigation -------\n")
                 aspfile.write(MAP_RULES)
+                aspfile.write(NAV_RULES)
+                # ---- GAME DYNAMICS
+                aspfile.write(GAME_RULES_COMMON)
+
+                aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
+                    "ngoal(T) :- at(player,R,T), r(R), R!=r_0 .  % want to end up in the kitchen (r_0)\n" \
+                    ":- ngoal(maxT).\n  % anti-goal -- fail if goal not achieved"
+                )
+                aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), T0<T .  % disallow loops\n")
+
+                aspfile.write("_minimize(1,T) :- ngoal(T).\n")
+
+                aspfile.write("#show movedP/3.\n")
+                # aspfile.write("#show atP/2.\n")
 
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
