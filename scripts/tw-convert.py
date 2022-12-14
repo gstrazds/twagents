@@ -112,6 +112,14 @@ eg_types_to_asp = """
   ],
  """
 
+INC_MODE = \
+"""#include <incmode>.
+
+#program base.
+% Define
+"""
+
+
 TYPE_RULES = \
 """
 subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).
@@ -136,17 +144,23 @@ connected(R1,R2,north) :- connected(R2,R1,south).
 
 connected(R1,R2) :- connected(R1,R2,_).
 
+atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 """
 
 
 NAV_RULES = \
 """
-1 {at(player,R,T):r(R)} 1 :- at(player,_,T-1), T<=maxT.   % player is in exactly one room at any given time
-0 {at(player,R2,T+1)} 1 :- at(player,R1,T), connected(R1,R2), r(R1), r(R2), T<maxT.  % player can move only to an adjacent room
-movedP(T,R1,R2) :- at(player,R1,T), r(R1), r(R2), at(player,R2,T+1), R1!=R2.   % alias for player moved at time t
-:- movedP(_,R1,R2), r(R1), r(R2), not connected(R1,R2).  % can't move from one room to another if they are not connected
-at(player,R,T) :- at(player,R,T-1), r(R), not movedP(T-1,R,_), T<=maxT.   % if didn't move, then still in the same room
-atP(T,R) :- at(player,R,T).  %, T<=maxT.                                       % Alias for current room
+#program step(t).
+% Generate
+timestep(t).
+0 {at(player,R,t):r(R)} 1 :- at(player,R0,t-1), connected(R0,R), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
+0 {at(player,R0,t):r(R0)} 1 :- at(player,R0,t-1), r(R0). %, T<=maxT.  % can stay in the current room
+1 {at(player,R,t):r(R)} 1 :- timestep(t).   % player is in exactly one room at any given time
+% Define
+movedP(t,R0,R) :- at(player,R0,t-1), r(R0), r(R), at(player,R,t), R!=R0.   % alias for player moved at time t
+atP(t,R) :- at(player,R,t).                                       % Alias for current room
+% Test
+:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not connected(R,R0).
 
 """
 
@@ -384,6 +398,7 @@ if __name__ == "__main__":
             if args.verbose:
                 print(f"ASP out: {asp_file}")
             with open(asp_file, "w") as aspfile:
+                aspfile.write(INC_MODE)
                 aspfile.write("% ------- Types -------\n")
                 aspfile.write(TYPE_RULES)
                 type_infos = types_to_asp(game.kb.types)
@@ -409,17 +424,21 @@ if __name__ == "__main__":
                 # ---- GAME DYNAMICS
                 aspfile.write(GAME_RULES_COMMON)
 
-                aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
-                    "ngoal(T) :- at(player,R,T), r(R), R!=r_0 .  % want to end up in the kitchen (r_0)\n" \
-                    ":- ngoal(maxT).\n  % anti-goal -- fail if goal not achieved"
+                aspfile.write(
+                    "#program check(t).\n" \
+                    "% Test\n" \
+                    ":- at(player,R,t), r(R), R != goalR, query(t) . % Fail if we don't end up in the target room [kitchen =r_0]\n"
                 )
-                aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), T0<T .  % disallow loops\n")
-
-                aspfile.write("_minimize(1,T) :- ngoal(T).\n")
+                #aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
+                # For branch & bound optimization:
+                # aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
+                #     "ngoal(T) :- at(player,R,T), r(R), R!=r_0 .  % want to end up in the kitchen (r_0)\n" \
+                #     ":- ngoal(maxT).\n  % anti-goal -- fail if goal not achieved"
+                # )
+                #aspfile.write("_minimize(1,T) :- ngoal(T).\n")
 
                 aspfile.write("#show movedP/3.\n")
-                # aspfile.write("#show atP/2.\n")
-
+                aspfile.write("#show atP/2.\n")
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
