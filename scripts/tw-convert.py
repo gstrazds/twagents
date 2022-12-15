@@ -152,6 +152,14 @@ INC_MODE = \
 
 #program base.
 % Define
+% actions
+% verb_direction(go).  % 
+% verb_openclose(open;close).
+% verb_with_key(lock;unlock).
+% verb_cook_with(cook).
+% verb_takeput(take;put).
+% verb_cut(chop;slice;dice).
+
 """
 
 
@@ -159,8 +167,11 @@ TYPE_RULES = \
 """
 subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).
 instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).
-direction(east). direction(west). direction(north). direction(south).
+direction(east;west;north;south).
 
+{is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
+is_openable(X) :- instance_of(X,c).  % containers are potentially openable
+is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers are potentially lockable, but ovens are not
 """
 #  "class(A) :- instance_of(I,A).
 
@@ -186,16 +197,27 @@ atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 NAV_RULES = \
 """
 #program step(t).
+
 % Generate
 timestep(t).
-0 {at(player,R,t):r(R)} 1 :- at(player,R0,t-1), connected(R0,R), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
+
+0 {at(player,R,t):r(R),free(R0,R,t-1)} 1 :- at(player,R0,t-1), connected(R0,R), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
 0 {at(player,R0,t):r(R0)} 1 :- at(player,R0,t-1), r(R0). %, T<=maxT.  % can stay in the current room
 1 {at(player,R,t):r(R)} 1 :- timestep(t).   % player is in exactly one room at any given time
 % Define
 movedP(t,R0,R) :- at(player,R0,t-1), r(R0), r(R), at(player,R,t), R!=R0.   % alias for player moved at time t
 atP(t,R) :- at(player,R,t).                                       % Alias for current room
 % Test
-:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not connected(R,R0).
+:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
+
+% inertia: doors and containers don't change state  (TODO: allow state change transitions)
+open(X,t) :- open(X,t-1), is_openable(X).
+closed(X,t) :- closed(X,t-1), is_openable(X), not do_open(X,t-1).
+locked(X,t) :- is_lockable(X), locked(X,t-1), not do_unlock(X,t-1).
+free(R0,R1,t) :- r(R0), r(R1), free(R0,R1,t-1).
+
+open(X,t) :- is_openable(X), do_open(X,t-1), not open(X,t-1).
+not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 
 """
 
@@ -273,15 +295,14 @@ GAME_RULES_COMMON = \
 
 
 % ------ CONSTRAINTS ------
-:- open(X,t); closed(X,t).    % any door or container can be either open or closed but not both
-:- locked(X,t), open(X,t).    % can't be both locked and open at the same time
+:- open(X,t), closed(X,t), is_openable(X).    % any door or container can be either open or closed but not both
+:- locked(X,t), open(X,t), is_lockable(X).    % can't be both locked and open at the same time
 
 """
 
 GAME_RULES_NEW = \
 """
 % ------ MAKE ------
-%- make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
 %+ make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)",
 %- make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
 %+  make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) & $used(slot) & used(slot') -> in(meal, I) & free(slot') & edible(meal) & used(f) & used(f') & raw(meal)",
@@ -316,7 +337,7 @@ GAME_RULES_NEW = \
 % insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
 %+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
 
---------------------------------------------------------------------------------
+% --------------------------------------------------------------------------------
 
 
 """
@@ -458,6 +479,7 @@ if __name__ == "__main__":
                 aspfile.write(NAV_RULES)
                 # ---- GAME DYNAMICS
                 aspfile.write(GAME_RULES_COMMON)
+                aspfile.write(GAME_RULES_NEW)
 
                 aspfile.write(
                     "#program check(t).\n" \
