@@ -203,6 +203,7 @@ timestep(t).
 
 0 {at(player,R,t):r(R),free(R0,R,t-1)} 1 :- at(player,R0,t-1), connected(R0,R), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
 0 {at(player,R0,t):r(R0)} 1 :- at(player,R0,t-1), r(R0). %, T<=maxT.  % can stay in the current room
+0 {do_open(D,t)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
 1 {at(player,R,t):r(R)} 1 :- timestep(t).   % player is in exactly one room at any given time
 % Define
 movedP(t,R0,R) :- at(player,R0,t-1), r(R0), r(R), at(player,R,t), R!=R0.   % alias for player moved at time t
@@ -217,6 +218,7 @@ locked(X,t) :- is_lockable(X), locked(X,t-1), not do_unlock(X,t-1).
 free(R0,R1,t) :- r(R0), r(R1), free(R0,R1,t-1).
 
 open(X,t) :- is_openable(X), do_open(X,t-1), not open(X,t-1).
+free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 
 """
@@ -496,6 +498,7 @@ if __name__ == "__main__":
 
                 aspfile.write("#show movedP/3.\n")
                 aspfile.write("#show atP/2.\n")
+                aspfile.write("#show do_open/2.\n")
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
