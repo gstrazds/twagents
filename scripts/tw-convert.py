@@ -114,6 +114,41 @@ eg_types_to_asp = """
 
 INC_MODE = \
 """#include <incmode>.
+#const imax=500.  % give up after this many iterations
+%#script (python)
+%
+%from clingo import Function, Symbol, Number
+%
+%def get(val, default):
+%    return val if val != None else default
+%
+%def main(prg):
+%    imin = get(prg.get_const("imin"), 1)
+%    imax = get(prg.get_const("imax"), 500)
+%    istop = get(prg.get_const("istop"), "SAT")
+%
+%    step, ret = 0, None
+%    while ((imax is None or step < imax) and
+%           (step == 0 or step <= imin or (
+%              (istop == "SAT" and not ret.satisfiable) or
+%              (istop == "UNSAT" and not ret.unsatisfiable) or
+%              (istop == "UNKNOWN" and not ret.unknown))
+%           )):
+%        parts = []
+%        parts.append(("check", [Number(step)]))
+%        if step > 0:
+%            prg.release_external(Function("query", [Number(step-1)]))
+%            parts.append(("step", [Number(step)]))
+%            prg.cleanup()
+%        else:
+%            parts.append(("base", []))
+%        prg.ground(parts)
+%        prg.assign_external(Function("query", [Number(step)]), True)
+%        ret, step = prg.solve(), step+1
+%#end.
+%
+%#program check(t).
+%#external query(t).
 
 #program base.
 % Define
