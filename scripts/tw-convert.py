@@ -152,7 +152,30 @@ INC_MODE = \
 
 #program base.
 % Define
-% actions
+"""
+
+
+TYPE_RULES = \
+"""
+subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).  % subclass relationship is transitive
+instance_of(I,B) :- instance_of(I,A), subclass_of(A,B).  % an instance of a subclass is also an instance of the superclass
+class(C) :- instance_of(X,C).  % instance_of relationship implicity defines classes
+class(S) :- subclass_of(S,C).  % every subclass is also a class
+class(S) :- subclass_of(S,C).  % redundant [with instance-of-superclass rule, above]
+
+{is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
+is_openable(X) :- instance_of(X,c).  % containers are potentially openable
+is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers are potentially lockable, but ovens are not
+
+% action vocabulary
+timestep(0). % incremental solving will define timestep(t) for t >= 1...
+direction(east;west;north;south).
+arg(none).   % placeholder for actions with fewer than 2 args
+arg(NSEW) :- direction(NSEW).
+arg(I) :- instance_of(I,C), class(C).
+
+verb(go;open).
+% verb(open;close).
 % verb_direction(go).  % 
 % verb_openclose(open;close).
 % verb_with_key(lock;unlock).
@@ -160,18 +183,6 @@ INC_MODE = \
 % verb_takeput(take;put).
 % verb_cut(chop;slice;dice).
 
-"""
-
-
-TYPE_RULES = \
-"""
-subclass_of(A,C) :- subclass_of(A,B), subclass_of(B,C).
-instance_of(I,B) :- subclass_of(A,B), instance_of(I,A).
-direction(east;west;north;south).
-
-{is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
-is_openable(X) :- instance_of(X,c).  % containers are potentially openable
-is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers are potentially lockable, but ovens are not
 """
 #  "class(A) :- instance_of(I,A).
 
@@ -182,13 +193,15 @@ connected(R1,R2,north) :- north_of(R1, R2), r(R1), r(R2).
 connected(R1,R2,south) :- south_of(R1, R2), r(R1), r(R2).
 connected(R1,R2,east) :- east_of(R1, R2), r(R1), r(R2).
 
-% all doors/exits can be traversed in both directions
+% assume that all doors/exits can be traversed in both directions
 connected(R1,R2,east) :- connected(R2,R1,west).
 connected(R1,R2,west) :- connected(R2,R1,east).
 connected(R1,R2,south) :- connected(R2,R1,north).
 connected(R1,R2,north) :- connected(R2,R1,south).
 
-connected(R1,R2) :- connected(R1,R2,_).
+connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
+has_door(R,D) :- r(R), d(D), link(R,D,_).
+door_direction(R,D,NSEW) :- r(R), r(R2), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
 atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 """
@@ -196,30 +209,49 @@ atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 
 NAV_RULES = \
 """
+
 #program step(t).
 
 % Generate
 timestep(t).
+openD(D,t) :- open(D,t), d(D), timestep(t).
 
-0 {at(player,R,t):r(R),free(R0,R,t-1)} 1 :- at(player,R0,t-1), connected(R0,R), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
-0 {at(player,R0,t):r(R0)} 1 :- at(player,R0,t-1), r(R0). %, T<=maxT.  % can stay in the current room
-0 {do_open(D,t)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
 1 {at(player,R,t):r(R)} 1 :- timestep(t).   % player is in exactly one room at any given time
+1 {act(t,V,A1,none):verb(V),arg(A1)} 1 :- timestep(t). % choose to do exaclty one action at each time step.
+%% %(10x slower) 1 {act(t,V,A1,A2):verb(V),arg(A1),arg(A2)} 1 :- timestep(t). % choose to do exaclty one action at each time step.
+
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
+0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
 % Define
-movedP(t,R0,R) :- at(player,R0,t-1), r(R0), r(R), at(player,R,t), R!=R0.   % alias for player moved at time t
+at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
+at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
 atP(t,R) :- at(player,R,t).                                       % Alias for current room
+
+act(t,open,D,none) :- do_open(t,D), d(D), timestep(t).  % open a door
+% act(t,open,C,none) :- do_open(t,C), c(C), timestep(t).    % open a container
+act(t,go,NSEW,none) :-  do_moveP(t,R1,R2,NSEW), direction(NSEW), r(R1), r(R2), timestep(t).
+A2=none :- act(t,go,NSEW,A2), arg(A2), timestep(t), direction(NSEW).
+:- act(t,go,NSEW,none), timestep(t), direction(NSEW), atP(t-1,R1), r(R1), r(R2), connected(R1,R2,NSEW), not do_moveP(t,R1,R2,NSEW).
+
+{do_open(t,D):d(D)}=1 :- act(t,open,D,none), arg(D), timestep(t).  % open a door
+
 % Test
 :- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
+:- do_open(t,D), d(D), not closed(D,t-1).
+:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
+%%link(R, D, R1):r(R1) :- do_open(t,D), d(D), atP(R,t-1), r(R), timestep(t).  % to open a door, must be in appropriate room
+
 
 % inertia: doors and containers don't change state  (TODO: allow state change transitions)
-open(X,t) :- open(X,t-1), is_openable(X).
-closed(X,t) :- closed(X,t-1), is_openable(X), not do_open(X,t-1).
-locked(X,t) :- is_lockable(X), locked(X,t-1), not do_unlock(X,t-1).
-free(R0,R1,t) :- r(R0), r(R1), free(R0,R1,t-1).
+open(X,t) :- is_openable(X), open(X,t-1), not do_close(X,t).
+open(X,t) :- is_openable(X), do_open(t,X), not open(X,t-1).
+closed(X,t) :- closed(X,t-1), is_openable(X), not do_open(t,X).
+locked(X,t) :- is_lockable(X), locked(X,t-1), not do_unlock(t,X).
 
-open(X,t) :- is_openable(X), do_open(X,t-1), not open(X,t-1).
 free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
+free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, it can't be closed.
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
+
 
 """
 
@@ -496,9 +528,13 @@ if __name__ == "__main__":
                 # )
                 #aspfile.write("_minimize(1,T) :- ngoal(T).\n")
 
-                aspfile.write("#show movedP/3.\n")
-                aspfile.write("#show atP/2.\n")
-                aspfile.write("#show do_open/2.\n")
+                #aspfile.write("#show timestep/1.\n")
+                #aspfile.write("#show atP/2.\n")
+                aspfile.write("#show act/4.\n")
+                # aspfile.write("#show do_moveP/4.\n")
+                # aspfile.write("#show do_open/2.\n")
+                # aspfile.write("#show has_door/2.\n")
+                # aspfile.write("#show openD/2.  % debug \n")
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
