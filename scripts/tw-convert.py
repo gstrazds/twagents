@@ -214,26 +214,22 @@ NAV_RULES = \
 
 % Generate
 timestep(t).
-openD(D,t) :- open(D,t), d(D), timestep(t).
+openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
 
-1 {at(player,R,t):r(R)} 1 :- timestep(t).   % player is in exactly one room at any given time
-1 {act(t,V,A1,none):verb(V),arg(A1)} 1 :- timestep(t). % choose to do exaclty one action at each time step.
-%% %(10x slower) 1 {act(t,V,A1,A2):verb(V),arg(A1),arg(A2)} 1 :- timestep(t). % choose to do exaclty one action at each time step.
+{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
+{act(X,t)} = 1 :- act(X,t), timestep(t). % choose to do exaclty one action at each time step.
 
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
+act(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
+act(do_open(t,D), t) :- do_open(t,D), timestep(t).
+
+
 % Define
 at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
 at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
 atP(t,R) :- at(player,R,t).                                       % Alias for current room
 
-act(t,open,D,none) :- do_open(t,D), d(D), timestep(t).  % open a door
-% act(t,open,C,none) :- do_open(t,C), c(C), timestep(t).    % open a container
-act(t,go,NSEW,none) :-  do_moveP(t,R1,R2,NSEW), direction(NSEW), r(R1), r(R2), timestep(t).
-A2=none :- act(t,go,NSEW,A2), arg(A2), timestep(t), direction(NSEW).
-:- act(t,go,NSEW,none), timestep(t), direction(NSEW), atP(t-1,R1), r(R1), r(R2), connected(R1,R2,NSEW), not do_moveP(t,R1,R2,NSEW).
-
-{do_open(t,D):d(D)}=1 :- act(t,open,D,none), arg(D), timestep(t).  % open a door
 
 % Test
 :- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
@@ -530,7 +526,7 @@ if __name__ == "__main__":
 
                 #aspfile.write("#show timestep/1.\n")
                 #aspfile.write("#show atP/2.\n")
-                aspfile.write("#show act/4.\n")
+                aspfile.write("#show act/2.\n")
                 # aspfile.write("#show do_moveP/4.\n")
                 # aspfile.write("#show do_open/2.\n")
                 # aspfile.write("#show has_door/2.\n")
