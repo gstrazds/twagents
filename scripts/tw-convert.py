@@ -117,7 +117,7 @@ INC_MODE = \
 #const imax=500.  % give up after this many iterations
 %#script (python)
 %
-%from clingo import Function, Symbol, Number
+%from clingo import Function, Symbol, String, Number
 %
 %def get(val, default):
 %    return val if val != None else default
@@ -125,11 +125,11 @@ INC_MODE = \
 %def main(prg):
 %    imin = get(prg.get_const("imin"), 1)
 %    imax = get(prg.get_const("imax"), 500)
-%    istop = get(prg.get_const("istop"), "SAT")
+%    istop = get(prg.get_const("istop"), String("SAT"))
 %
 %    step, ret = 0, None
-%    while ((imax is None or step < imax) and
-%           (step == 0 or step <= imin or (
+%    while ((imax is None or step < imax.number) and
+%           (step == 0 or step <= imin.number or (
 %              (istop == "SAT" and not ret.satisfiable) or
 %              (istop == "UNSAT" and not ret.unsatisfiable) or
 %              (istop == "UNKNOWN" and not ret.unknown))
@@ -139,7 +139,7 @@ INC_MODE = \
 %        if step > 0:
 %            prg.release_external(Function("query", [Number(step-1)]))
 %            parts.append(("step", [Number(step)]))
-%            prg.cleanup()
+%            %? prg.cleanup()
 %        else:
 %            parts.append(("base", []))
 %        prg.ground(parts)
@@ -251,7 +251,14 @@ not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t).
 
 """
 
+CHECK_GOAL_ACHIEVED = \
+"""
+#program check(t).
+% Test
+at_goalR(t) :- at(player,R,t), r(R), R = goalR, query(t).
+:- not at_goalR(t), query(t). % Fail if we don't end up in the target room [kitchen =r_0]
 
+"""
 
 GAME_RULES_OLD = \
 """
@@ -511,11 +518,7 @@ if __name__ == "__main__":
                 aspfile.write(GAME_RULES_COMMON)
                 aspfile.write(GAME_RULES_NEW)
 
-                aspfile.write(
-                    "#program check(t).\n" \
-                    "% Test\n" \
-                    ":- at(player,R,t), r(R), R != goalR, query(t) . % Fail if we don't end up in the target room [kitchen =r_0]\n"
-                )
+                aspfile.write(CHECK_GOAL_ACHIEVED)
                 #aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
                 # For branch & bound optimization:
                 # aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
