@@ -217,17 +217,23 @@ timestep(t).
 openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
 
 {at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
-{act(X,t)} = 1 :- act(X,t), timestep(t). % choose to do exaclty one action at each time step.
+%NOTE - THIS IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
+%NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep: 
+%{at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
+
+{act(X,t)} = 1 :- is_action(X,t), timestep(t). % choose to do exaclty one action at each time step.
 
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
-act(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
+is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
-act(do_open(t,D), t) :- do_open(t,D), timestep(t).
+is_action(do_open(t,D), t) :- do_open(t,D), timestep(t).
 
 
 % Define
-at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
-at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
+%at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
+at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
+%at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
+at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
 atP(t,R) :- at(player,R,t).                                       % Alias for current room
 
 
@@ -235,6 +241,7 @@ atP(t,R) :- at(player,R,t).                                       % Alias for cu
 :- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 :- do_open(t,D), d(D), not closed(D,t-1).
 :- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
+:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % cant go that way
 %%link(R, D, R1):r(R1) :- do_open(t,D), d(D), atP(R,t-1), r(R), timestep(t).  % to open a door, must be in appropriate room
 
 
@@ -256,7 +263,8 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 % Test
 at_goalR(t) :- at(player,R,t), r(R), R = goalR, query(t).
-:- not at_goalR(t), query(t). % Fail if we don't end up in the target room [kitchen =r_0]
+solved(t) :- timestep(T), at_goalR(T), query(t), T <= t.
+:- not solved(t), query(t). % Fail if we haven't achieved all our objectives
 
 """
 
@@ -530,6 +538,7 @@ if __name__ == "__main__":
                 #aspfile.write("#show timestep/1.\n")
                 #aspfile.write("#show atP/2.\n")
                 aspfile.write("#show act/2.\n")
+                # aspfile.write("#show at_goal/2.\n")
                 # aspfile.write("#show do_moveP/4.\n")
                 # aspfile.write("#show do_open/2.\n")
                 # aspfile.write("#show has_door/2.\n")
