@@ -215,35 +215,40 @@ NAV_RULES = \
 % Generate
 timestep(t).
 
+{act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
+
 % define fluents that determine whether player can move from room R0 to R1
 free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
 
-% inertia: doors and containers don't change state  (TODO: allow state change transitions)
+% inertia: doors and containers don't change state unless player acts on them
 open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
 open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
 closed(X,t) :- closed(X,t-1), is_openable(X), not act(do_open(t,X),t).
 locked(X,t) :- is_lockable(X), locked(X,t-1), not act(do_unlock(t,X),t).
 
+% inertia: objects don't move unless moved by the player (TODO: implement take/put transitions)
+at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), timestep(t).
+on(X,S,t) :- on(X,S,t-1), r(R), s(S), timestep(t).
+in(X,C,t) :- in(X,C,t-1), r(R), c(C), timestep(t).
 
 {at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
-%NOTE - THIS IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
+%NOTE - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
 %NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep: 
 %{at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
-{act(X,t)} = 1 :- is_action(X,t), timestep(t). % choose to do exaclty one action at each time step.
-
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
+ % can move to a connected room, if not blocked by a closed door
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
 % Test constraints
-:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % cant go that way
+:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
 
-
-0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
+% can open a closed but unlocked door
+0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
 is_action(do_open(t,D), t) :- do_open(t,D), timestep(t).
 % Test constraints
-:- do_open(t,D), d(D), not closed(D,t-1).
+:- do_open(t,D), d(D), not closed(D,t-1). % can't open a door that isn't currently closed
 :- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
 
 
@@ -268,6 +273,7 @@ CHECK_GOAL_ACHIEVED = \
 % Test
 at_goalR(t) :- at(player,R,t), r(R), R = goalR, query(t).
 solved(t) :- timestep(T), at_goalR(T), query(t), T <= t.
+%:- not act(do_examine(t,o_0),t), query(t). % Fail if we haven't achieved all our objectives
 :- not solved(t), query(t). % Fail if we haven't achieved all our objectives
 
 """
@@ -308,12 +314,24 @@ GAME_RULES_OLD = \
 GAME_RULES_COMMON = \
 """
 % ------ LOOK ------
+% inventory :: $at(P, r) -> 
+% look :: $at(P, r) -> 
+
+% ------ LOOK AT: EXAMINE an object ------
 % examine/I :: $at(o, I) -> 
 % examine/c :: $at(P, r) & $at(c, r) & $open(c) & $in(o, c) -> 
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
-% look :: $at(P, r) -> 
-% inventory :: $at(P, r) -> 
+
+% can examine an object that is on a support if player is in the same room as the suppport
+0 {do_examine(t,O)} 1 :- at(player,R,t-1), r(R), o(O), s(S), at(S,R,t-1), on(O,S,t-1), timestep(t). 
+is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
+% Test constraints
+% have to be in the same room to examine something
+:- do_examine(t,O), at(player,R,t), o(O), r(R), on(O,S,t), at(S,R2,t), s(S), r(R2), timestep(t), R != R2. 
+:- do_examine(t,O), at(player,R,t), o(O), r(R), in(O,C,t), at(C,R2,t), c(C), r(R2), timestep(t), R != R2. 
+:- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2. 
+
 
 % ------ GO ------
 % go/east :: at(P, r) & $west_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
