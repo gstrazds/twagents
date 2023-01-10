@@ -214,7 +214,18 @@ NAV_RULES = \
 
 % Generate
 timestep(t).
-openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
+
+% define fluents that determine whether player can move from room R0 to R1
+free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
+not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
+free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
+
+% inertia: doors and containers don't change state  (TODO: allow state change transitions)
+open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
+open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
+closed(X,t) :- closed(X,t-1), is_openable(X), not act(do_open(t,X),t).
+locked(X,t) :- is_lockable(X), locked(X,t-1), not act(do_unlock(t,X),t).
+
 
 {at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
 %NOTE - THIS IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
@@ -225,8 +236,15 @@ openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time
 
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT. % can move to an adjacent room 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
+% Test constraints
+:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % cant go that way
+
+
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % can open a closed but unlocked door
 is_action(do_open(t,D), t) :- do_open(t,D), timestep(t).
+% Test constraints
+:- do_open(t,D), d(D), not closed(D,t-1).
+:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
 
 
 % Define
@@ -234,27 +252,13 @@ is_action(do_open(t,D), t) :- do_open(t,D), timestep(t).
 at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
 %at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
 at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
-atP(t,R) :- at(player,R,t).                                       % Alias for current room
-
-
-% Test
+% Test constraints
 :- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
-:- do_open(t,D), d(D), not closed(D,t-1).
-:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
-:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % cant go that way
-%%link(R, D, R1):r(R1) :- do_open(t,D), d(D), atP(R,t-1), r(R), timestep(t).  % to open a door, must be in appropriate room
 
 
-% inertia: doors and containers don't change state  (TODO: allow state change transitions)
-open(X,t) :- is_openable(X), open(X,t-1), not do_close(X,t).
-open(X,t) :- is_openable(X), do_open(t,X), not open(X,t-1).
-closed(X,t) :- closed(X,t-1), is_openable(X), not do_open(t,X).
-locked(X,t) :- is_lockable(X), locked(X,t-1), not do_unlock(t,X).
-
-free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
-free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, it can't be closed.
-not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
-
+% Alias
+openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
+atP(t,R) :- at(player,R,t).                  % alias for player's current location
 
 """
 
@@ -267,6 +271,12 @@ solved(t) :- timestep(T), at_goalR(T), query(t), T <= t.
 :- not solved(t), query(t). % Fail if we haven't achieved all our objectives
 
 """
+#goto 2 rooms one after the other
+#solved1(t) :- timestep(T), at_goalR(T), query(t), T < t.
+#solved2(t) :- solved1(t), atP(t,goal2), query(t).
+#:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
+
+
 
 GAME_RULES_OLD = \
 """
