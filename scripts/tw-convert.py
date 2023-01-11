@@ -165,6 +165,12 @@ class(C) :- instance_of(X,C).  % instance_of relationship implicity defines clas
 class(S) :- subclass_of(S,C).  % every subclass is also a class
 class(S) :- subclass_of(S,C).  % redundant [with instance-of-superclass rule, above]
 
+% additional inheritance links to consolidate 3 rules for cooking with appliances
+class(cooker).
+subclass_of(oven,cooker).
+subclass_of(stove,cooker).
+subclass_of(toaster,cooker).
+
 {is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
 is_openable(X) :- instance_of(X,c).  % containers are potentially openable
 is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers are potentially lockable, but ovens are not
@@ -328,7 +334,40 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/needs_cooking :: $at(P, r) & $at(toaster, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> grilled(f) & edible(f) & cooked(f)
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
-inedible(F,t) :- burned(F,t).
+% - CONSTRAINTS -
+:- cookable(X), {raw(X,t); grilled(X,t); fried(X,t); roasted(X,t); burned(X,t) } > 1.   % disjoint set of attribute values for cookable items
+:- edible(F,t), inedible(F,t).   % disjoint set of attribute values for potentially edible items
+
+cooked(X,t) :- grilled(X,t).
+cooked(X,t) :- fried(X,t).
+cooked(X,t) :- roasted(X,t).
+cooked(X,t) :- burned(X,t).
+inedible(F,t) :- burned(F,t).    % burned foods are considered to be inedible
+
+% --- inertia: cookable items change state only if the player acts on them
+needs_cooking(X,t) :- needs_cooking(X,t-1), not act(do_cook(t,X,_),t).
+raw(X,t) :- raw(X,t-1), not act(do_cook(t,X,_),t).
+grilled(X,t) :- grilled(X,t-1), not act(do_cook(t,X,_),t).
+fried(X,t) :- fried(X,t-1), not act(do_cook(t,X,_),t).
+roasted(X,t) :- roasted(X,t-1), not act(do_cook(t,X,_),t).
+inedible(X,t) :- inedible(X,t-1), not act(do_cook(t,X,_),t).
+edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
+% burned foods stay burned forever after
+burned(X,t) :- burned(X,t-1).
+
+burned(X,t) :- cooked(X,t-1), act(do_cook(t,X,_), t).   % cooking something twice causes it to burn
+edible(X,t) :- needs_cooking(X,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
+grilled(X,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
+fried(X,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
+roasted(X,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
+
+0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), at(A,R,t-1).
+% Test constraints
+:- do_cook(t,X,A), atP(R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
+
+
+
+is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
 
 % ------ CUT ------
 % chop :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> chopped(f)
