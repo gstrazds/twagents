@@ -259,6 +259,7 @@ at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), 
 % Alias
 openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
 atP(t,R) :- at(player,R,t).                  % alias for player's current location
+in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 """
 
@@ -377,6 +378,8 @@ GAME_RULES_NEW = \
 0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
+in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
+
 
 % ------ DROP/PUT ------
 % put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
@@ -385,6 +388,18 @@ is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 %+ drop :: $at(P, r) & in(o, I) & used(slot) -> at(o, r) & free(slot)",
 % insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
 %+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
+
+% insert :: can put an object into a container if the player has the object, container is open and player is in the same room as container
+0 {do_put(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,inventory,t-1), open(C,t-1), timestep(t).
+% put :: can put an object onto a support if player has the object and is in the same room as the suppport
+0 {do_put(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), in(O,inventory,t-1), timestep(t).
+% drop :: can drop an object on the floor of a room if player is in the room and has the object
+0 {do_put(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), in(O,inventory,t-1), timestep(t).
+
+is_action(do_put(t,O,X),t) :- do_put(t,O,X).
+on(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,s).  % player puts an object onto a supporting object
+in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object into a container
+at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object to the floor of a room
 
 
 % ------ MAKE ------
