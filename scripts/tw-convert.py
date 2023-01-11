@@ -207,7 +207,7 @@ atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 """
 
 
-NAV_RULES = \
+ACTION_STEP_RULES = \
 """
 
 #program step(t).
@@ -226,37 +226,20 @@ free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there 
 open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
 open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
 closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
-locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X),t).
+locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
 
 % inertia: objects don't move unless moved by the player (TODO: implement take/put transitions)
-at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), timestep(t).
-on(X,S,t) :- on(X,S,t-1), r(R), s(S), timestep(t).
-in(X,C,t) :- in(X,C,t-1), r(R), c(C), timestep(t).
+at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
+on(X,S,t) :- on(X,S,t-1), s(S), not act(do_take(t,X,_),t).
+in(X,C,t) :- in(X,C,t-1), c(C), not act(do_take(t,X,_),t).
+in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
 
 {at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
 %NOTE - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
-%NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep: 
+%NOTE - THE FOLLOWING DOESN'T WORK (expands too many do_moveP ground instances at final timestep: 
 %{at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
- % can move to a connected room, if not blocked by a closed door
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
-is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
-% Test constraints
-:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
-
-% can open a closed but unlocked door
-0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
-% can open a closed but unlocked container
-0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1). 
-is_action(do_open(t,CD), t) :- do_open(t,CD), timestep(t).
-% Test constraints
-:- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
-:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
-% have to be in the same room to open a container
-:- do_open(t,C), at(player,R,t), instance_of(C,c), r(R), at(C,R2,t), r(R2), timestep(t), R != R2.
-
-
-% Define
+% inertia: stay in the current room unless player moves to another
 %at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
 at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
 %at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
@@ -285,30 +268,6 @@ solved2(t) :- solved1(t), act(do_examine(t,goal2),t), query(t).
 #solved1(t) :- timestep(T), at_goalR(T), query(t), T < t.
 #solved2(t) :- solved1(t), atP(t,goal2), query(t).
 #:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
-
-
-
-GAME_RULES_OLD = \
-"""
-% ------ MAKE ------
-% make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
-% make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
-% make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
-% make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
-% make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
-% ------ CONSUME ------
-% drink :: in(f, I) & drinkable(f) -> consumed(f)
-% eat :: in(f, I) & edible(f) -> consumed(f)
-% ------ TAKE ------
-% take :: $at(P, r) & at(o, r) -> in(o, I)
-% take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
-% take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
-% ------ DROP/PUT ------
-% put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
-% drop :: $at(P, r) & in(o, I) -> at(o, r)
-% insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
-
-"""
 
 
 GAME_RULES_COMMON = \
@@ -345,6 +304,12 @@ is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 % go/south :: at(P, r) & $north_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
 % go/west :: at(P, r) & $west_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
 
+ % can move to a connected room, if not blocked by a closed door
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
+is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
+% Test constraints
+:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
+
 
 % ------ OPEN/CLOSE UNLOCK/LOCK ------
 % close/c :: $at(P, r) & $at(c, r) & open(c) -> closed(c)
@@ -355,6 +320,17 @@ is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 % lock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & closed(d) -> locked(d)
 % unlock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & locked(c) -> closed(c)
 % unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
+
+% can open a closed but unlocked door
+0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
+% can open a closed but unlocked container
+0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
+is_action(do_open(t,CD), t) :- do_open(t,CD), timestep(t).
+% Test constraints
+:- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
+:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
+% have to be in the same room to open a container
+:- do_open(t,C), at(player,R,t), instance_of(C,c), r(R), at(C,R2,t), r(R2), R != R2.
 
 % ------ COOK ------
 % cook/oven/burned :: $at(P, r) & $at(oven, r) & $in(f, I) & cooked(f) & edible(f) -> burned(f) & inedible(f)
@@ -381,6 +357,25 @@ is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 
 GAME_RULES_NEW = \
 """
+% ------ TAKE ------
+%- take :: $at(P, r) & at(o, r) -> in(o, I)
+%+ take :: $at(P, r) & at(o, r) & free(slot) -> in(o, I) & used(slot)",
+%- take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
+%+ take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) & free(slot) -> in(o, I) & used(slot)",
+%- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
+%+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
+
+
+
+% ------ DROP/PUT ------
+% put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
+%+ put :: $at(P, r) & $at(s, r) & in(o, I) & used(slot) -> on(o, s) & free(slot)",
+% drop :: $at(P, r) & in(o, I) -> at(o, r)
+%+ drop :: $at(P, r) & in(o, I) & used(slot) -> at(o, r) & free(slot)",
+% insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
+%+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
+
+
 % ------ MAKE ------
 %+ make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)",
 %- make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
@@ -399,27 +394,33 @@ GAME_RULES_NEW = \
 % eat :: in(f, I) & edible(f) -> consumed(f)
 %+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
 
-
-% ------ TAKE ------
-%- take :: $at(P, r) & at(o, r) -> in(o, I)
-%+ take :: $at(P, r) & at(o, r) & free(slot) -> in(o, I) & used(slot)",
-%- take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
-%+ take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) & free(slot) -> in(o, I) & used(slot)",
-%- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
-%+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
-
-% ------ DROP/PUT ------
-% put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
-%+ put :: $at(P, r) & $at(s, r) & in(o, I) & used(slot) -> on(o, s) & free(slot)",
-% drop :: $at(P, r) & in(o, I) -> at(o, r)
-%+ drop :: $at(P, r) & in(o, I) & used(slot) -> at(o, r) & free(slot)",
-% insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
-%+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
-
 % --------------------------------------------------------------------------------
 
-
 """
+
+# GAME_RULES_OLD = \
+# """
+# % ------ MAKE ------
+# % make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
+# % make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
+# % make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
+# % make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
+# % make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
+# % ------ CONSUME ------
+# % drink :: in(f, I) & drinkable(f) -> consumed(f)
+# % eat :: in(f, I) & edible(f) -> consumed(f)
+# % ------ TAKE ------
+# % take :: $at(P, r) & at(o, r) -> in(o, I)
+# % take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
+# % take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
+# % ------ DROP/PUT ------
+# % put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
+# % drop :: $at(P, r) & in(o, I) -> at(o, r)
+# % insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
+
+# """
+
+
 
 def types_to_asp(typestree: VariableTypeTree) -> str:
     # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
@@ -555,7 +556,7 @@ if __name__ == "__main__":
                     aspfile.write('\n')
                 aspfile.write("\n% ------- Navigation -------\n")
                 aspfile.write(MAP_RULES)
-                aspfile.write(NAV_RULES)
+                aspfile.write(ACTION_STEP_RULES)
                 # ---- GAME DYNAMICS
                 aspfile.write(GAME_RULES_COMMON)
                 aspfile.write(GAME_RULES_NEW)
