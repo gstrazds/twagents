@@ -225,8 +225,8 @@ free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there 
 % inertia: doors and containers don't change state unless player acts on them
 open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
 open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
-closed(X,t) :- closed(X,t-1), is_openable(X), not act(do_open(t,X),t).
-locked(X,t) :- is_lockable(X), locked(X,t-1), not act(do_unlock(t,X),t).
+closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
+locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X),t).
 
 % inertia: objects don't move unless moved by the player (TODO: implement take/put transitions)
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), timestep(t).
@@ -246,10 +246,14 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), di
 
 % can open a closed but unlocked door
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
-is_action(do_open(t,D), t) :- do_open(t,D), timestep(t).
+% can open a closed but unlocked container
+0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1). 
+is_action(do_open(t,CD), t) :- do_open(t,CD), timestep(t).
 % Test constraints
-:- do_open(t,D), d(D), not closed(D,t-1). % can't open a door that isn't currently closed
+:- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
 :- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
+% have to be in the same room to open a container
+:- do_open(t,C), at(player,R,t), instance_of(C,c), r(R), at(C,R2,t), r(R2), timestep(t), R != R2.
 
 
 % Define
@@ -271,10 +275,10 @@ CHECK_GOAL_ACHIEVED = \
 """
 #program check(t).
 % Test
-at_goalR(t) :- at(player,R,t), r(R), R = goalR, query(t).
-solved(t) :- timestep(T), at_goalR(T), query(t), T <= t.
-%:- not act(do_examine(t,o_0),t), query(t). % Fail if we haven't achieved all our objectives
-:- not solved(t), query(t). % Fail if we haven't achieved all our objectives
+solved1(t) :- timestep(T), at(player,goalR,T), query(t), T < t.
+solved2(t) :- solved1(t), act(do_examine(t,goal2),t), query(t).
+:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
+
 
 """
 #goto 2 rooms one after the other
@@ -292,17 +296,13 @@ GAME_RULES_OLD = \
 % make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
 % make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
 % make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
-
-
 % ------ CONSUME ------
 % drink :: in(f, I) & drinkable(f) -> consumed(f)
 % eat :: in(f, I) & edible(f) -> consumed(f)
-
 % ------ TAKE ------
 % take :: $at(P, r) & at(o, r) -> in(o, I)
 % take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
 % take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
-
 % ------ DROP/PUT ------
 % put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
 % drop :: $at(P, r) & in(o, I) -> at(o, r)
@@ -323,14 +323,20 @@ GAME_RULES_COMMON = \
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
-% can examine an object that is on a support if player is in the same room as the suppport
-0 {do_examine(t,O)} 1 :- at(player,R,t-1), r(R), o(O), s(S), at(S,R,t-1), on(O,S,t-1), timestep(t). 
+% examine/c :: can examine an object that's in a container if the container is open and player is in the same room
+0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+% examine/s :: can examine an object that is on a support if player is in the same room as the suppport
+0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), s(S), at(S,R,t), on(O,S,t), timestep(t).
+% examine/t :: can examine a thing if player is in the same room as the thing
+0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+
+
 is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 % Test constraints
 % have to be in the same room to examine something
-:- do_examine(t,O), at(player,R,t), o(O), r(R), on(O,S,t), at(S,R2,t), s(S), r(R2), timestep(t), R != R2. 
-:- do_examine(t,O), at(player,R,t), o(O), r(R), in(O,C,t), at(C,R2,t), c(C), r(R2), timestep(t), R != R2. 
-:- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2. 
+:- do_examine(t,O), at(player,R,t), o(O), r(R), on(O,S,t), at(S,R2,t), s(S), r(R2), timestep(t), R != R2.
+:- do_examine(t,O), at(player,R,t), o(O), r(R), in(O,C,t), at(C,R2,t), c(C), r(R2), timestep(t), R != R2.
+:- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2.
 
 
 % ------ GO ------
