@@ -67,9 +67,11 @@ def objname_to_asp(name:str) -> str:
     return aspname
 
 
-#FLUENT_FACTS = ['at', 'on', 'in', 'open', 'closed', 'locked',
-#  'uncut', 'raw', 'roasted', 'edible', 'inedible', 'sliced', 'diced', 'chopped']
-STATIC_FACTS = ['cuttable', 'cookable', 'edible', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
+#FLUENT_FACTS = ['at', 'on', 'in',
+#  'open', 'closed', 'locked',
+#  'uncut', , 'sliced', 'diced', 'chopped',
+#  'raw', 'roasted', 'grilled', 'fried', 'edible', 'inedible']
+STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'link', 'cooking_location', 'north_of', 'east_of', 'south_of', 'west_of']
 
 def fact_to_asp(fact:Proposition, hfact=None, step=0) -> str:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
@@ -174,14 +176,7 @@ arg(none).   % placeholder for actions with fewer than 2 args
 arg(NSEW) :- direction(NSEW).
 arg(I) :- instance_of(I,C), class(C).
 
-verb(go;open).
-% verb(open;close).
-% verb_direction(go).  % 
-% verb_openclose(open;close).
-% verb_with_key(lock;unlock).
-% verb_cook_with(cook).
-% verb_takeput(take;put).
-% verb_cut(chop;slice;dice).
+cutting_verb(chop;slice;dice).
 
 """
 #  "class(A) :- instance_of(I,A).
@@ -230,30 +225,6 @@ free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
 
-% inertia: doors and containers don't change state unless player acts on them
-open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
-open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
-closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
-locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
-% ------ CONSTRAINTS ------
-:- open(X,t), closed(X,t).  %[,is_openable(X).]    % any door or container can be either open or closed but not both
-:- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
-
-
-% inertia: objects don't move unless moved by the player (TODO: implement take/put transitions)
-at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
-on(X,S,t) :- on(X,S,t-1), s(S), not act(do_take(t,X,_),t).
-in(X,C,t) :- in(X,C,t-1), c(C), not act(do_take(t,X,_),t).
-in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
-
-
-% inertia: stay in the current room unless player moves to another
-%at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
-at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
-%at(player,R,t) :- do_moveP(t,R0,R,NSEW), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
-at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.   % alias for player moved at time t
-% Test constraints
-:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
 
 % Alias
@@ -262,22 +233,6 @@ atP(t,R) :- at(player,R,t).                  % alias for player's current locati
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 """
-
-CHECK_GOAL_ACHIEVED = \
-"""
-#program check(t).
-% Test
-solved1(t) :- timestep(T), at(player,goalR,T), query(t), T < t.
-solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
-:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
-
-
-"""
-#goto 2 rooms one after the other
-#solved1(t) :- timestep(T), at_goalR(T), query(t), T < t.
-#solved2(t) :- solved1(t), atP(t,goal2), query(t).
-#:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
-
 
 GAME_RULES_COMMON = \
 """
@@ -313,12 +268,23 @@ is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
 % go/south :: at(P, r) & $north_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
 % go/west :: at(P, r) & $west_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
 
+% --- inertia: player stays in the current room unless acts to move to another
+  % stay in the current room unless current action is do_moveP
+at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
+
+  % player moved at time t, from previous room R0 to new room R
+at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+
+% Test constraints
+:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
+
  % can move to a connected room, if not blocked by a closed door
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
 % Test constraints
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
+
 
 % ------ OPEN/CLOSE UNLOCK/LOCK ------
 % close/c :: $at(P, r) & $at(c, r) & open(c) -> closed(c)
@@ -329,6 +295,15 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2),
 % lock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & closed(d) -> locked(d)
 % unlock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & locked(c) -> closed(c)
 % unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
+
+% --- inertia: doors and containers don't change state unless player acts on them
+open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
+open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
+closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
+locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
+% ------ CONSTRAINTS ------
+:- open(X,t), closed(X,t).  %[,is_openable(X).]    % any door or container can be either open or closed but not both
+:- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
 
 % can open a closed but unlocked door
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
@@ -353,10 +328,33 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/needs_cooking :: $at(P, r) & $at(toaster, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> grilled(f) & edible(f) & cooked(f)
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
+inedible(F,t) :- burned(F,t).
+
 % ------ CUT ------
 % chop :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> chopped(f)
 % dice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> diced(f)
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
+
+% ------ CONSTRAINTS ------
+:- cuttable(X), {uncut(X,t); chopped(X,t); sliced(X,t); diced(X,t) } > 1.   % disjoint set of attribute values for cuttable items
+
+% --- inertia: cuttable items change state only if the player acts on them
+uncut(X,t) :- uncut(X,t-1), not act(do_cut(t,_,X,_),t).
+
+chopped(X,t) :- uncut(X,t-1), act(do_cut(t,chop,X,_),t).
+chopped(X,t) :- chopped(X,t-1).
+diced(X,t) :- uncut(X,t-1), act(do_cut(t,dice,X,_),t).
+diced(X,t) :- diced(X,t-1).
+sliced(X,t) :- uncut(X,t-1), act(do_cut(t,slice,X,_),t).
+sliced(X,t) :- sliced(X,t-1).
+
+% can chop, slice or dice cuttable ingredients that are in player's inventory if also have a knife (a sharp object), 
+0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), uncut(F,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1).
+
+:- do_cut(t,_,F,O), not uncut(F,t-1).  % can't cut up something that's already cut up
+:- do_cut(t,_,F,O), not sharp(O).      % can't cut up something with an unsharp instrument
+
+is_action(do_cut(t,V,F,O), t) :- do_cut(t,V,F,O).
 
 """
 
@@ -370,11 +368,17 @@ GAME_RULES_NEW = \
 %- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
 %+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
 
-% take/c :: can take an object that's in a container if the container is open and player is in the same room
+% ---- inertia: objects don't move unless moved by the player
+at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
+on(X,S,t) :- on(X,S,t-1), s(S), not act(do_take(t,X,_),t).
+in(X,C,t) :- in(X,C,t-1), c(C), not act(do_take(t,X,_),t).
+in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
+
+% -- take/c :: can take an object that's in a container if the container is open and player is in the same room
 0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
-% take/s :: can take an object that's on a support if player is in the same room as the suppport
+% -- take/s :: can take an object that's on a support if player is in the same room as the suppport
 0 {do_take(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), on(O,S,t-1), timestep(t).
-% take :: can take an object (a portable thing) if player is in the same room and it is on the floor
+% -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
 0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
@@ -446,6 +450,18 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 
 # """
 
+
+CHECK_GOAL_ACHIEVED = \
+"""
+#program check(t).
+% Test
+solved1(t) :- timestep(T), act(do_examine(T,o_0),T), T < t.
+solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
+%solved2(t) :- solved1(t), diced(goal2,t), query(t).
+:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
+
+
+"""
 
 
 def types_to_asp(typestree: VariableTypeTree) -> str:
