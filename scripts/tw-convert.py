@@ -217,6 +217,14 @@ timestep(t).
 
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
+{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
+
+% NOTE/IMPORTANT - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY:
+%  {at(player,R,t)} = 1 :- r(R), timestep(t).
+% NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep:
+%  {at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
+
+
 % define fluents that determine whether player can move from room R0 to R1
 free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
@@ -227,6 +235,10 @@ open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
 open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
 closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
 locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
+% ------ CONSTRAINTS ------
+:- open(X,t), closed(X,t).  %[,is_openable(X).]    % any door or container can be either open or closed but not both
+:- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
+
 
 % inertia: objects don't move unless moved by the player (TODO: implement take/put transitions)
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
@@ -234,10 +246,6 @@ on(X,S,t) :- on(X,S,t-1), s(S), not act(do_take(t,X,_),t).
 in(X,C,t) :- in(X,C,t-1), c(C), not act(do_take(t,X,_),t).
 in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
 
-{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
-%NOTE - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY: {at(player,R,t)} = 1 :- r(R), timestep(t).   
-%NOTE - THE FOLLOWING DOESN'T WORK (expands too many do_moveP ground instances at final timestep: 
-%{at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
 % inertia: stay in the current room unless player moves to another
 %at(player,R0,t) :- at(player,R0,t-1), r(R0), {do_moveP(t,R0,R,NSEW):r(R),direction(NSEW)}=0. %, T<=maxT.  % stay in the current room unless current action is do_moveP
@@ -259,7 +267,7 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 % Test
 solved1(t) :- timestep(T), at(player,goalR,T), query(t), T < t.
-solved2(t) :- solved1(t), act(do_examine(t,goal2),t), query(t).
+solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
 :- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
 
 
@@ -289,13 +297,13 @@ GAME_RULES_COMMON = \
 % examine/t :: can examine a thing if player is in the same room as the thing
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
 
-
-is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 % Test constraints
 % have to be in the same room to examine something
 :- do_examine(t,O), at(player,R,t), o(O), r(R), on(O,S,t), at(S,R2,t), s(S), r(R2), timestep(t), R != R2.
 :- do_examine(t,O), at(player,R,t), o(O), r(R), in(O,C,t), at(C,R2,t), c(C), r(R2), timestep(t), R != R2.
 :- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2.
+
+is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
 
 
 % ------ GO ------
@@ -306,10 +314,10 @@ is_action(do_examine(t,O), t) :- do_examine(t,O), timestep(t).
 
  % can move to a connected room, if not blocked by a closed door
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
-is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), direction(NSEW), timestep(t).
 % Test constraints
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
 
+is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
 
 % ------ OPEN/CLOSE UNLOCK/LOCK ------
 % close/c :: $at(P, r) & $at(c, r) & open(c) -> closed(c)
@@ -325,12 +333,13 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW), r(R1), r(R2), di
 0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
 % can open a closed but unlocked container
 0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
-is_action(do_open(t,CD), t) :- do_open(t,CD), timestep(t).
 % Test constraints
 :- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
 :- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
 % have to be in the same room to open a container
 :- do_open(t,C), at(player,R,t), instance_of(C,c), r(R), at(C,R2,t), r(R2), R != R2.
+
+is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 
 % ------ COOK ------
 % cook/oven/burned :: $at(P, r) & $at(oven, r) & $in(f, I) & cooked(f) & edible(f) -> burned(f) & inedible(f)
@@ -348,11 +357,6 @@ is_action(do_open(t,CD), t) :- do_open(t,CD), timestep(t).
 % dice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> diced(f)
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
 
-
-% ------ CONSTRAINTS ------
-:- open(X,t), closed(X,t), is_openable(X).    % any door or container can be either open or closed but not both
-:- locked(X,t), open(X,t), is_lockable(X).    % can't be both locked and open at the same time
-
 """
 
 GAME_RULES_NEW = \
@@ -365,7 +369,14 @@ GAME_RULES_NEW = \
 %- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
 %+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
 
+% take/c :: can take an object that's in a container if the container is open and player is in the same room
+0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
+% take/s :: can take an object that's on a support if player is in the same room as the suppport
+0 {do_take(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), on(O,S,t-1), timestep(t).
+% take :: can take an object (a portable thing) if player is in the same room and it is on the floor
+0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
+is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 
 % ------ DROP/PUT ------
 % put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
