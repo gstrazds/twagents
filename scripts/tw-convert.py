@@ -78,12 +78,13 @@ def fact_to_asp(fact:Proposition, hfact=None, step=0) -> str:
     asp_args = [Variable(objname_to_asp(v.name), v.type) for v in fact.arguments]
     asp_fact = Proposition(fact.name, asp_args)
     asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")
-    if fact.name not in STATIC_FACTS \
-        and 'ingredient' not in asp_fact_str:   #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
-        asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add the time step
-
+    if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
+        pass   # TODO
+        # special-case processing of recipe specifications 
+    elif fact.name not in STATIC_FACTS:
+        asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
     if hfact:
-        asp_fact_str = f"{asp_fact_str} % {str(hfact)}"
+        asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
     return asp_fact_str
 
 
@@ -115,47 +116,46 @@ eg_types_to_asp = """
  """
 
 INC_MODE = \
-"""#include <incmode>.
-#const imax=500.  % give up after this many iterations
-%#script (python)
-%
-%from clingo import Function, Symbol, String, Number
-%
-%def get(val, default):
-%    return val if val != None else default
-%
-%def main(prg):
-%    imin = get(prg.get_const("imin"), 1)
-%    imax = get(prg.get_const("imax"), 500)
-%    istop = get(prg.get_const("istop"), String("SAT"))
-%
-%    step, ret = 0, None
-%    while ((imax is None or step < imax.number) and
-%           (step == 0 or step <= imin.number or (
-%              (istop == "SAT" and not ret.satisfiable) or
-%              (istop == "UNSAT" and not ret.unsatisfiable) or
-%              (istop == "UNKNOWN" and not ret.unknown))
-%           )):
-%        parts = []
-%        parts.append(("check", [Number(step)]))
-%        if step > 0:
-%            prg.release_external(Function("query", [Number(step-1)]))
-%            parts.append(("step", [Number(step)]))
-%            %? prg.cleanup()
-%        else:
-%            parts.append(("base", []))
-%        prg.ground(parts)
-%        prg.assign_external(Function("query", [Number(step)]), True)
-%        ret, step = prg.solve(), step+1
-%#end.
-%
-%#program check(t).
-%#external query(t).
+"""% #include <incmode>.
+#const imax=500.  % (default value for) give up after this many iterations
+#script (python)
+
+from clingo import Function, Symbol, String, Number
+
+def get(val, default):
+    return val if val != None else default
+
+def main(prg):
+    imin = get(prg.get_const("imin"), Number(1))
+    imax = get(prg.get_const("imax"), Number(500))
+    istop = get(prg.get_const("istop"), String("SAT"))
+
+    step, ret = 0, None
+    while ((imax is None or step < imax.number) and
+           (step == 0 or step <= imin.number or (
+              (istop.string == "SAT" and not ret.satisfiable) or
+              (istop.string == "UNSAT" and not ret.unsatisfiable) or
+              (istop.string == "UNKNOWN" and not ret.unknown))
+           )):
+        parts = []
+        parts.append(("check", [Number(step)]))
+        if step > 0:
+            prg.release_external(Function("query", [Number(step-1)]))
+            parts.append(("step", [Number(step)]))
+            %? prg.cleanup()
+        else:
+            parts.append(("base", []))
+        prg.ground(parts)
+        prg.assign_external(Function("query", [Number(step)]), True)
+        ret, step = prg.solve(), step+1
+#end.
+
+#program check(t).
+#external query(t).
 
 #program base.
 % Define
 """
-
 
 TYPE_RULES = \
 """
@@ -178,9 +178,6 @@ is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers a
 % action vocabulary
 timestep(0). % incremental solving will define timestep(t) for t >= 1...
 direction(east;west;north;south).
-arg(none).   % placeholder for actions with fewer than 2 args
-arg(NSEW) :- direction(NSEW).
-arg(I) :- instance_of(I,C), class(C).
 
 cutting_verb(chop;slice;dice).
 
@@ -361,7 +358,7 @@ grilled(X,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1
 fried(X,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
 roasted(X,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
 
-0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), at(A,R,t-1).
+0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in_inventory(X,t-1), at(A,R,t-1).
 % Test constraints
 :- do_cook(t,X,A), atP(R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
 
@@ -409,8 +406,8 @@ GAME_RULES_NEW = \
 
 % ---- inertia: objects don't move unless moved by the player
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
-on(X,S,t) :- on(X,S,t-1), s(S), not act(do_take(t,X,_),t).
-in(X,C,t) :- in(X,C,t-1), c(C), not act(do_take(t,X,_),t).
+on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not act(do_take(t,X,_),t).
+in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not act(do_take(t,X,_),t).
 in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
 
 % -- take/c :: can take an object that's in a container if the container is open and player is in the same room
