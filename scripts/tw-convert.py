@@ -142,7 +142,7 @@ def main(prg):
         if step > 0:
             prg.release_external(Function("query", [Number(step-1)]))
             parts.append(("step", [Number(step)]))
-            %? prg.cleanup()
+            #? prg.cleanup()
         else:
             parts.append(("base", []))
         prg.ground(parts)
@@ -492,8 +492,8 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 % Test
 solved1(t) :- timestep(T), act(do_examine(T,o_0),T), T < t.
-solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
-%solved2(t) :- solved1(t), diced(goal2,t), query(t).
+%solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
+solved2(t) :- solved1(t), fried(goal2,t), query(t).
 :- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
 
 
