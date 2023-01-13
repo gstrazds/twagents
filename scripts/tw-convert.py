@@ -57,40 +57,99 @@ def rebuild_game(game, options:Optional[GameOptions], verbose=False):
     return game
 
 
-def objname_to_asp(name:str) -> str:
+def twname_to_asp(name:str) -> str:
     if name == 'P':
         aspname = 'player'
     elif name == 'I':
         aspname = 'inventory'
+    elif name == 't':  # a base type name in the TextWorld type hierarchy
+        aspname = 'thing' 
     else:
         aspname = name.lower()
     return aspname
 
+# def twtype_to_typename(type:str) -> str:
+#     return 'thing' if type == 't' else objname_to_asp(type)
 
-#FLUENT_FACTS = ['at', 'on', 'in',
+
+
+#FLUENT_FACTS = [
+#   ---location----
+#  'at', 'on', 'in',
+#   ----open_state----
 #  'open', 'closed', 'locked',
-#  'uncut', , 'sliced', 'diced', 'chopped',
-#  'raw', 'roasted', 'grilled', 'fried', 'edible', 'inedible']
-STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'link', 'cooking_location', 'north_of', 'east_of', 'south_of', 'west_of']
+#   ----cut_state----
+#  'uncut', 'sliced', 'diced', 'chopped',
+#   ----cooked_state----
+#  'raw', 'needs_cooking', 'roasted', 'grilled', 'fried', 'burned',
+#   ----edible_state----
+#  'edible', 'inedible']
 
-def fact_to_asp(fact:Proposition, hfact=None, step=0) -> str:
+STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
+
+COOKED_STATE = ['needs_cooking', 'raw', 'roasted', 'grilled', 'fried', 'burned']  #anything other than raw or needs_cooking -> cooked
+CUT_STATE = ['uncut', 'sliced', 'diced', 'chopped'] #anything other than -> uncut
+OPEN_STATE = ['open', 'closed', 'locked'] #anything other than open -> -open
+LOCATION_REL = ['at', 'on', 'in']
+
+def is_recipe_fact(fact_name: str, args_str: Optional[str] = None):
+    if fact_name.startswith('ingredient'):
+        return True
+    if args_str and 'ingredient' in args_str:
+        return True
+    return False
+
+def is_fluent_fact(fact_name: str, args_str: Optional[str] = None):
+    if is_recipe_fact(fact_name, args_str):
+        return False
+    if fact_name in STATIC_FACTS:
+        return False
+    return True
+
+def is_state_value(fact_name: str) -> str:
+    if fact_name in COOKED_STATE:
+        return "cooked_state", "should_cook"
+    elif fact_name in CUT_STATE:
+        return "cut_state", "should_cut"
+    return '', ''
+
+def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> str:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
-    asp_args = [Variable(objname_to_asp(v.name), v.type) for v in fact.arguments]
-    asp_fact = Proposition(fact.name, asp_args)
-    asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")
-    if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
-        pass   # TODO
-        # special-case processing of recipe specifications 
-    elif fact.name not in STATIC_FACTS:
-        asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
+    asp_fact_str = twfact_to_asp_attrib_state(fact, step)
+    if not asp_fact_str:
+        asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
+        args_str = ', '.join([f"{a.name}" for a in asp_args])
+        maybe_timestep = ', '+str(step) if is_fluent_fact(fact.name, args_str) else ''
+        asp_fact_str = f"{fact.name}({args_str}{maybe_timestep})."
+    # asp_fact = Proposition(fact.name, asp_args)
+    # asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")  #remove type annotations (name:type,)
+    # if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
+    #     pass   # TODO special-case processing of recipe specifications  
+    #     # (don't add time step)
+    # elif fact.name not in STATIC_FACTS:
+    #     asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
     if hfact:
         asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
     return asp_fact_str
 
-
-def twtype_to_typename(type:str) -> str:
-    return 'thing' if type == 't' else objname_to_asp(type)
-
+def twfact_to_asp_attrib_state(fact:Proposition, step:int):
+    attrib_name, attrib_name_should = is_state_value(fact.name)
+    if not attrib_name:
+        return None
+    assert fact.name not in STATIC_FACTS, f"UNEXPECTED: {fact.name} is BOTH in STATIC_FACTS and an attribute_value[{attrib_name}]"
+    asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
+    arg_names = [f"{a.name}" for a in asp_args]
+    assert len(arg_names) == 1, f"{arg_names}"
+    is_recipe_entry =  is_recipe_fact(fact.name, args_str=arg_names[0])  # if multiple args, need to do a string join
+    arg_names.append(fact.name) 
+    if is_recipe_entry: 
+        #maybe_timestep = ''   # recipe is static, no timestep needed
+        attrib_name = attrib_name_should
+    else:
+        arg_names.append(str(step))   # add timestep as last arg to make a fluent
+    args_str = ', '.join(arg_names)
+    asp_fact_str = f"{attrib_name}({args_str})."
+    return asp_fact_str
 
 eg_types_to_asp = """
 "types": [
@@ -171,15 +230,29 @@ subclass_of(oven,cooker).
 subclass_of(stove,cooker).
 subclass_of(toaster,cooker).
 
-{is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
+% additional inheritance links to simplify rules for attributes related to cooked_state and cut_state
+class(attribute_value).
+subclass_of(cooked_state, attribute_value).
+subclass_of(cut_state, attribute_value).
+
+%{is_openable(X); is_lockable(X)}=2 :- instance_of(X,d). % doors are potentially openable and lockable
+is_openable(X) :- instance_of(X,d).  % doors are potentially openable
+is_lockable(X) :- instance_of(X,d).  % doors are potentially lockable
 is_openable(X) :- instance_of(X,c).  % containers are potentially openable
 is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers are potentially lockable, but ovens are not
 
 % action vocabulary
 timestep(0). % incremental solving will define timestep(t) for t >= 1...
+
 direction(east;west;north;south).
 
 cutting_verb(chop;slice;dice).
+
+cooked_state(needs_cooking;raw;grilled;roasted;fried;burned).
+cut_state(uncut;chopped;diced;sliced).
+
+instance_of(X,cooked_state) :- cooked_state(X).
+instance_of(X,cut_state) :- cut_state(X).
 
 """
 #  "class(A) :- instance_of(I,A).
@@ -332,37 +405,31 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
 % - CONSTRAINTS -
-:- cookable(X), {raw(X,t); grilled(X,t); fried(X,t); roasted(X,t); burned(X,t) } > 1.   % disjoint set of attribute values for cookable items
+:- cookable(X), {cooked_state(X,V,t):instance_of(cooked_state,V)} > 1.   % disjoint set of attribute values for cookable items
 :- edible(F,t), inedible(F,t).   % disjoint set of attribute values for potentially edible items
 
-cooked(X,t) :- grilled(X,t).
-cooked(X,t) :- fried(X,t).
-cooked(X,t) :- roasted(X,t).
-cooked(X,t) :- burned(X,t).
-inedible(F,t) :- burned(F,t).    % burned foods are considered to be inedible
+cooked(X,t) :- cooked_state(X,V,t), V != raw, V != needs_cooking, instance_of(V,cooked_state).
+inedible(F,t) :- cooked_state(F,burned,t).    % burned foods are considered to be inedible
 
 % --- inertia: cookable items change state only if the player acts on them
-needs_cooking(X,t) :- needs_cooking(X,t-1), not act(do_cook(t,X,_),t).
-raw(X,t) :- raw(X,t-1), not act(do_cook(t,X,_),t).
-grilled(X,t) :- grilled(X,t-1), not act(do_cook(t,X,_),t).
-fried(X,t) :- fried(X,t-1), not act(do_cook(t,X,_),t).
-roasted(X,t) :- roasted(X,t-1), not act(do_cook(t,X,_),t).
+cooked_state(X,V,t) :- cooked_state(X,V,t-1), not act(do_cook(t,X,_),t).
+% burned foods stay burned forever after
+cooked_state(X,burned,t) :- cooked_state(X,burned,t-1).
+:- cooked_state(X,S1,t), S1 != burned, cooked_state(X,burned,t-1).
+
+cooked_state(X,grilled,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
+cooked_state(X,fried,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
+cooked_state(X,roasted,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
+cooked_state(X,burned,t) :- cooked(X,t-1), act(do_cook(t,X,_), t).   % cooking something twice causes it to burn
+
 inedible(X,t) :- inedible(X,t-1), not act(do_cook(t,X,_),t).
 edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
-% burned foods stay burned forever after
-burned(X,t) :- burned(X,t-1).
-
-burned(X,t) :- cooked(X,t-1), act(do_cook(t,X,_), t).   % cooking something twice causes it to burn
-edible(X,t) :- needs_cooking(X,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
-grilled(X,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
-fried(X,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
-roasted(X,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
+%edible(X,t) :- cooked_state(X,needs_cooking,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
+edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
 
 0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in_inventory(X,t-1), at(A,R,t-1).
 % Test constraints
 :- do_cook(t,X,A), atP(R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
-
-
 
 is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
 
@@ -372,23 +439,23 @@ is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
 
 % ------ CONSTRAINTS ------
-:- cuttable(X), {uncut(X,t); chopped(X,t); sliced(X,t); diced(X,t) } > 1.   % disjoint set of attribute values for cuttable items
+:- cuttable(X), {cut_state(X,V,t):instance_of(cut_state,V) } > 1.   % disjoint set of attribute values for cuttable items
 
 % --- inertia: cuttable items change state only if the player acts on them
-uncut(X,t) :- uncut(X,t-1), not act(do_cut(t,_,X,_),t).
+cut_state(X,uncut,t) :- cut_state(X,uncut,t-1), not act(do_cut(t,_,X,_),t).
+cut_state(X,chopped,t) :- cut_state(X,uncut,t-1), act(do_cut(t,chop,X,_),t).
+cut_state(X,diced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,dice,X,_),t).
+cut_state(X,sliced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,slice,X,_),t).
 
-chopped(X,t) :- uncut(X,t-1), act(do_cut(t,chop,X,_),t).
-chopped(X,t) :- chopped(X,t-1).
-diced(X,t) :- uncut(X,t-1), act(do_cut(t,dice,X,_),t).
-diced(X,t) :- diced(X,t-1).
-sliced(X,t) :- uncut(X,t-1), act(do_cut(t,slice,X,_),t).
-sliced(X,t) :- sliced(X,t-1).
+% cut-up items remain cut-up, and can't be cut up any further
+cut_state(X,V,t) :- cut_state(X,V,t-1), V != uncut.
 
 % can chop, slice or dice cuttable ingredients that are in player's inventory if also have a knife (a sharp object), 
-0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), uncut(F,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1).
+0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1), not cooked(F,t-1).
 
-:- do_cut(t,_,F,O), not uncut(F,t-1).  % can't cut up something that's already cut up
+:- do_cut(t,_,F,O), not cut_state(F,uncut,t-1).  % can't cut up something that's already cut up
 :- do_cut(t,_,F,O), not sharp(O).      % can't cut up something with an unsharp instrument
+:- do_cut(t,_,F,_), cooked(F,t).
 
 is_action(do_cut(t,V,F,O), t) :- do_cut(t,V,F,O).
 
@@ -453,6 +520,14 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 %- make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
 %+ make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') & used(slot''') & used(slot'''') -> in(meal, I) & free(slot') & free(slot'') & free(slot''') & free(slot'''') & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)",
 
+in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
+0 { have_prepped_ingredients(t) } 1 :- in_recipe(I,F), in_inventory(F,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), not in_inventory(F,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cut_state(V), not cooked_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), not cut_state(F,V,t), timestep(t).
+% :- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
+
+
 
 % ------ CONSUME ------
 % drink :: in(f, I) & drinkable(f) -> consumed(f)
@@ -491,10 +566,12 @@ CHECK_GOAL_ACHIEVED = \
 """
 #program check(t).
 % Test
+
 solved1(t) :- timestep(T), act(do_examine(T,o_0),T), T < t.
 %solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
-solved2(t) :- solved1(t), fried(goal2,t), query(t).
-:- not solved2(t), query(t). % Fail if we haven't achieved all our objectives
+solved2(t) :- solved1(t), cut_state(goal2, sliced,t), cooked_state(goal2,grilled,t), query(t).
+:- not solved2(t), query(t).
+:- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
 
 
 """
@@ -503,15 +580,15 @@ solved2(t) :- solved1(t), fried(goal2,t), query(t).
 def types_to_asp(typestree: VariableTypeTree) -> str:
     # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
     def _vtype_info(vtype:Variable) -> str:
-        info_tuple = (twtype_to_typename(vtype.name), twtype_to_typename(vtype.parent) if vtype.parent else None)
+        info_tuple = (twname_to_asp(vtype.name), twname_to_asp(vtype.parent) if vtype.parent else None)
         return info_tuple
     type_infos = [_vtype_info(vtype) for vtype in typestree.variables_types.values()]
     return type_infos
 
 
 def info_to_asp(info) -> str:
-    type_name = twtype_to_typename(info.type)
-    info_type_str = f"{type_name}({objname_to_asp(info.id)})."
+    type_name = twname_to_asp(info.type)
+    info_type_str = f"{type_name}({twname_to_asp(info.id)})."
     if info.name:
         info_type_str += f" % {(info.adj if info.adj else '')} {info.name}"
     return info_type_str
