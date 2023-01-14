@@ -475,7 +475,7 @@ GAME_RULES_NEW = \
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
 on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not act(do_take(t,X,_),t).
 in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not act(do_take(t,X,_),t).
-in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t).
+in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed(X,t).
 
 % -- take/c :: can take an object that's in a container if the container is open and player is in the same room
 0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
@@ -521,11 +521,21 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 %+ make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') & used(slot''') & used(slot'''') -> in(meal, I) & free(slot') & free(slot'') & free(slot''') & free(slot'''') & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)",
 
 in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
+in_recipe(F) :- in_recipe(I,F).
+
+% have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
 0 { have_prepped_ingredients(t) } 1 :- in_recipe(I,F), in_inventory(F,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), not in_inventory(F,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(F), not in_inventory(F,t), timestep(t).
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
-% :- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
+
+0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), atP(t,R), timestep(t).
+:- do_make_meal(t), cooking_location(R, recipe), r(R), not atP(t,R), timestep(t).
+
+is_action(do_make_meal(t),t) :- do_make_meal(t), timestep(t).
+
+in(meal_0,inventory,t) :- act(do_make_meal(t),t), timestep(t).
+consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
 
 % an example of how to count something - number of recipe ingredients that are currently in our inventory
 % NOTE: INEFFICIENT - NOTICEABLY SLOWS DOWN INCREMENTAL SOLVING (if done at each step)
@@ -538,6 +548,17 @@ in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
 %+ drink :: in(f, I) & drinkable(f) & used(slot) -> consumed(f) & free(slot)",
 % eat :: in(f, I) & edible(f) -> consumed(f)
 %+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
+
+0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
+0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
+
+is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
+is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
+
+consumed(F,t) :- act(do_eat(t,F),t).
+consumed(F,t) :- act(do_drink(t,F),t).
+
+consumed(F,t) :- consumed(F,t-1), timestep(t).
 
 % --------------------------------------------------------------------------------
 
@@ -576,14 +597,14 @@ recipe_seen(t) :- recipe_seen(t-1), timestep(t).
 
 %--------------------
 :- not recipe_seen(t), query(t).
-solved2(t) :- have_prepped_ingredients(t), query(t).
+%solved2(t) :- act(do_make_meal(t),t), query(t).
+solved2(t) :- consumed(meal_0,t), query(t).
 %--------------------
 % solved1(t) :- recipe_seen(t), query(t).
 % solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
 %--------------------
 
 :- not solved2(t), query(t).
-:- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
 
 
 """
