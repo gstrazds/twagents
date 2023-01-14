@@ -405,7 +405,7 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
 % - CONSTRAINTS -
-:- cookable(X), {cooked_state(X,V,t):instance_of(cooked_state,V)} > 1.   % disjoint set of attribute values for cookable items
+:- cookable(X), {cooked_state(X,V,t):instance_of(V,cooked_state)} > 1.   % disjoint set of attribute values for cookable items
 :- edible(F,t), inedible(F,t).   % disjoint set of attribute values for potentially edible items
 
 cooked(X,t) :- cooked_state(X,V,t), V != raw, V != needs_cooking, instance_of(V,cooked_state).
@@ -439,7 +439,7 @@ is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
 
 % ------ CONSTRAINTS ------
-:- cuttable(X), {cut_state(X,V,t):instance_of(cut_state,V) } > 1.   % disjoint set of attribute values for cuttable items
+:- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
 
 % --- inertia: cuttable items change state only if the player acts on them
 cut_state(X,uncut,t) :- cut_state(X,uncut,t-1), not act(do_cut(t,_,X,_),t).
@@ -455,7 +455,7 @@ cut_state(X,V,t) :- cut_state(X,V,t-1), V != uncut.
 
 :- do_cut(t,_,F,O), not cut_state(F,uncut,t-1).  % can't cut up something that's already cut up
 :- do_cut(t,_,F,O), not sharp(O).      % can't cut up something with an unsharp instrument
-:- do_cut(t,_,F,_), cooked(F,t).
+:- do_cut(t,_,F,_), cooked(F,t).       % can't cut up an ingredient that has already been cooked (in TextWorld)
 
 is_action(do_cut(t,V,F,O), t) :- do_cut(t,V,F,O).
 
@@ -523,10 +523,14 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
 0 { have_prepped_ingredients(t) } 1 :- in_recipe(I,F), in_inventory(F,t), timestep(t).
 :- have_prepped_ingredients(t), in_recipe(I,F), not in_inventory(F,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cut_state(V), not cooked_state(F,V,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), not cut_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
 % :- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
 
+% an example of how to count something - number of recipe ingredients that are currently in our inventory
+% NOTE: INEFFICIENT - NOTICEABLY SLOWS DOWN INCREMENTAL SOLVING (if done at each step)
+%num_acquired(t,N) :- timestep(t), N=#count{F:in_recipe(I,F),in_inventory(F,t),instance_of(F,f),instance_of(I,ingredient)}. %, query(t).
+%#show num_acquired/2.
 
 
 % ------ CONSUME ------
@@ -567,9 +571,17 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 % Test
 
-solved1(t) :- timestep(T), act(do_examine(T,o_0),T), T < t.
-%solved2(t) :- solved1(t), act(do_take(t,goal2,_),t), query(t).
-solved2(t) :- solved1(t), cut_state(goal2, sliced,t), cooked_state(goal2,grilled,t), query(t).
+recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).
+recipe_seen(t) :- recipe_seen(t-1), timestep(t).
+
+%--------------------
+:- not recipe_seen(t), query(t).
+solved2(t) :- have_prepped_ingredients(t), query(t).
+%--------------------
+% solved1(t) :- recipe_seen(t), query(t).
+% solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
+%--------------------
+
 :- not solved2(t), query(t).
 :- cooking_location(R, recipe), r(R), not atP(t,R), query(t).
 
