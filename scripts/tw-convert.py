@@ -254,7 +254,7 @@ timestep(0). % incremental solving will define timestep(t) for t >= 1...
 
 direction(east;west;north;south).
 
-inventory_max(12) :- not class(slot).  % default value for inventory size for games with no explicit inventory logic (old FTWC games)
+%inventory_max(7) :- not class(slot).  % default value for inventory size for games with no explicit inventory logic (old FTWC games)
 inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
 
 cutting_verb(chop;slice;dice).
