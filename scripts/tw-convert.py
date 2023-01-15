@@ -178,7 +178,7 @@ INC_MODE = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
 #script (python)
-
+import datetime
 from clingo import Function, Symbol, String, Number
 
 def get(val, default):
@@ -196,10 +196,12 @@ def main(prg):
               (istop.string == "UNSAT" and not ret.unsatisfiable) or
               (istop.string == "UNKNOWN" and not ret.unknown))
            )):
+        start_time = datetime.datetime.now()
         parts = []
         parts.append(("check", [Number(step)]))
         if step > 0:
-            print(f"Step[{step}] ", end='', flush=True)
+            if step > 9:
+                print(f"[{step}] ", end='', flush=True)
             prg.release_external(Function("query", [Number(step-1)]))
             parts.append(("step", [Number(step)]))
             #? prg.cleanup()
@@ -208,6 +210,11 @@ def main(prg):
         prg.ground(parts)
         prg.assign_external(Function("query", [Number(step)]), True)
         ret, step = prg.solve(), step+1
+        finish_time = datetime.datetime.now()
+        elapsed_time = finish_time-start_time
+        if step > 9:
+            print(f"    --- [{step-1}] elapsed: {elapsed_time}")
+
 #end.
 
 #program check(t).
@@ -487,9 +494,16 @@ in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed
 % -- take/c :: can take an object that's in a container if the container is open and player is in the same room
 0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
 % -- take/s :: can take an object that's on a support if player is in the same room as the suppport
-0 {do_take(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), on(O,S,t-1), timestep(t).
+0 {do_take(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(S,s), at(S,R,t-1), on(O,S,t-1), timestep(t).
+
 % -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
 0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
+
+count_inventory(N,t) :- timestep(t), N=#sum{1,in_inventory(O,t):in_inventory(O,t)}.  % #sum of 1, = same as #count{}
+%#show count_inventory/2.
+
+% can't pick up anything if already carrying inventory_max items
+:- do_take(t,_,_), timestep(t), inventory_max(N), #count{in_inventory(O,t):in_inventory(O,t)} > N.
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
