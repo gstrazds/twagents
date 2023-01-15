@@ -199,6 +199,7 @@ def main(prg):
         parts = []
         parts.append(("check", [Number(step)]))
         if step > 0:
+            print(f"Step[{step}] ", end='', flush=True)
             prg.release_external(Function("query", [Number(step-1)]))
             parts.append(("step", [Number(step)]))
             #? prg.cleanup()
@@ -245,6 +246,9 @@ is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers a
 timestep(0). % incremental solving will define timestep(t) for t >= 1...
 
 direction(east;west;north;south).
+
+inventory_max(12) :- not class(slot).  % default value for inventory size for games with no explicit inventory logic (old FTWC games)
+inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
 
 cutting_verb(chop;slice;dice).
 
@@ -336,6 +340,9 @@ GAME_RULES_COMMON = \
 :- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2.
 
 is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
+
+recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
+recipe_seen(t) :- recipe_seen(t-1), timestep(t).
 
 
 % ------ GO ------
@@ -528,6 +535,7 @@ in_recipe(F) :- in_recipe(I,F).
 :- have_prepped_ingredients(t), in_recipe(F), not in_inventory(F,t), timestep(t).
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), not recipe_seen(t), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), atP(t,R), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not atP(t,R), timestep(t).
@@ -591,9 +599,6 @@ CHECK_GOAL_ACHIEVED = \
 """
 #program check(t).
 % Test
-
-recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).
-recipe_seen(t) :- recipe_seen(t-1), timestep(t).
 
 %--------------------
 :- not recipe_seen(t), query(t).
