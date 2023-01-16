@@ -9,7 +9,7 @@ import inspect
 import json
 import re
 from pathlib import Path, PurePath
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 
 from textworld.challenges import CHALLENGES
 from textworld import GameMaker
@@ -97,6 +97,8 @@ def is_recipe_fact(fact_name: str, args_str: Optional[str] = None):
         return True
     if args_str and 'ingredient' in args_str:
         return True
+    if args_str and 'recipe' in args_str:    # cooking_location(r_0,recipe)
+        return True
     return False
 
 def is_fluent_fact(fact_name: str, args_str: Optional[str] = None):
@@ -115,12 +117,14 @@ def is_state_value(fact_name: str) -> str:
 
 def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> str:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
-    asp_fact_str = twfact_to_asp_attrib_state(fact, step)
-    if not asp_fact_str:
+    asp_fact_str, is_part_of_recipe = twfact_to_asp_attrib_state(fact, step)
+    if not asp_fact_str:  # not a state attribute, convert to a normal fact
         asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
         args_str = ', '.join([f"{a.name}" for a in asp_args])
         maybe_timestep = ', '+str(step) if is_fluent_fact(fact.name, args_str) else ''
+        is_part_of_recipe = is_recipe_fact(fact.name, args_str)   # handles cooking_location, in(ingr,recipe)
         asp_fact_str = f"{fact.name}({args_str}{maybe_timestep})."
+
     # asp_fact = Proposition(fact.name, asp_args)
     # asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")  #remove type annotations (name:type,)
     # if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
@@ -130,12 +134,12 @@ def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> str:
     #     asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
     if hfact:
         asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
-    return asp_fact_str
+    return asp_fact_str, is_part_of_recipe
 
-def twfact_to_asp_attrib_state(fact:Proposition, step:int):
+def twfact_to_asp_attrib_state(fact:Proposition, step:int) -> Tuple[Optional[str], bool]:
     attrib_name, attrib_name_should = is_state_value(fact.name)
     if not attrib_name:
-        return None
+        return None, False  # not an attribute state, and not a recipe step (should_xxx())
     assert fact.name not in STATIC_FACTS, f"UNEXPECTED: {fact.name} is BOTH in STATIC_FACTS and an attribute_value[{attrib_name}]"
     asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
     arg_names = [f"{a.name}" for a in asp_args]
@@ -149,7 +153,7 @@ def twfact_to_asp_attrib_state(fact:Proposition, step:int):
         arg_names.append(str(step))   # add timestep as last arg to make a fluent
     args_str = ', '.join(arg_names)
     asp_fact_str = f"{attrib_name}({args_str})."
-    return asp_fact_str
+    return asp_fact_str, is_recipe_entry
 
 eg_types_to_asp = """
 "types": [
@@ -203,10 +207,12 @@ def main(prg):
             if step > 9:
                 print(f"[{step}] ", end='', flush=True)
             prg.release_external(Function("query", [Number(step-1)]))
+            #  query(t-1) becomes permanently = False (removed from set of Externals)
             parts.append(("step", [Number(step)]))
             #? prg.cleanup()
         else:
             parts.append(("base", []))
+            parts.append(("recipe", []))
         prg.ground(parts)
         prg.assign_external(Function("query", [Number(step)]), True)
         ret, step = prg.solve(), step+1
@@ -758,15 +764,25 @@ if __name__ == "__main__":
                     aspfile.write('\n')
             #  game.kb.logic.serialize()
                 aspfile.write("\n% ------- Facts -------\n")
+                recipe_facts = []
                 for fact, hfact in zip(game.world.facts, hfacts):
-                    aspfile.write(fact_to_asp(fact, hfact, step=0))
-                    aspfile.write('\n')
+                    fact_str, is_part_of_recipe = fact_to_asp(fact, hfact, step=0)
+                    if is_part_of_recipe:
+                        recipe_facts.append(fact_str)
+                    else:
+                        aspfile.write(fact_str)
+                        aspfile.write('\n')
                 aspfile.write("\n% ------- Navigation -------\n")
                 aspfile.write(MAP_RULES)
                 aspfile.write(ACTION_STEP_RULES)
                 # ---- GAME DYNAMICS
                 aspfile.write(GAME_RULES_COMMON)
                 aspfile.write(GAME_RULES_NEW)
+
+                aspfile.write("\n% ------- Recipe -------\n")
+                aspfile.write("#program recipe.\n")
+                aspfile.write('\n'.join(recipe_facts))
+                aspfile.write("\n\n")
 
                 aspfile.write(CHECK_GOAL_ACHIEVED)
                 #aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
