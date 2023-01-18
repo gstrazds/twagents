@@ -178,44 +178,91 @@ eg_types_to_asp = """
   ],
  """
 
+def get_chosen_actions(prg):
+    for act in prg.symbolic_atoms.by_signature("act",2):
+        t=act.symbol.arguments[1].number
+        action = act.symbol.arguments[0]
+        print(f"[{t}] action:{action}")
+
 INC_MODE = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
 #script (python)
 import datetime
-from clingo import Function, Symbol, String, Number
+from clingo import Function, Symbol, String, Number, SymbolType
 
 def get(val, default):
     return val if val != None else default
 
 def main(prg):
+
     imin = get(prg.get_const("imin"), Number(1))
     imax = get(prg.get_const("imax"), Number(500))
     istop = get(prg.get_const("istop"), String("SAT"))
 
+    _actions_list = []
+    _actions_facts = []
+    def _get_chosen_actions(model):
+        #for act in prg.symbolic_atoms.by_signature("act",2):
+        #     t=act.symbol.arguments[1].number
+        #     action = act.symbol.arguments[0]
+        #     print(f"[{t}] action:{action}")
+        print("_get_chosen_actions......")
+        _actions_list.clear()
+        _actions_facts.clear()
+        for atom in model.symbols(atoms=True):
+            if (atom.name == "act" and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number):
+                t = atom.arguments[1].number
+                action = atom.arguments[0]
+                str_atom = f"{atom}."
+                _actions_facts.append(str_atom)
+                print(f"[{t}] : {str_atom}")
+                _actions_list.append(atom)
+        return True  # False -> stop after first model
+
     step, ret = 0, None
+    recipe_seen = False
     while ((imax is None or step < imax.number) and
            (step == 0 or step <= imin.number or (
-              (istop.string == "SAT" and not ret.satisfiable) or
-              (istop.string == "UNSAT" and not ret.unsatisfiable) or
-              (istop.string == "UNKNOWN" and not ret.unknown))
-           )):
+              (istop.string == "SAT" and (not ret.satisfiable or not recipe_seen)
+               or (istop.string == "UNSAT" and not ret.unsatisfiable)
+               or (istop.string == "UNKNOWN" and not ret.unknown)
+              )
+           ))):
         start_time = datetime.datetime.now()
         parts = []
         parts.append(("check", [Number(step)]))
         if step > 0:
             if step > 9:
                 print(f"[{step}] ", end='', flush=True)
-            prg.release_external(Function("query", [Number(step-1)]))
+            prg.release_external(Function("query1", [Number(step-1)]))
+            prg.release_external(Function("query2", [Number(step-1)]))
             #  query(t-1) becomes permanently = False (removed from set of Externals)
             parts.append(("step", [Number(step)]))
-            #? prg.cleanup()
+            if recipe_seen:
+                parts.append(("cooking_step", [Number(step)]))
+            if not recipe_seen and ret and ret.satisfiable:
+                if len(_actions_facts):
+                    actions_facts_str = "\\n".join(_actions_facts)
+                    actions_facts_str = actions_facts_str.replace("act(", "did_act(")
+                    print(actions_facts_str, flush=True)
+                    prg.add("prev_actions", [], actions_facts_str)
+                    parts.append(("prev_actions", []))
+                parts.append(("recipe", []))
+                recipe_seen = True
+            prg.cleanup()
         else:
             parts.append(("base", []))
-            parts.append(("recipe", []))
         prg.ground(parts)
-        prg.assign_external(Function("query", [Number(step)]), True)
-        ret, step = prg.solve(), step+1
+
+        if recipe_seen:
+            prg.assign_external(Function("query1", [Number(step)]), False)
+            prg.assign_external(Function("query2", [Number(step)]), True)
+        else:
+            prg.assign_external(Function("query1", [Number(step)]), True)
+
+        ret = prg.solve(on_model=lambda model: _get_chosen_actions(model))
+        step = step+1
         finish_time = datetime.datetime.now()
         elapsed_time = finish_time-start_time
         if step > 9:
@@ -224,7 +271,8 @@ def main(prg):
 #end.
 
 #program check(t).
-#external query(t).
+#external query1(t).
+#external query2(t).
 
 #program base.
 % Define
@@ -536,6 +584,31 @@ in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object in
 at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object to the floor of a room
 
 
+% ------ CONSUME ------
+% drink :: in(f, I) & drinkable(f) -> consumed(f)
+%+ drink :: in(f, I) & drinkable(f) & used(slot) -> consumed(f) & free(slot)",
+% eat :: in(f, I) & edible(f) -> consumed(f)
+%+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
+
+0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
+0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
+
+is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
+is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
+
+consumed(F,t) :- act(do_eat(t,F),t).
+consumed(F,t) :- act(do_drink(t,F),t).
+
+consumed(F,t) :- consumed(F,t-1), timestep(t).
+
+% --------------------------------------------------------------------------------
+
+"""
+
+COOKING_RULES = \
+"""%---------COOKING_RULES-----------
+
+#program cooking_step(t).
 % ------ MAKE ------
 %+ make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)",
 %- make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
@@ -564,31 +637,6 @@ is_action(do_make_meal(t),t) :- do_make_meal(t), timestep(t).
 
 in(meal_0,inventory,t) :- act(do_make_meal(t),t), timestep(t).
 consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
-
-% an example of how to count something - number of recipe ingredients that are currently in our inventory
-% NOTE: INEFFICIENT - NOTICEABLY SLOWS DOWN INCREMENTAL SOLVING (if done at each step)
-%num_acquired(t,N) :- timestep(t), N=#count{F:in_recipe(I,F),in_inventory(F,t),instance_of(F,f),instance_of(I,ingredient)}. %, query(t).
-%#show num_acquired/2.
-
-
-% ------ CONSUME ------
-% drink :: in(f, I) & drinkable(f) -> consumed(f)
-%+ drink :: in(f, I) & drinkable(f) & used(slot) -> consumed(f) & free(slot)",
-% eat :: in(f, I) & edible(f) -> consumed(f)
-%+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
-
-0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
-0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
-
-is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
-is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
-
-consumed(F,t) :- act(do_eat(t,F),t).
-consumed(F,t) :- act(do_drink(t,F),t).
-
-consumed(F,t) :- consumed(F,t-1), timestep(t).
-
-% --------------------------------------------------------------------------------
 
 """
 
@@ -620,16 +668,19 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 % Test
 
+
 %--------------------
-:- not recipe_seen(t), query(t).
+:- not recipe_seen(t), query1(t).
+%:- not recipe_seen(T0), T0<=T+1, timestep(T0),  timestep(T), -query1(T).
 %solved2(t) :- act(do_make_meal(t),t), query(t).
-solved2(t) :- consumed(meal_0,t), query(t).
+solved2(t) :- consumed(meal_0,t), query2(t).
+X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 %--------------------
 % solved1(t) :- recipe_seen(t), query(t).
 % solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
 %--------------------
 
-:- not solved2(t), query(t).
+:- not solved2(t), query2(t).
 
 
 """
@@ -778,6 +829,7 @@ if __name__ == "__main__":
                 # ---- GAME DYNAMICS
                 aspfile.write(GAME_RULES_COMMON)
                 aspfile.write(GAME_RULES_NEW)
+                aspfile.write(COOKING_RULES)
 
                 aspfile.write("\n% ------- Recipe -------\n")
                 aspfile.write("#program recipe.\n")
@@ -795,7 +847,8 @@ if __name__ == "__main__":
 
                 #aspfile.write("#show timestep/1.\n")
                 #aspfile.write("#show atP/2.\n")
-                aspfile.write("#show act/2.\n")
+                #aspfile.write("#show act/2.\n")
+                aspfile.write("#show.\n")
                 # aspfile.write("#show at_goal/2.\n")
                 # aspfile.write("#show do_moveP/4.\n")
                 # aspfile.write("#show do_open/2.\n")
