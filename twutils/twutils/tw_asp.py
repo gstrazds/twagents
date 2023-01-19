@@ -63,15 +63,22 @@ def is_state_value(fact_name: str) -> str:
         return "cut_state", "should_cut"
     return '', ''
 
-def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> str:
+def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> Tuple[str, bool, bool]:
     """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
     asp_fact_str, is_part_of_recipe = twfact_to_asp_attrib_state(fact, step)
     if not asp_fact_str:  # not a state attribute, convert to a normal fact
         asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
         args_str = ', '.join([f"{a.name}" for a in asp_args])
-        maybe_timestep = ', '+str(step) if is_fluent_fact(fact.name, args_str) else ''
+        if is_fluent_fact(fact.name, args_str):
+            maybe_timestep = ', '+str(step)
+            is_static_fact = False
+        else:
+            maybe_timestep = ''
+            is_static_fact = True
         is_part_of_recipe = is_recipe_fact(fact.name, args_str)   # handles cooking_location, in(ingr,recipe)
         asp_fact_str = f"{fact.name}({args_str}{maybe_timestep})."
+    else:
+        is_static_fact = is_part_of_recipe   # should_cook(), should_cut() are static, but cook_state(), cut_state() are fluents
 
     # asp_fact = Proposition(fact.name, asp_args)
     # asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")  #remove type annotations (name:type,)
@@ -82,7 +89,7 @@ def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> str:
     #     asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
     if hfact:
         asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
-    return asp_fact_str, is_part_of_recipe
+    return asp_fact_str, is_part_of_recipe, is_static_fact
 
 def twfact_to_asp_attrib_state(fact:Proposition, step:int) -> Tuple[Optional[str], bool]:
     attrib_name, attrib_name_should = is_state_value(fact.name)
@@ -132,7 +139,7 @@ def get_chosen_actions(prg):
         action = act.symbol.arguments[0]
         print(f"[{t}] action:{action}")
 
-INC_MODE = \
+INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
 #script (python)
@@ -286,8 +293,6 @@ connected(R1,R2,north) :- connected(R2,R1,south).
 connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
 has_door(R,D) :- r(R), d(D), link(R,D,_).
 door_direction(R,D,NSEW) :- r(R), r(R2), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
-
-atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position
 """
 
 
@@ -317,7 +322,6 @@ free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there 
 
 
 % Alias
-openD(D,t) :- open(D,t), d(D), timestep(t).  % alias for 'door D is open at time t'
 atP(t,R) :- at(player,R,t).                  % alias for player's current location
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
@@ -445,7 +449,7 @@ edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transit
 
 0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in_inventory(X,t-1), at(A,R,t-1).
 % Test constraints
-:- do_cook(t,X,A), atP(R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
+:- do_cook(t,X,A), at(player,R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
 
 is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
 
@@ -657,10 +661,11 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
 
     with open(asp_file_path, "w") as aspfile:
-        aspfile.write(INC_MODE)
+        aspfile.write(INCREMENTAL_SOLVING)
         aspfile.write("% ------- Types -------\n")
         aspfile.write(TYPE_RULES)
         type_infos = types_to_asp(game.kb.types)
+        aspfile.write("\n% ------- IS_A -------\n")
         for typename, _ in type_infos:
             # aspfile.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
             aspfile.write(f"instance_of(X,{typename}) :- {typename}(X).\n")
@@ -672,20 +677,32 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         for info in game._infos.values():
             aspfile.write(info_to_asp(info))
             aspfile.write('\n')
-    #  game.kb.logic.serialize()
-        aspfile.write("\n% ------- Facts -------\n")
-        recipe_facts = []
-        for fact, hfact in zip(game.world.facts, hfacts):
-            fact_str, is_part_of_recipe = fact_to_asp(fact, hfact, step=0)
-            if is_part_of_recipe:
-                recipe_facts.append(fact_str)
-            else:
-                aspfile.write(fact_str)
-                aspfile.write('\n')
         aspfile.write("\n% ------- Navigation -------\n")
         aspfile.write(MAP_RULES)
-        aspfile.write(ACTION_STEP_RULES)
+        aspfile.write("\n% ------- Facts -------\n")
+        recipe_facts = []
+        room_facts = {}
+        initial_fluents = []
+        static_facts = []
+        for fact, hfact in zip(game.world.facts, hfacts):
+            fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step=0)
+            if is_part_of_recipe:
+                recipe_facts.append(fact_str)
+            elif is_static_fact:
+                static_facts.append(fact_str)
+            else:
+                initial_fluents.append(fact_str)
+
+        aspfile.write('\n'.join(static_facts))
+        aspfile.write("\n")
+        aspfile.write("\n% ------- initial fluents -------\n")
+        aspfile.write('\n'.join(initial_fluents))
+        aspfile.write("\n\n")
+        aspfile.write("atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
+        aspfile.write("\n\n")
+
         # ---- GAME DYNAMICS
+        aspfile.write(ACTION_STEP_RULES)
         aspfile.write(GAME_RULES_COMMON)
         aspfile.write(GAME_RULES_NEW)
         aspfile.write(COOKING_RULES)
@@ -712,4 +729,3 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         # aspfile.write("#show do_moveP/4.\n")
         # aspfile.write("#show do_open/2.\n")
         # aspfile.write("#show has_door/2.\n")
-        # aspfile.write("#show openD/2.  % debug \n")
