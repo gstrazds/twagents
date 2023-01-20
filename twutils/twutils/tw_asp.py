@@ -28,9 +28,7 @@ def main(prg):
     _actions_facts = []
     def _get_chosen_actions(model):
         #for act in prg.symbolic_atoms.by_signature("act",2):
-        #     t=act.symbol.arguments[1].number
-        #     action = act.symbol.arguments[0]
-        #     print(f"[{t}] action:{action}")
+        #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
         print("_get_chosen_actions......")
         _actions_list.clear()
         _actions_facts.clear()
@@ -66,10 +64,13 @@ def main(prg):
             if recipe_seen:
                 parts.append(("cooking_step", [Number(step)]))
             if not recipe_seen and ret and ret.satisfiable:
+                parts.append(("cooking_step", [Number(step)]))
+            if not recipe_seen and ret and ret.satisfiable:
                 if len(_actions_facts):
                     actions_facts_str = "\\n".join(_actions_facts)
                     actions_facts_str = actions_facts_str.replace("act(", "did_act(")
-                    print(actions_facts_str, flush=True)
+                    print("ADDING prev_actions:", actions_facts_str, flush=True)
+                    print("\\n\\t".join(_actions_facts), flush=True)
                     prg.add("prev_actions", [], actions_facts_str)
                     parts.append(("prev_actions", []))
                 parts.append(("recipe", []))
@@ -318,7 +319,7 @@ edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
 %edible(X,t) :- cooked_state(X,needs_cooking,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
 edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
 
-0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in_inventory(X,t-1), at(A,R,t-1).
+0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in(X,inventory,t-1), at(A,R,t-1).
 % Test constraints
 :- do_cook(t,X,A), at(player,R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
 
@@ -376,11 +377,11 @@ in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed
 % -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
 0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
-count_inventory(N,t) :- timestep(t), N=#sum{1,in_inventory(O,t):in_inventory(O,t)}.  % #sum of 1, = same as #count{}
+count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
 %#show count_inventory/2.
 
 % can't pick up anything if already carrying inventory_max items
-:- do_take(t,_,_), timestep(t), inventory_max(N), #count{in_inventory(O,t):in_inventory(O,t)} > N.
+:- do_take(t,_,_), timestep(t), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} > N.
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
@@ -413,8 +414,8 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 % eat :: in(f, I) & edible(f) -> consumed(f)
 %+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
 
-0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
-0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in_inventory(F,t-1), timestep(t).
+0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
+0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
 
 is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
 is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
@@ -447,11 +448,11 @@ in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
 in_recipe(F) :- in_recipe(I,F).
 
 % have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
-0 { have_prepped_ingredients(t) } 1 :- in_recipe(I,F), in_inventory(F,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(F), not in_inventory(F,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
-:- have_prepped_ingredients(t), not recipe_seen(t), timestep(t).
+{have_prepped_ingredients(t-1)}  :- in_recipe(I,F), in(F,inventory,t-1), timestep(t).
+:- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
+:- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
+:- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
+:- have_prepped_ingredients(t-1), not recipe_seen(t), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
@@ -494,8 +495,8 @@ CHECK_GOAL_ACHIEVED = \
 
 %--------------------
 :- not recipe_seen(t), query1(t).
-%:- not recipe_seen(T0), T0<=T+1, timestep(T0),  timestep(T), -query1(T).
-%solved2(t) :- act(do_make_meal(t),t), query(t).
+%solved2(t) :- have_prepped_ingredients(t-1), query2(t).
+%solved2(t) :- act(do_make_meal(t),t), query2(t).
 solved2(t) :- consumed(meal_0,t), query2(t).
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 %--------------------
@@ -614,28 +615,28 @@ def twfact_to_asp_attrib_state(fact:Proposition, step:str) -> Tuple[Optional[str
     asp_fact_str = f"{attrib_name}({args_str})."
     return asp_fact_str, is_recipe_entry
 
-eg_types_to_asp = """
-"types": [
-    "I: I",
-    "P: P",
-    "RECIPE: RECIPE",
-    "c: c -> t",
-    "d: d -> t",
-    "f: f -> o",
-    "ingredient: ingredient -> t",
-    "k: k -> o",
-    "meal: meal -> f",
-    "o: o -> t",
-    "object: object",
-    "oven: oven -> c",
-    "r: r",
-    "s: s -> t",
-    "slot: slot",
-    "stove: stove -> s",
-    "t: t",
-    "toaster: toaster -> c"
-  ],
- """
+# eg_types_to_asp = """
+# "types": [
+#     "I: I",
+#     "P: P",
+#     "RECIPE: RECIPE",
+#     "c: c -> t",
+#     "d: d -> t",
+#     "f: f -> o",
+#     "ingredient: ingredient -> t",
+#     "k: k -> o",
+#     "meal: meal -> f",
+#     "o: o -> t",
+#     "object: object",
+#     "oven: oven -> c",
+#     "r: r",
+#     "s: s -> t",
+#     "slot: slot",
+#     "stove: stove -> s",
+#     "t: t",
+#     "toaster: toaster -> c"
+#   ],
+#  """
 
 def types_to_asp(typestree: VariableTypeTree) -> str:
     # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
@@ -658,28 +659,52 @@ def group_facts_by_room(initial_facts, room_facts):
         return name.startswith('r_')
 
     def _add_to_(room_facts, room_name, fact, fact_str):
+        # print(f"_add_to_(room_facts, {room_name}, .., '{fact_str}')")
         if room_name in room_facts:
             room_facts[room_name].append(fact_str)
         else:
             room_facts[room_name] = [fact_str]
 
     where_is = {}
+    def _get_room_for(obj_name):
+        if _is_a_room(obj_name) or obj_name == 'I':  #obj_name == 'inventory':
+            return obj_name
+        if obj_name not in where_is:
+            return None
+        _holder = where_is[obj_name]
+        return _get_room_for(_holder)
+
     for (fact_str, fact) in initial_facts.items():
         #print(fact_str, "|", fact, len(fact.arguments), fact.name)
         if len(fact.arguments) > 1:
             if fact.name == 'at':
-                where = fact.arguments[1].name
-                if _is_a_room(where):
-                    _add_to_(room_facts,where,fact,fact_str)
-            elif fact.name == 'free':
+                _where = fact.arguments[1].name
+                if not _is_a_room(_where):
+                    assert False, f"Expected arg[1] is_a room: {fact_str}"
+            if fact.name == 'free':
                 room = fact.arguments[0].name
                 if _is_a_room(room):
                     _add_to_(room_facts,room,fact,fact_str)
             elif fact.name in LOCATION_REL:
-                where_is[fact_str] = fact.arguments[1].name
+                where_is[fact.arguments[0].name] = fact.arguments[1].name
     #print(where_is)
+    for obj_name in where_is:
+        _where = where_is[obj_name]
+    #     if _is_a_room(_where) or 'I' == _where:  # 'inventory' == _where:
+    #         print(f"{obj_name}.{where_is[obj_name]}; ", end='')
+    # print()
+    for (fact_str, fact) in initial_facts.items():
+        #print(fact_str, "|", fact, len(fact.arguments), fact.name)
+        if len(fact.arguments) > 1 and fact.name in LOCATION_REL:
+            _where = _get_room_for(fact.arguments[1].name)
+            if _is_a_room(_where):
+                # if _where != fact.arguments[1].name: print(fact.arguments[1].name, ":", _where)
+                _add_to_(room_facts,_where,fact,fact_str)
+            elif _where != 'I':
+                print(f"UNEXPECTED: {_where} '{fact_str}'")
     for room in room_facts.keys():
         for fact_str in room_facts[room]:
+            assert fact_str in initial_facts, f"[{room}] {room_facts[room]}"
             del initial_facts[fact_str]
 
 
