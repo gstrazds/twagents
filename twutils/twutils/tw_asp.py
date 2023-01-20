@@ -1,143 +1,12 @@
 #from pathlib import Path, PurePath
 from typing import Optional, Any, Tuple
+from operator import itemgetter
 
 from textworld.logic import Proposition, Variable
 from textworld.generator import Game, KnowledgeBase
 from textworld.generator.vtypes import VariableType, VariableTypeTree
 
-def twname_to_asp(name:str) -> str:
-    if name == 'P':
-        aspname = 'player'
-    elif name == 'I':
-        aspname = 'inventory'
-    elif name == 't':  # a base type name in the TextWorld type hierarchy
-        aspname = 'thing' 
-    else:
-        aspname = name.lower()
-    return aspname
 
-# def twtype_to_typename(type:str) -> str:
-#     return 'thing' if type == 't' else objname_to_asp(type)
-
-
-
-#FLUENT_FACTS = [
-#   ---location----
-#  'at', 'on', 'in',
-#   ----open_state----
-#  'open', 'closed', 'locked',
-#   ----cut_state----
-#  'uncut', 'sliced', 'diced', 'chopped',
-#   ----cooked_state----
-#  'raw', 'needs_cooking', 'roasted', 'grilled', 'fried', 'burned',
-#   ----edible_state----
-#  'edible', 'inedible']
-
-STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
-
-COOKED_STATE = ['needs_cooking', 'raw', 'roasted', 'grilled', 'fried', 'burned']  #anything other than raw or needs_cooking -> cooked
-CUT_STATE = ['uncut', 'sliced', 'diced', 'chopped'] #anything other than -> uncut
-OPEN_STATE = ['open', 'closed', 'locked'] #anything other than open -> -open
-LOCATION_REL = ['at', 'on', 'in']
-
-def is_recipe_fact(fact_name: str, args_str: Optional[str] = None):
-    if fact_name.startswith('ingredient'):
-        return True
-    if args_str and 'ingredient' in args_str:
-        return True
-    if args_str and 'recipe' in args_str:    # cooking_location(r_0,recipe)
-        return True
-    return False
-
-def is_fluent_fact(fact_name: str, args_str: Optional[str] = None):
-    if is_recipe_fact(fact_name, args_str):
-        return False
-    if fact_name in STATIC_FACTS:
-        return False
-    return True
-
-def is_state_value(fact_name: str) -> str:
-    if fact_name in COOKED_STATE:
-        return "cooked_state", "should_cook"
-    elif fact_name in CUT_STATE:
-        return "cut_state", "should_cut"
-    return '', ''
-
-def fact_to_asp(fact:Proposition, hfact=None, step:int = 0) -> Tuple[str, bool, bool]:
-    """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
-    asp_fact_str, is_part_of_recipe = twfact_to_asp_attrib_state(fact, step)
-    if not asp_fact_str:  # not a state attribute, convert to a normal fact
-        asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
-        args_str = ', '.join([f"{a.name}" for a in asp_args])
-        if is_fluent_fact(fact.name, args_str):
-            maybe_timestep = ', '+str(step)
-            is_static_fact = False
-        else:
-            maybe_timestep = ''
-            is_static_fact = True
-        is_part_of_recipe = is_recipe_fact(fact.name, args_str)   # handles cooking_location, in(ingr,recipe)
-        asp_fact_str = f"{fact.name}({args_str}{maybe_timestep})."
-    else:
-        is_static_fact = is_part_of_recipe   # should_cook(), should_cut() are static, but cook_state(), cut_state() are fluents
-
-    # asp_fact = Proposition(fact.name, asp_args)
-    # asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")  #remove type annotations (name:type,)
-    # if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
-    #     pass   # TODO special-case processing of recipe specifications  
-    #     # (don't add time step)
-    # elif fact.name not in STATIC_FACTS:
-    #     asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
-    if hfact:
-        asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
-    return asp_fact_str, is_part_of_recipe, is_static_fact
-
-def twfact_to_asp_attrib_state(fact:Proposition, step:int) -> Tuple[Optional[str], bool]:
-    attrib_name, attrib_name_should = is_state_value(fact.name)
-    if not attrib_name:
-        return None, False  # not an attribute state, and not a recipe step (should_xxx())
-    assert fact.name not in STATIC_FACTS, f"UNEXPECTED: {fact.name} is BOTH in STATIC_FACTS and an attribute_value[{attrib_name}]"
-    asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
-    arg_names = [f"{a.name}" for a in asp_args]
-    assert len(arg_names) == 1, f"{arg_names}"
-    is_recipe_entry =  is_recipe_fact(fact.name, args_str=arg_names[0])  # if multiple args, need to do a string join
-    arg_names.append(fact.name) 
-    if is_recipe_entry: 
-        #maybe_timestep = ''   # recipe is static, no timestep needed
-        attrib_name = attrib_name_should
-    else:
-        arg_names.append(str(step))   # add timestep as last arg to make a fluent
-    args_str = ', '.join(arg_names)
-    asp_fact_str = f"{attrib_name}({args_str})."
-    return asp_fact_str, is_recipe_entry
-
-eg_types_to_asp = """
-"types": [
-    "I: I",
-    "P: P",
-    "RECIPE: RECIPE",
-    "c: c -> t",
-    "d: d -> t",
-    "f: f -> o",
-    "ingredient: ingredient -> t",
-    "k: k -> o",
-    "meal: meal -> f",
-    "o: o -> t",
-    "object: object",
-    "oven: oven -> c",
-    "r: r",
-    "s: s -> t",
-    "slot: slot",
-    "stove: stove -> s",
-    "t: t",
-    "toaster: toaster -> c"
-  ],
- """
-
-def get_chosen_actions(prg):
-    for act in prg.symbolic_atoms.by_signature("act",2):
-        t=act.symbol.arguments[1].number
-        action = act.symbol.arguments[0]
-        print(f"[{t}] action:{action}")
 
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
@@ -208,6 +77,8 @@ def main(prg):
             prg.cleanup()
         else:
             parts.append(("base", []))
+            parts.append(("initial_state", [Number(0)]))
+            parts.append(("initial_room", [Number(0)]))
         prg.ground(parts)
 
         if recipe_seen:
@@ -407,7 +278,7 @@ locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
 0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
 % Test constraints
 :- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
-:- do_open(t,D), d(D), r(R), atP(t,R), not has_door(R,D).  % can only open a door if player is in appropriate room
+:- do_open(t,D), d(D), r(R), at(player,R,t), not has_door(R,D).  % can only open a door if player is in appropriate room
 % have to be in the same room to open a container
 :- do_open(t,C), at(player,R,t), instance_of(C,c), r(R), at(C,R2,t), r(R2), R != R2.
 
@@ -582,8 +453,8 @@ in_recipe(F) :- in_recipe(I,F).
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
 :- have_prepped_ingredients(t), not recipe_seen(t), timestep(t).
 
-0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), atP(t,R), timestep(t).
-:- do_make_meal(t), cooking_location(R, recipe), r(R), not atP(t,R), timestep(t).
+0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
+:- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
 
 is_action(do_make_meal(t),t) :- do_make_meal(t), timestep(t).
 
@@ -638,6 +509,134 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actu
 """
 
 
+def twname_to_asp(name:str) -> str:
+    if name == 'P':
+        aspname = 'player'
+    elif name == 'I':
+        aspname = 'inventory'
+    elif name == 't':  # a base type name in the TextWorld type hierarchy
+        aspname = 'thing'
+    else:
+        aspname = name.lower()
+    return aspname
+
+# def twtype_to_typename(type:str) -> str:
+#     return 'thing' if type == 't' else objname_to_asp(type)
+
+
+
+#FLUENT_FACTS = [
+#   ---location----
+#  'at', 'on', 'in',
+#   ----open_state----
+#  'open', 'closed', 'locked',
+#   ----cut_state----
+#  'uncut', 'sliced', 'diced', 'chopped',
+#   ----cooked_state----
+#  'raw', 'needs_cooking', 'roasted', 'grilled', 'fried', 'burned',
+#   ----edible_state----
+#  'edible', 'inedible']
+
+STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
+
+COOKED_STATE = ['needs_cooking', 'raw', 'roasted', 'grilled', 'fried', 'burned']  #anything other than raw or needs_cooking -> cooked
+CUT_STATE = ['uncut', 'sliced', 'diced', 'chopped'] #anything other than -> uncut
+OPEN_STATE = ['open', 'closed', 'locked'] #anything other than open -> -open
+LOCATION_REL = ['at', 'on', 'in']
+
+def is_recipe_fact(fact_name: str, args_str: Optional[str] = None):
+    if fact_name.startswith('ingredient'):
+        return True
+    if args_str and 'ingredient' in args_str:
+        return True
+    if args_str and 'recipe' in args_str:    # cooking_location(r_0,recipe)
+        return True
+    return False
+
+def is_fluent_fact(fact_name: str, args_str: Optional[str] = None):
+    if is_recipe_fact(fact_name, args_str):
+        return False
+    if fact_name in STATIC_FACTS:
+        return False
+    return True
+
+def is_state_value(fact_name: str) -> str:
+    if fact_name in COOKED_STATE:
+        return "cooked_state", "should_cook"
+    elif fact_name in CUT_STATE:
+        return "cut_state", "should_cut"
+    return '', ''
+
+def fact_to_asp(fact:Proposition, hfact=None, step:str = '0') -> Tuple[str, bool, bool]:
+    """ converts a TextWorld fact to a format appropriate for Answer Set Programming"""
+    asp_fact_str, is_part_of_recipe = twfact_to_asp_attrib_state(fact, step)
+    if not asp_fact_str:  # not a state attribute, convert to a normal fact
+        asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
+        args_str = ', '.join([f"{a.name}" for a in asp_args])
+        if is_fluent_fact(fact.name, args_str):
+            maybe_timestep = ', '+str(step)
+            is_static_fact = False
+        else:
+            maybe_timestep = ''
+            is_static_fact = True
+        is_part_of_recipe = is_recipe_fact(fact.name, args_str)   # handles cooking_location, in(ingr,recipe)
+        asp_fact_str = f"{fact.name}({args_str}{maybe_timestep})."
+    else:
+        is_static_fact = is_part_of_recipe   # should_cook(), should_cut() are static, but cook_state(), cut_state() are fluents
+
+    # asp_fact = Proposition(fact.name, asp_args)
+    # asp_fact_str = re.sub(r":[^,)]*", '', f"{str(asp_fact)}.")  #remove type annotations (name:type,)
+    # if 'ingredient' in asp_fact_str:  #TextWorld quirk: facts refering to 'ingredient_N' are static (define the recipe)
+    #     pass   # TODO special-case processing of recipe specifications
+    #     # (don't add time step)
+    # elif fact.name not in STATIC_FACTS:
+    #     asp_fact_str = asp_fact_str.replace(").", f", {step}).")  # add time step to convert initial state facts to fluents
+    if hfact:
+        asp_fact_str = f"{asp_fact_str} % {str(hfact)}"  # human readable version of the fact (obj names instead of ids)
+    return asp_fact_str, is_part_of_recipe, is_static_fact
+
+def twfact_to_asp_attrib_state(fact:Proposition, step:str) -> Tuple[Optional[str], bool]:
+    attrib_name, attrib_name_should = is_state_value(fact.name)
+    if not attrib_name:
+        return None, False  # not an attribute state, and not a recipe step (should_xxx())
+    assert fact.name not in STATIC_FACTS, f"UNEXPECTED: {fact.name} is BOTH in STATIC_FACTS and an attribute_value[{attrib_name}]"
+    asp_args = [Variable(twname_to_asp(v.name), v.type) for v in fact.arguments]
+    arg_names = [f"{a.name}" for a in asp_args]
+    assert len(arg_names) == 1, f"{arg_names}"
+    is_recipe_entry =  is_recipe_fact(fact.name, args_str=arg_names[0])  # if multiple args, need to do a string join
+    arg_names.append(fact.name)
+    if is_recipe_entry:
+        #maybe_timestep = ''   # recipe is static, no timestep needed
+        attrib_name = attrib_name_should
+    else:
+        arg_names.append(str(step))   # add timestep as last arg to make a fluent
+    args_str = ', '.join(arg_names)
+    asp_fact_str = f"{attrib_name}({args_str})."
+    return asp_fact_str, is_recipe_entry
+
+eg_types_to_asp = """
+"types": [
+    "I: I",
+    "P: P",
+    "RECIPE: RECIPE",
+    "c: c -> t",
+    "d: d -> t",
+    "f: f -> o",
+    "ingredient: ingredient -> t",
+    "k: k -> o",
+    "meal: meal -> f",
+    "o: o -> t",
+    "object: object",
+    "oven: oven -> c",
+    "r: r",
+    "s: s -> t",
+    "slot: slot",
+    "stove: stove -> s",
+    "t: t",
+    "toaster: toaster -> c"
+  ],
+ """
+
 def types_to_asp(typestree: VariableTypeTree) -> str:
     # typestree.serialize(): return [vtype.serialize() for vtype in self.variables_types.values()]
     def _vtype_info(vtype:Variable) -> str:
@@ -653,6 +652,35 @@ def info_to_asp(info) -> str:
     if info.name:
         info_type_str += f" % {(info.adj if info.adj else '')} {info.name}"
     return info_type_str
+
+def group_facts_by_room(initial_facts, room_facts):
+    def _is_a_room(name):
+        return name.startswith('r_')
+
+    def _add_to_(room_facts, room_name, fact, fact_str):
+        if room_name in room_facts:
+            room_facts[room_name].append(fact_str)
+        else:
+            room_facts[room_name] = [fact_str]
+
+    where_is = {}
+    for (fact_str, fact) in initial_facts.items():
+        #print(fact_str, "|", fact, len(fact.arguments), fact.name)
+        if len(fact.arguments) > 1:
+            if fact.name == 'at':
+                where = fact.arguments[1].name
+                if _is_a_room(where):
+                    _add_to_(room_facts,where,fact,fact_str)
+            elif fact.name == 'free':
+                room = fact.arguments[0].name
+                if _is_a_room(room):
+                    _add_to_(room_facts,room,fact,fact_str)
+            elif fact.name in LOCATION_REL:
+                where_is[fact_str] = fact.arguments[1].name
+    #print(where_is)
+    for room in room_facts.keys():
+        for fact_str in room_facts[room]:
+            del initial_facts[fact_str]
 
 
 def generate_ASP_for_game(game, asp_file_path, hfacts=None):
@@ -680,26 +708,37 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         aspfile.write("\n% ------- Navigation -------\n")
         aspfile.write(MAP_RULES)
         aspfile.write("\n% ------- Facts -------\n")
-        recipe_facts = []
+        recipe_facts = {}
         room_facts = {}
-        initial_fluents = []
-        static_facts = []
+        initial_fluents = {}
+        static_facts = {}
         for fact, hfact in zip(game.world.facts, hfacts):
-            fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step=0)
+            fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
             if is_part_of_recipe:
-                recipe_facts.append(fact_str)
+                recipe_facts[fact_str] = fact
             elif is_static_fact:
-                static_facts.append(fact_str)
+                static_facts[fact_str] = fact
             else:
-                initial_fluents.append(fact_str)
+                initial_fluents[fact_str] = fact
+        group_facts_by_room(initial_fluents, room_facts)
 
-        aspfile.write('\n'.join(static_facts))
+        aspfile.write('\n'.join(static_facts.keys()))
         aspfile.write("\n")
         aspfile.write("\n% ------- initial fluents -------\n")
-        aspfile.write('\n'.join(initial_fluents))
+        aspfile.write("#program initial_state(t).\n")
+        aspfile.write('\n')
+        aspfile.write('\n'.join(initial_fluents.keys()))
         aspfile.write("\n\n")
-        aspfile.write("atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
+        aspfile.write("%atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
         aspfile.write("\n\n")
+
+        aspfile.write("\n% ------- ROOM fluents -------\n")
+        aspfile.write("\n")
+        aspfile.write(f"#program initial_room(t).\n")
+        for room in sorted(room_facts.keys()):
+            aspfile.write(f"% #program room_{room}(t).\n")
+            aspfile.write('\n'.join(room_facts[room]))
+            aspfile.write('\n\n')
 
         # ---- GAME DYNAMICS
         aspfile.write(ACTION_STEP_RULES)
@@ -709,7 +748,7 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
 
         aspfile.write("\n% ------- Recipe -------\n")
         aspfile.write("#program recipe.\n")
-        aspfile.write('\n'.join(recipe_facts))
+        aspfile.write('\n'.join(recipe_facts.keys()))
         aspfile.write("\n\n")
 
         aspfile.write(CHECK_GOAL_ACHIEVED)
