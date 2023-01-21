@@ -204,19 +204,31 @@ GAME_RULES_COMMON = \
 % ------ LOOK ------
 % inventory :: $at(P, r) -> 
 % look :: $at(P, r) -> 
-
 % ------ LOOK AT: EXAMINE an object ------
 % examine/I :: $at(o, I) -> 
 % examine/c :: $at(P, r) & $at(c, r) & $open(c) & $in(o, c) -> 
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
+% player has visited room R
+have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).
+0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
+
+% can see an object that's in a container if the container is open and player is in the same room
+have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t), not have_found(O,_,t-1).
 % examine/c :: can examine an object that's in a container if the container is open and player is in the same room
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+
 % examine/s :: can examine an object that is on a support if player is in the same room as the suppport
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), s(S), at(S,R,t), on(O,S,t), timestep(t).
+% can see an object that is on a support if player is in the same room as the suppport
+have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), s(S), at(S,R,t), on(O,S,t), timestep(t), not have_found(O,_,t-1).
+
+% can see a thing if player is in the same room as the thing
+have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t), not have_found(O,_,t-1).
 % examine/t :: can examine a thing if player is in the same room as the thing
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+
 
 % Test constraints
 % have to be in the same room to examine something
@@ -225,9 +237,18 @@ GAME_RULES_COMMON = \
 :- do_examine(t,O), at(player,R,t), o(O), r(R), at(O,R2,t), r(R2), timestep(t), R != R2.
 
 is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
+is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 
-recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
-recipe_seen(t) :- recipe_seen(t-1), timestep(t).
+have_examined(O,t,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t).
+have_examined(R,t,t) :- act(do_look(t,R),t), r(R), timestep(t).
+
+% inertia
+have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), not act(do_examine(t,X),t), not act(do_look(t,X),t).
+have_found(X,T,t) :- have_found(X,T,t-1), timestep(t).  % player is the only agent in deterministic world, with perfect memory
+
+recipe_seen(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
+% recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
+% recipe_seen(t) :- recipe_seen(t-1), timestep(t).
 
 
 % ------ GO ------
@@ -377,7 +398,7 @@ in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed
 % -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
 0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
-count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
+%count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
 %#show count_inventory/2.
 
 % can't pick up anything if already carrying inventory_max items
@@ -754,7 +775,7 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         aspfile.write('\n')
         aspfile.write('\n'.join(initial_fluents.keys()))
         aspfile.write("\n\n")
-        aspfile.write("%atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
+        aspfile.write("atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
         aspfile.write("\n\n")
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
