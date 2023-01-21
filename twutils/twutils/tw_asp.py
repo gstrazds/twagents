@@ -11,6 +11,7 @@ from textworld.generator.vtypes import VariableType, VariableTypeTree
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
+#const find_first=o_0.  % the cookbook is always o_0
 #script (python)
 import datetime
 from clingo import Function, Symbol, String, Number, SymbolType
@@ -73,7 +74,7 @@ def main(prg):
                     print("\\n\\t".join(_actions_facts), flush=True)
                     prg.add("prev_actions", [], actions_facts_str)
                     parts.append(("prev_actions", []))
-                parts.append(("recipe", []))
+                parts.append(("recipe", [Number(step-1)]))
                 recipe_seen = True
             prg.cleanup()
         else:
@@ -165,8 +166,27 @@ connected(R1,R2,north) :- connected(R2,R1,south).
 connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
 has_door(R,D) :- r(R), d(D), link(R,D,_).
 door_direction(R,D,NSEW) :- r(R), r(R2), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
+
+need_to_find(find_first,0).  % initially, we're looking for the cookbook
 """
 
+STEP0_FLUENTS = \
+"""
+
+% can see an object that's in a container if the container is open and player is in the same room
+have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
+
+% can see an object that is on a support if player is in the same room as the suppport
+have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,o), s(S), at(S,R,0), on(O,S,0).
+
+% can see a thing if player is in the same room as the thing
+have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
+% have already found something if it is initially in the player's inventory
+have_found(O,t,0) :- in(O,inventory,0).
+
+
+atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position"
+"""
 
 ACTION_STEP_RULES = \
 """
@@ -179,7 +199,6 @@ timestep(t).
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
 {at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
-
 % NOTE/IMPORTANT - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY:
 %  {at(player,R,t)} = 1 :- r(R), timestep(t).
 % NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep:
@@ -191,7 +210,7 @@ free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
 
-
+need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,_,t-1), timestep(t).
 
 % Alias
 atP(t,R) :- at(player,R,t).                  % alias for player's current location
@@ -450,6 +469,14 @@ consumed(F,t) :- consumed(F,t-1), timestep(t).
 
 """
 
+RECIPE_NEED_TO_FIND = \
+"""%---------RECIPE_NEED_TO_FIND-----------
+in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
+in_recipe(F) :- in_recipe(I,F).
+need_to_find(F,t) :- in_recipe(F).
+{need_to_find(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
+
+"""
 COOKING_RULES = \
 """%---------COOKING_RULES-----------
 
@@ -465,11 +492,9 @@ COOKING_RULES = \
 %- make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
 %+ make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) & $used(slot) & used(slot') & used(slot'') & used(slot''') & used(slot'''') -> in(meal, I) & free(slot') & free(slot'') & free(slot''') & free(slot'''') & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)",
 
-in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
-in_recipe(F) :- in_recipe(I,F).
 
 % have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
-{have_prepped_ingredients(t-1)}  :- in_recipe(I,F), in(F,inventory,t-1), timestep(t).
+{have_prepped_ingredients(t-1)}  :- in_recipe(F), in(F,inventory,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
@@ -775,8 +800,9 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         aspfile.write('\n')
         aspfile.write('\n'.join(initial_fluents.keys()))
         aspfile.write("\n\n")
-        aspfile.write("atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position")
-        aspfile.write("\n\n")
+        aspfile.write("\n")
+
+        aspfile.write(STEP0_FLUENTS)
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
         aspfile.write("\n")
@@ -793,9 +819,10 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         aspfile.write(COOKING_RULES)
 
         aspfile.write("\n% ------- Recipe -------\n")
-        aspfile.write("#program recipe.\n")
+        aspfile.write("#program recipe(t).\n")
         aspfile.write('\n'.join(recipe_facts.keys()))
         aspfile.write("\n\n")
+        aspfile.write(RECIPE_NEED_TO_FIND)
 
         aspfile.write(CHECK_GOAL_ACHIEVED)
         #aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
@@ -809,8 +836,9 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         #aspfile.write("#show timestep/1.\n")
         #aspfile.write("#show atP/2.\n")
         #aspfile.write("#show act/2.\n")
-        aspfile.write("#show.\n")
         # aspfile.write("#show at_goal/2.\n")
         # aspfile.write("#show do_moveP/4.\n")
         # aspfile.write("#show do_open/2.\n")
         # aspfile.write("#show has_door/2.\n")
+        aspfile.write("% #show need_to_find/2.\n")
+        aspfile.write("#show.\n")
