@@ -475,6 +475,7 @@ in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
 in_recipe(F) :- in_recipe(I,F).
 need_to_find(F,t) :- in_recipe(F).
 {need_to_find(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
+{need_to_find(A,t):instance_of(A,toaster)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
 
 """
 COOKING_RULES = \
