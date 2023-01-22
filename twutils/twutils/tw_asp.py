@@ -184,6 +184,7 @@ have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
 % have already found something if it is initially in the player's inventory
 have_found(O,t,0) :- in(O,inventory,0).
 
+contents_unknown(C,0) :- instance_of(C,c), closed(C,0).  % can't see into closed containers
 
 atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position"
 """
@@ -210,7 +211,11 @@ free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
 not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
 free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
 
+need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,_,t-1), timestep(t).
+need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
+
+contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
 
 % Alias
 atP(t,R) :- at(player,R,t).                  % alias for player's current location
@@ -473,8 +478,8 @@ RECIPE_NEED_TO_FIND = \
 """%---------RECIPE_NEED_TO_FIND-----------
 in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).
 in_recipe(F) :- in_recipe(I,F).
-need_to_find(F,t) :- in_recipe(F).
-{need_to_find(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
+need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not need_to_acquire(F,t-1).
+{need_to_acquire(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
 {need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
 {need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
 {need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
@@ -844,4 +849,5 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         # aspfile.write("#show do_open/2.\n")
         # aspfile.write("#show has_door/2.\n")
         aspfile.write("% #show need_to_find/2.\n")
+        aspfile.write("% #show contents_unknown/2.\n")
         aspfile.write("#show.\n")
