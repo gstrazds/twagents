@@ -152,10 +152,10 @@ instance_of(X,cut_state) :- cut_state(X).
 
 MAP_RULES = \
 """
-connected(R1,R2,west) :- west_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,north) :- north_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,south) :- south_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,east) :- east_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,east) :- west_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,south) :- north_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,north) :- south_of(R1, R2), r(R1), r(R2).
+connected(R1,R2,west) :- east_of(R1, R2), r(R1), r(R2).
 
 % assume that all doors/exits can be traversed in both directions
 connected(R1,R2,east) :- connected(R2,R1,west).
@@ -388,11 +388,11 @@ cut_state(X,sliced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,slice,X,_),t).
 cut_state(X,V,t) :- cut_state(X,V,t-1), V != uncut.
 
 % can chop, slice or dice cuttable ingredients that are in player's inventory if also have a knife (a sharp object), 
-0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1), not cooked(F,t-1).
+0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1). %, not cooked(F,t-1).
+%:- do_cut(t,_,F,_), cooked(F,t).       % can't cut up an ingredient that has already been cooked (in TextWorld)
 
 :- do_cut(t,_,F,O), not cut_state(F,uncut,t-1).  % can't cut up something that's already cut up
 :- do_cut(t,_,F,O), not sharp(O).      % can't cut up something with an unsharp instrument
-:- do_cut(t,_,F,_), cooked(F,t).       % can't cut up an ingredient that has already been cooked (in TextWorld)
 
 is_action(do_cut(t,V,F,O), t) :- do_cut(t,V,F,O).
 
