@@ -27,14 +27,14 @@ CUT_WITH = {
 }
 
 
+_INVERSE_DIRECTION = {
+    'north_of': 'south_of',
+    'east_of': 'west_of',
+    'south_of': 'north_of',
+    'west_of': 'east_of',
+}
 def reverse_direction(direction):
-    _DIRECTIONS_MAP = {
-        'north_of': 'south_of',
-        'east_of': 'west_of',
-        'south_of': 'north_of',
-        'west_of': 'east_of',
-    }
-    return _DIRECTIONS_MAP[direction]
+    return _INVERSE_DIRECTION[direction]
 
 
 def is_observable_relation(relname):

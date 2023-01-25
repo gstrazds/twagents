@@ -1,3 +1,4 @@
+import re
 #from pathlib import Path, PurePath
 from typing import Optional, Any, Tuple
 from operator import itemgetter
@@ -5,13 +6,14 @@ from operator import itemgetter
 from textworld.logic import Proposition, Variable
 from textworld.generator import Game, KnowledgeBase
 from textworld.generator.vtypes import VariableType, VariableTypeTree
-
+from textworld.generator.inform7 import Inform7Game
 
 
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
 #const find_first=o_0.  % the cookbook is always o_0
+#const first_room=r_4.  %this is a temporary hack [can override from command line with -c first_room=r_N]
 #script (python)
 import datetime
 from clingo import Function, Symbol, String, Number, SymbolType
@@ -24,6 +26,7 @@ def main(prg):
     imin = get(prg.get_const("imin"), Number(1))
     imax = get(prg.get_const("imax"), Number(500))
     istop = get(prg.get_const("istop"), String("SAT"))
+    first_room = get(prg.get_const("first_room"), String("r_4"))
 
     _actions_list = []
     _actions_facts = []
@@ -61,6 +64,7 @@ def main(prg):
             prg.release_external(Function("query1", [Number(step-1)]))
             prg.release_external(Function("query2", [Number(step-1)]))
             #  query(t-1) becomes permanently = False (removed from set of Externals)
+            parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
             if recipe_seen:
                 parts.append(("cooking_step", [Number(step)]))
@@ -80,7 +84,8 @@ def main(prg):
         else:
             parts.append(("base", []))
             parts.append(("initial_state", [Number(0)]))
-            parts.append(("initial_room", [Number(0)]))
+            parts.append((f"room_{first_room}", [Number(0)]))
+            parts.append(("every_step", [Number(step)]))
         prg.ground(parts)
 
         if recipe_seen:
@@ -135,6 +140,7 @@ is_lockable(X) :- instance_of(X,c), not instance_of(X,oven). % most containers a
 timestep(0). % incremental solving will define timestep(t) for t >= 1...
 
 direction(east;west;north;south).
+unknown(unknown).
 
 %inventory_max(7) :- not class(slot).  % default value for inventory size for games with no explicit inventory logic (old FTWC games)
 inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
@@ -147,46 +153,77 @@ cut_state(uncut;chopped;diced;sliced).
 instance_of(X,cooked_state) :- cooked_state(X).
 instance_of(X,cut_state) :- cut_state(X).
 
+% additional inheritance links to simplify rules for unknown rooms
+unknown(unknownN;unknownS;unknownE;unknownW).  % distinct unknowns for each cardinal direction (N,S,E,W)
+instance_of(unknownN;unknownS;unknownE;unknownW, unknown).
+
 """
 #  "class(A) :- instance_of(I,A).
 
 MAP_RULES = \
 """
-connected(R1,R2,east) :- west_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,south) :- north_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,north) :- south_of(R1, R2), r(R1), r(R2).
-connected(R1,R2,west) :- east_of(R1, R2), r(R1), r(R2).
+_connected(R1,R2,east) :- _west_of(R1, R2), r(R1), r(R2).
+_connected(R1,R2,south) :- _north_of(R1, R2), r(R1), r(R2).
+_connected(R1,R2,north) :- _south_of(R1, R2), r(R1), r(R2).
+_connected(R1,R2,west) :- _east_of(R1, R2), r(R1), r(R2).
+% assume that all doors/exits can be traversed in both directions
+_connected(R1,R2,east) :- _connected(R2,R1,west), r(R1).
+_connected(R1,R2,west) :- _connected(R2,R1,east), r(R1).
+_connected(R1,R2,south) :- _connected(R2,R1,north), r(R1).
+_connected(R1,R2,north) :- _connected(R2,R1,south), r(R1).
+
+connected(R1,unknownE,east) :- east_of(unknownE, R1), r(R1).
+connected(R1,unknownS,south) :- south_of(unknownS, R1), r(R1).
+connected(R1,unknownN,north) :- north_of(unknownN, R1), r(R1).
+connected(R1,unknownW,west) :- west_of(unknownW, R1), r(R1).
+
+connected(R1,R2,east) :- east_of(unknownE,R1), r(R1), west_of(unknownW, R2), r(R2).
+connected(R1,R2,south) :- north_of(unknownN,R2), r(R2), south_of(unknownS, R1), r(R1).
+connected(R1,R2,north) :- south_of(unknownS,R2), r(R2), north_of(unknownN, R1), r(R1).
+connected(R1,R2,west) :- east_of(unknownE,R2), r(R2), west_of(unknownW, R1), r(R1).
 
 % assume that all doors/exits can be traversed in both directions
-connected(R1,R2,east) :- connected(R2,R1,west).
-connected(R1,R2,west) :- connected(R2,R1,east).
-connected(R1,R2,south) :- connected(R2,R1,north).
-connected(R1,R2,north) :- connected(R2,R1,south).
+connected(R1,R2,east) :- connected(R2,R1,west), r(R1).
+connected(R1,R2,west) :- connected(R2,R1,east), r(R1).
+connected(R1,R2,south) :- connected(R2,R1,north), r(R1).
+connected(R1,R2,north) :- connected(R2,R1,south), r(R1).
 
 connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
 has_door(R,D) :- r(R), d(D), link(R,D,_).
-door_direction(R,D,NSEW) :- r(R), r(R2), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
+door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
+
+
+%---- initialize step 0 values for some fluents that require inertia from step-1
 
 need_to_find(find_first,0).  % initially, we're looking for the cookbook
-"""
 
-STEP0_FLUENTS = \
-"""
-
-% can see an object that's in a container if the container is open and player is in the same room
-have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
-
-% can see an object that is on a support if player is in the same room as the suppport
-have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,o), s(S), at(S,R,0), on(O,S,0).
-
+have_found(R,0,0) :- r(R), at(player,R,0). % have found the initial room
 % can see a thing if player is in the same room as the thing
-have_found(O,t,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
+have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
+% can see an object that's in a container if the container is open and player is in the same room
+have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
+% can see an object that is on a support if player is in the same room as the suppport
+have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), s(S), at(S,R,0), on(O,S,0).
 % have already found something if it is initially in the player's inventory
-have_found(O,t,0) :- in(O,inventory,0).
+have_found(O,0,0) :- in(O,inventory,0).
 
 contents_unknown(C,0) :- instance_of(C,c), closed(C,0).  % can't see into closed containers
 
-atP(0,R) :- at(player,R,0), r(R).   % Alias for player's initial position"
+
+"""
+
+EVERY_STEP_ALIASES = \
+"""
+#program every_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
+
+% define fluents that determine whether player can move from room R0 to R1
+free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
+not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
+free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+
+need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
+
+atP(t,R) :- at(player,R,t), r(R).   % Alias for player's initial position"
 """
 
 ACTION_STEP_RULES = \
@@ -206,16 +243,18 @@ timestep(t).
 %  {at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
 
-% define fluents that determine whether player can move from room R0 to R1
-free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), open(D,t).
-not free(R0,R1,t) :- r(R0), r(R1), d(D), link(R0,D,R1), not open(D,t). 
-free(R0,R1,t) :- r(R0), r(R1), connected(R0,R1), not link(R0,_,R1).  % if there is no door, exit is always traversible.
-
-need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,_,t-1), timestep(t).
 need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
 
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
+
+% newly explored a container (that was previously closed)
+have_explored(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
+%have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
+
+% newly explored a room (that was previously unseen/unvisited)
+have_visited(R,t) :- r(R), have_found(R,t,t).
+
 
 % Alias
 atP(t,R) :- at(player,R,t).                  % alias for player's current location
@@ -283,18 +322,22 @@ recipe_seen(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
 
 % --- inertia: player stays in the current room unless acts to move to another
   % stay in the current room unless current action is do_moveP
-at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
+%at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
+at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
 
   % player moved at time t, from previous room R0 to new room R
-at(player,R,t) :- act(do_moveP(t,R0,R,NSEW),t), at(player,R0,t-1), r(R0), r(R), connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
 % Test constraints
-:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
+%:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
  % can move to a connected room, if not blocked by a closed door
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %, T<=maxT.
+%0 {do_moveP(t,R0,R,NSEW):_connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), _connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+
 % Test constraints
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
+:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t-1).  % can't go that way: not a valid action
 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
 
@@ -548,7 +591,11 @@ CHECK_GOAL_ACHIEVED = \
 
 
 %--------------------
-:- not recipe_seen(t), query1(t).
+:- not have_visited(r_0,t), query1(t).
+
+%:- not recipe_seen(t), query1(t).
+%:- need_to_find(_,t), not have_visted(_,t), not have_explored(_,t), query1(t).  % if need to search, stop to process each new discovery
+
 %solved2(t) :- have_prepped_ingredients(t-1), query2(t).
 %solved2(t) :- act(do_make_meal(t),t), query2(t).
 solved2(t) :- consumed(meal_0,t), query2(t).
@@ -558,8 +605,14 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actu
 % solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
 %--------------------
 
-:- not solved2(t), query2(t).
+%:- not solved2(t), query2(t).
+:- t>2, query2(t).
 
+#show have_examined/2.
+#show have_visited/2.
+#show connected/3.
+#show free/3.
+#show atP/2.
 
 """
 
@@ -598,6 +651,8 @@ COOKED_STATE = ['needs_cooking', 'raw', 'roasted', 'grilled', 'fried', 'burned']
 CUT_STATE = ['uncut', 'sliced', 'diced', 'chopped'] #anything other than -> uncut
 OPEN_STATE = ['open', 'closed', 'locked'] #anything other than open -> -open
 LOCATION_REL = ['at', 'on', 'in']
+CONNECTION_REL = ['east_of', 'west_of', 'north_of', 'south_of']
+LINK_REL = ['link', 'free']
 
 def is_recipe_fact(fact_name: str, args_str: Optional[str] = None):
     if fact_name.startswith('ingredient'):
@@ -708,9 +763,10 @@ def info_to_asp(info) -> str:
         info_type_str += f" % {(info.adj if info.adj else '')} {info.name}"
     return info_type_str
 
+def _is_a_room(name):
+    return name.startswith('r_')
+
 def group_facts_by_room(initial_facts, room_facts):
-    def _is_a_room(name):
-        return name.startswith('r_')
 
     def _add_to_(room_facts, room_name, fact, fact_str):
         # print(f"_add_to_(room_facts, {room_name}, .., '{fact_str}')")
@@ -735,12 +791,20 @@ def group_facts_by_room(initial_facts, room_facts):
                 _where = fact.arguments[1].name
                 if not _is_a_room(_where):
                     assert False, f"Expected arg[1] is_a room: {fact_str}"
-            if fact.name == 'free':
-                room = fact.arguments[0].name
-                if _is_a_room(room):
-                    _add_to_(room_facts,room,fact,fact_str)
-            elif fact.name in LOCATION_REL:
+            if fact.name in LOCATION_REL:
                 where_is[fact.arguments[0].name] = fact.arguments[1].name
+            # elif fact.name == 'free':
+            #     room = fact.arguments[0].name
+            #     if _is_a_room(room):
+            #         _add_to_(room_facts,room,fact,fact_str)
+            elif fact.name in CONNECTION_REL or fact.name in LINK_REL:
+                if fact.name in CONNECTION_REL:
+                    room = fact.arguments[1].name
+                else:
+                    room = fact.arguments[0].name
+                assert _is_a_room(room), f"{fact}"
+                _add_to_(room_facts,room,fact,fact_str)
+
     #print(where_is)
     for obj_name in where_is:
         _where = where_is[obj_name]
@@ -784,39 +848,71 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         for info in game._infos.values():
             aspfile.write(info_to_asp(info))
             aspfile.write('\n')
-        aspfile.write("\n% ------- Navigation -------\n")
+        aspfile.write("\n% ------- Navigation (initially grounded for all room combinations R1xR2) -------\n")
         aspfile.write(MAP_RULES)
         aspfile.write("\n% ------- Facts -------\n")
         recipe_facts = {}
         room_facts = {}
         initial_fluents = {}
         static_facts = {}
+        directions_map = {}
+        for fact in game.world.facts:
+            if fact.name in CONNECTION_REL: # east_of(R1,R2), north_of, etc...
+                r1 = fact.arguments[0].name
+                r2 = fact.arguments[1].name
+                assert _is_a_room(r1), str(fact)
+                assert _is_a_room(r2), str(fact)
+                direction = fact.name[0].upper()
+                if r2 in directions_map:
+                    directions_map[r2][r1] = direction
+                else:
+                    directions_map[r2] = {r1: direction}
+        print(directions_map)
         for fact, hfact in zip(game.world.facts, hfacts):
             fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
             if is_part_of_recipe:
                 recipe_facts[fact_str] = fact
-            elif is_static_fact:
+            elif is_static_fact and not fact.name in CONNECTION_REL and not fact.name in LINK_REL:
                 static_facts[fact_str] = fact
             else:
+                if fact.name in CONNECTION_REL:
+                    _transition = "_"+fact_str
+                    static_facts[_transition] = fact  # privileged knowledge for transitions in partially observable world
+                    regex_direction_of = re.compile(r'\(r_(\d)+')      # dir_of(r_1, r_2) => dir_of(unkown, r_2)
+                    unknownStr = '(unknown'+fact.name[0].upper()
+                    fact_str = regex_direction_of.sub(unknownStr, fact_str)
+                    print(fact_str)
+                elif fact.name == 'link':
+                    regex_link = re.compile(r', r_(\d)+\)')             # link(r_1, d_N, r_2)
+                    r1 = fact.arguments[0].name
+                    r2 = fact.arguments[2].name
+                    unknownStr = f", unknown{directions_map[r1][r2]})"
+                    fact_str = regex_link.sub(unknownStr, fact_str)  #  => link(r_1, d_N, unknown)
+                    print(fact_str)
+                elif fact.name == 'free':
+                    #regex_free = re.compile(r', r_(\d)+, ') #.sub(', unknown, ')
+                    regex_free = re.compile(r'^free')             # free(r_1, r_2, t)
+                    fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
+                    print(fact_str)
                 initial_fluents[fact_str] = fact
         group_facts_by_room(initial_fluents, room_facts)
 
         aspfile.write('\n'.join(static_facts.keys()))
         aspfile.write("\n")
-        aspfile.write("\n% ------- initial fluents -------\n")
+        aspfile.write("\n% ------- initial fluents (initialized with t=0) -------\n")
         aspfile.write("#program initial_state(t).\n")
         aspfile.write('\n')
         aspfile.write('\n'.join(initial_fluents.keys()))
         aspfile.write("\n\n")
         aspfile.write("\n")
 
-        aspfile.write(STEP0_FLUENTS)
+        aspfile.write(EVERY_STEP_ALIASES)
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
         aspfile.write("\n")
-        aspfile.write(f"#program initial_room(t).\n")
+        aspfile.write("% #program initial_room(t).\n")
         for room in sorted(room_facts.keys()):
-            aspfile.write(f"% #program room_{room}(t).\n")
+            aspfile.write(f"#program room_{room}(t).\n")
             aspfile.write('\n'.join(room_facts[room]))
             aspfile.write('\n\n')
 
