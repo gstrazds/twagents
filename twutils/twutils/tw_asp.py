@@ -13,7 +13,7 @@ INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
 #const find_first=o_0.  % the cookbook is always o_0
-#const first_room=r_4.  %this is a temporary hack [can override from command line with -c first_room=r_N]
+%#const first_room=r_4.  %this is a temporary hack [can override from command line with -c first_room=r_N]
 #script (python)
 import datetime
 from clingo import Function, Symbol, String, Number, SymbolType
@@ -26,16 +26,19 @@ def main(prg):
     imin = get(prg.get_const("imin"), Number(1))
     imax = get(prg.get_const("imax"), Number(500))
     istop = get(prg.get_const("istop"), String("SAT"))
-    first_room = get(prg.get_const("first_room"), String("r_4"))
+    #first_room = get(prg.get_const("first_room"), String("r_4"))
 
     _actions_list = []
     _actions_facts = []
-    def _get_chosen_actions(model):
+    _newly_explored = []  # rooms or opened containers
+    _recipe_seen = False
+    def _get_chosen_actions(model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
         #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
-        print("_get_chosen_actions......")
+        print(f"_get_chosen_actions(model,{step})......")
         _actions_list.clear()
         _actions_facts.clear()
+        _newly_explored.clear()
         for atom in model.symbols(atoms=True):
             if (atom.name == "act" and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number):
                 t = atom.arguments[1].number
@@ -44,13 +47,32 @@ def main(prg):
                 _actions_facts.append(str_atom)
                 print(f"[{t}] : {str_atom}")
                 _actions_list.append(atom)
+            elif atom.name == 'recipe_seen' \\
+              and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
+                #print(f"  -- {atom}")
+                _newly_explored.append("cookbook")
+            elif atom.name == 'solved_all' \\
+              and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
+                print(f"  -- {atom}")
+                _newly_explored.append("solved_all")
+            elif atom.name == 'have_visited' \\
+              and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
+                print(str(atom))
+                if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
+                    _newly_explored.append(str(atom.arguments[0]))
+            elif atom.name == 'have_explored' \\
+              and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
+                print(str(atom))
+                if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
+                    _newly_explored.append(str(atom.arguments[0]))
+
         return True  # False -> stop after first model
 
     step, ret = 0, None
-    recipe_seen = False
+    solved_all = False
     while ((imax is None or step < imax.number) and
            (step == 0 or step <= imin.number or (
-              (istop.string == "SAT" and (not ret.satisfiable or not recipe_seen)
+              (istop.string == "SAT" and (not ret.satisfiable or not solved_all)
                or (istop.string == "UNSAT" and not ret.unsatisfiable)
                or (istop.string == "UNKNOWN" and not ret.unknown)
               )
@@ -66,35 +88,47 @@ def main(prg):
             #  query(t-1) becomes permanently = False (removed from set of Externals)
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            if recipe_seen:
+            if _recipe_seen:
                 parts.append(("cooking_step", [Number(step)]))
-            if not recipe_seen and ret and ret.satisfiable:
-                parts.append(("cooking_step", [Number(step)]))
-            if not recipe_seen and ret and ret.satisfiable:
+            # if not recipe_seen and ret and ret.satisfiable:
+            #     parts.append(("cooking_step", [Number(step)]))
+            if ret and ret.satisfiable:
                 if len(_actions_facts):
                     actions_facts_str = "\\n".join(_actions_facts)
                     actions_facts_str = actions_facts_str.replace("act(", "did_act(")
-                    print("ADDING prev_actions:", actions_facts_str, flush=True)
-                    print("\\n\\t".join(_actions_facts), flush=True)
+                    print("\\n+++++ ADDING prev_actions: +++\\n", actions_facts_str, "\\n----", flush=True)
+                    print("\\t", "\\n\\t".join(_actions_facts), flush=True)
                     prg.add("prev_actions", [], actions_facts_str)
                     parts.append(("prev_actions", []))
-                parts.append(("recipe", [Number(step-1)]))
-                recipe_seen = True
+                for _name in _newly_explored:
+                    if _name == "solved_all":
+                        solved_all = True
+                        break      # stop solving immediately
+                    elif _name == "cookbook":
+                        if not _recipe_seen:
+                            print(f"RECIPE INITIALLY SEEN", step-1)
+                            parts.append(("recipe", [Number(step-1)]))
+                        _recipe_seen = True
+                    elif _name.startswith("r_"):    # have entered a previously unseen room
+                        parts.append((f"room_{_name}", [Number(step-1)]))
+                    else:
+                        print("%%%%% IGNORING NEWLY DISCOVERED", _name)
+                # recipe_seen = True
             prg.cleanup()
         else:
             parts.append(("base", []))
             parts.append(("initial_state", [Number(0)]))
-            parts.append((f"room_{first_room}", [Number(0)]))
+            parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
             parts.append(("every_step", [Number(step)]))
         prg.ground(parts)
 
-        if recipe_seen:
+        if _recipe_seen:
             prg.assign_external(Function("query1", [Number(step)]), False)
             prg.assign_external(Function("query2", [Number(step)]), True)
         else:
             prg.assign_external(Function("query1", [Number(step)]), True)
 
-        ret = prg.solve(on_model=lambda model: _get_chosen_actions(model))
+        ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
         step = step+1
         finish_time = datetime.datetime.now()
         elapsed_time = finish_time-start_time
@@ -279,18 +313,21 @@ have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).
 
 % can see an object that's in a container if the container is open and player is in the same room
 have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t), not have_found(O,_,t-1).
+have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t), not have_found(O,_,t-1).
 % examine/c :: can examine an object that's in a container if the container is open and player is in the same room
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
-% examine/s :: can examine an object that is on a support if player is in the same room as the suppport
-0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), s(S), at(S,R,t), on(O,S,t), timestep(t).
 % can see an object that is on a support if player is in the same room as the suppport
-have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), s(S), at(S,R,t), on(O,S,t), timestep(t), not have_found(O,_,t-1).
+have_found(O,t,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t), not have_found(O,_,t-1).
+% examine/s :: can examine an object that is on a support if player is in the same room as the suppport
+0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 
 % can see a thing if player is in the same room as the thing
 have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t), not have_found(O,_,t-1).
 % examine/t :: can examine a thing if player is in the same room as the thing
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+
 
 
 % Test constraints
@@ -591,26 +628,33 @@ CHECK_GOAL_ACHIEVED = \
 
 
 %--------------------
-:- not have_visited(r_0,t), query1(t).
+need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
+:- not recipe_seen(t), not need_to_search(t), query1(t). 
+%:- need_to_find(X,t), not have_found(X,_,t), query1(t).
 
-%:- not recipe_seen(t), query1(t).
 %:- need_to_find(_,t), not have_visted(_,t), not have_explored(_,t), query1(t).  % if need to search, stop to process each new discovery
+
+X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actually chosen actions from previous solving steps
+X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 
 %solved2(t) :- have_prepped_ingredients(t-1), query2(t).
 %solved2(t) :- act(do_make_meal(t),t), query2(t).
 solved2(t) :- consumed(meal_0,t), query2(t).
-X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 %--------------------
 % solved1(t) :- recipe_seen(t), query(t).
 % solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
 %--------------------
 
-%:- not solved2(t), query2(t).
-:- t>2, query2(t).
+solved_all(t) :- t>2, query2(t).
+:- not solved_all(t), query2(t).
 
-#show have_examined/2.
+#show solved_all/1.
+#show need_to_find/2.
+#show need_to_search/1.
+#show recipe_seen/1.
+#show have_explored/2.
 #show have_visited/2.
-#show connected/3.
+%#show connected/3.
 #show free/3.
 #show atP/2.
 
@@ -767,7 +811,7 @@ def _is_a_room(name):
     return name.startswith('r_')
 
 def group_facts_by_room(initial_facts, room_facts):
-
+    first_room = None
     def _add_to_(room_facts, room_name, fact, fact_str):
         # print(f"_add_to_(room_facts, {room_name}, .., '{fact_str}')")
         if room_name in room_facts:
@@ -791,6 +835,9 @@ def group_facts_by_room(initial_facts, room_facts):
                 _where = fact.arguments[1].name
                 if not _is_a_room(_where):
                     assert False, f"Expected arg[1] is_a room: {fact_str}"
+                if fact.arguments[0].name == "P":  # initial location of the player
+                    assert first_room is None, f"Should be only one, unique at(P,room) - {first_room} {fact}"
+                    first_room = _where
             if fact.name in LOCATION_REL:
                 where_is[fact.arguments[0].name] = fact.arguments[1].name
             # elif fact.name == 'free':
@@ -824,6 +871,7 @@ def group_facts_by_room(initial_facts, room_facts):
         for fact_str in room_facts[room]:
             assert fact_str in initial_facts, f"[{room}] {room_facts[room]}"
             del initial_facts[fact_str]
+    return first_room
 
 
 def generate_ASP_for_game(game, asp_file_path, hfacts=None):
@@ -895,7 +943,7 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
                     fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
                     print(fact_str)
                 initial_fluents[fact_str] = fact
-        group_facts_by_room(initial_fluents, room_facts)
+        _initial_room = group_facts_by_room(initial_fluents, room_facts)
 
         aspfile.write('\n'.join(static_facts.keys()))
         aspfile.write("\n")
@@ -910,9 +958,11 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
         aspfile.write("\n")
-        aspfile.write("% #program initial_room(t).\n")
         for room in sorted(room_facts.keys()):
-            aspfile.write(f"#program room_{room}(t).\n")
+            if room == _initial_room:
+                aspfile.write(f"#program initial_room(t).\n")
+            else:
+                aspfile.write(f"#program room_{room}(t).\n")
             aspfile.write('\n'.join(room_facts[room]))
             aspfile.write('\n\n')
 
