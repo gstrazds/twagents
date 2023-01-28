@@ -119,7 +119,7 @@ def main(prg):
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
             if _recipe_seen:
-                #print(f"+ ADDING #program cooking_step({step})")
+                print(f"+ ADDING #program cooking_step({step})")
                 parts.append(("cooking_step", [Number(step)]))
                 parts.append(("check2", [Number(step)]))
             else:
@@ -248,14 +248,18 @@ EVERY_STEP_ALIASES = \
 """
 #program every_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
+%%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
+
 % define fluents that determine whether player can move from room R0 to R1
 free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
 not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
-free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,T), T<=t, not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
 
+%free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door: can never become closed/unpassable
 
-atP(t,R) :- at(player,R,t), r(R).   % Alias for player's initial position"
+atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
 """
 # NOTE: MAP_RULES are also evaluated at every step
 MAP_RULES = \
@@ -273,8 +277,8 @@ connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
 connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
 connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 
-connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
-connected(R1,R2) :- connected(R1,R2,NSEW,t), r(R2), direction(NSEW).
+%connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
+%connected(R1,R2) :- connected(R1,R2,NSEW,t), r(R2), direction(NSEW).
 has_door(R,D) :- r(R), d(D), link(R,D,_).
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
@@ -288,10 +292,12 @@ ACTION_STEP_RULES = \
 % Generate
 timestep(t).
 
-connected(R1,R2,east,t) :- connected(R1,unknownE,east), act(do_moveP(t,R1,unknownE,east),t), at(player,t,R2), r(R2), R1!=R2.
-connected(R1,R2,south,t) :- connected(R1,unknownS,south), act(do_moveP(t,R1,unknownS,south),t), at(player,t,R2), r(R2), R1!=R2.
-connected(R1,R2,north,t) :- connected(R1,unknownN,north), act(do_moveP(t,R1,unknownN,north),t), at(player,t,R2), r(R2), R1!=R2.
-connected(R1,R2,west,t) :- connected(R1,unknownW,west), act(do_moveP(t,R1,unknownW,west),t), at(player,t,R2), r(R2), R1!=R2.
+connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), at(player,R2,t), r(R2), R1!=R2.
+connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), at(player,R2,t), r(R2), R1!=R2.
+connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), at(player,R2,t), r(R2), R1!=R2.
+connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), at(player,R2,t), r(R2), R1!=R2.
+
+connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW).
 
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
@@ -319,7 +325,7 @@ first_visited(R,t) :- r(R), have_found(R,t,t).
 
 
 % Alias
-%MOVED TO every_step(t) -- atP(t,R) :- at(player,R,t).                 % alias for player's current location
+%MOVED TO every_step(t) -- atP(R,t) :- at(player,R,t).                 % alias for player's current location
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 """
@@ -336,7 +342,7 @@ GAME_RULES_COMMON = \
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
 % player has visited room R
-have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).  %GVS NOTE: not sure which version is better, T<t
+have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
 
 % can see an object that's in a container if the container is open and player is in the same room
@@ -397,13 +403,15 @@ at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _conne
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
  % can move to a connected room, if not blocked by a closed door
-%0 {do_moveP(t,R0,R,NSEW):_connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), _connected(R0,R,NSEW), direction(NSEW), r(R0), r(R). %
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+
 
 % Test constraints
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
 :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t-1).  % can't go that way: not a valid action
-:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),at(player,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly 
+:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),at(player,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly
+
 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
 
@@ -655,13 +663,13 @@ CHECK_GOAL_ACHIEVED = \
 %--------------------
 
 %need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
-%:- not recipe_seen(t), not need_to_search(t), query1(t). 
+%:- not recipe_seen(t), not need_to_search(t), query1(t).
 
 %:- need_to_find(X,t), not have_found(X,_,t), query1(t).
 %:- need_to_find(_,t), not first_visited(_,t), not first_opened(_,t), query1(t).  % if need to search, stop to process each new discovery
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actually chosen actions from previous solving steps
-:- not recipe_seen(t), {first_visited(R,t):r(R)}<1, query1(t). 
+:- not recipe_seen(t), {first_visited(R,t):r(R)}<1, query1(t).
 
 %--------------------
 #program check2(t).
@@ -677,14 +685,18 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actu
 %--------------------
 %need_to_search2(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query2(t).
 %need_to_search2(t) :- {need_to_find(F,t):in_recipe(F)}>0, query2(t).
-%solved2(t) :- consumed(meal_0,t), query2(t).
-%-solved2(t) :- not solved2(t),  query2(t).
-%:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
 
-solved2(t) :- query2(t).
+%:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
+solved2(t) :- consumed(meal_0,t), query2(t).
+
+solved2(t) :- act(do_moveP(t,_,R2,_),t), r(R2), query2(t).
+:- solved2(t), act(do_moveP(t,_,R2,_),t), not r(R2), query2(t).  % FORCE a move to a room that is not unknown
 
 solved_all(t) :- recipe_seen(t), solved2(t), query2(t).
-:- not solved_all(t), query2(t).
+:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
+
+
+
 
 #show solved_all/1.
 #show solved2/1.
@@ -699,6 +711,7 @@ solved_all(t) :- recipe_seen(t), solved2(t), query2(t).
 #show need_to_search/1.
 #show first_opened/2.
 #show first_visited/2.
+#show connected/3.
 #show connected/4.
 #show free/3.
 #show atP/2.
