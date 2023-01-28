@@ -46,11 +46,11 @@ def main(prg):
                 action = atom.arguments[0]
                 str_atom = f"{atom}."
                 _actions_facts.append(str_atom)
-                print(f"[{t}] : {str_atom}")
+                print(f"  -- [{t}] : {str_atom}")
                 _actions_list.append(atom)
             elif atom.name == 'recipe_seen' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
-                #print(f"  -- {atom}")
+                print(f"  -- {atom}")
                 _newly_explored.append("cookbook")
             elif atom.name == 'solved_all' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
@@ -59,18 +59,20 @@ def main(prg):
                 _solved_all = True
             elif atom.name == 'have_visited' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
-                print(str(atom))
+                print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     _newly_explored.append(str(atom.arguments[0]))
             elif atom.name == 'have_explored' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
-                print(str(atom))
+                print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     _newly_explored.append(str(atom.arguments[0]))
         if _solved_all:
             return False
         return True  # False -> stop after first model
 
+    MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
+    MAX_STEP_ELAPSED_TIME = datetime.timedelta(minutes=1, seconds=20)
     step, ret = 0, None
     solved_all = False
     while ((imax is None or step < imax.number) and
@@ -81,10 +83,11 @@ def main(prg):
               )
            ))):
         start_time = datetime.datetime.now()
+        _recipe_newly_seen = False  # becomes True during the step that finds the recipe
         parts = []
+        if step >= MIN_PRINT_STEP:
+            print(f"solving:[{step}] ", end='', flush=True)
         if step > 0:
-            if step > 9:
-                print(f"[{step}] ", end='', flush=True)
             #  query(t-1) becomes permanently = False (removed from set of Externals)
             if ret and ret.satisfiable:
                 for _name in _newly_explored:
@@ -92,6 +95,7 @@ def main(prg):
                         solved_all = True
                     elif _name == "cookbook":
                         if not _recipe_seen:
+                            _recipe_newly_seen = True
                             print(f"+++++ ADDING #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
                             #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
@@ -122,8 +126,10 @@ def main(prg):
             else:
                 parts.append(("check", [Number(step)]))
 
-            prg.release_external(Function("query1", [Number(step-1)]))
-            prg.release_external(Function("query2", [Number(step-1)]))
+            if _recipe_newly_seen or not _recipe_seen:
+                prg.release_external(Function("query1", [Number(step-1)]))
+            else:  #if _recipe_seen and not _recipe_newly_seen:
+                prg.release_external(Function("query2", [Number(step-1)]))
             prg.cleanup()
         else:  # step == 0
             parts.append(("check", [Number(step)]))
@@ -135,17 +141,20 @@ def main(prg):
         prg.ground(parts)
 
         if _recipe_seen:
-            prg.assign_external(Function("query1", [Number(step)]), False)
+            #prg.assign_external(Function("query1", [Number(step)]), False)
             prg.assign_external(Function("query2", [Number(step)]), True)
         else:
             prg.assign_external(Function("query1", [Number(step)]), True)
 
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
-        step = step+1
         finish_time = datetime.datetime.now()
         elapsed_time = finish_time-start_time
-        if step > 9:
-            print(f"--- [{step-1}] elapsed: {elapsed_time}")
+        if step >= MIN_PRINT_STEP:
+            print(f"--- [{step}] elapsed: {elapsed_time}")
+        if elapsed_time > MAX_STEP_ELAPSED_TIME:
+            print(f"--- [{step}] Exceded step time threshhold({MAX_STEP_ELAPSED_TIME})... Stop solving.")
+            break
+        step = step+1
 
 #end.
 
@@ -215,7 +224,7 @@ have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
 % can see an object that's in a container if the container is open and player is in the same room
 have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
 % can see an object that is on a support if player is in the same room as the suppport
-have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), s(S), at(S,R,0), on(O,S,0).
+have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(S,s), at(S,R,0), on(O,S,0).
 % have already found something if it is initially in the player's inventory
 have_found(O,0,0) :- in(O,inventory,0).
 
@@ -866,14 +875,15 @@ def group_facts_by_room(initial_facts, room_facts):
     for (fact_str, fact) in initial_facts.items():
         #print(fact_str, "|", fact, len(fact.arguments), fact.name)
         if len(fact.arguments) > 1:
-            if fact.name == 'at':
-                _where = fact.arguments[1].name
-                if not _is_a_room(_where):
-                    assert False, f"Expected arg[1] is_a room: {fact_str}"
-                if fact.arguments[0].name == "P":  # initial location of the player
-                    assert first_room is None, f"Should be only one, unique at(P,room) - {first_room} {fact}"
-                    first_room = _where
             if fact.name in LOCATION_REL:
+                if fact.name == 'at':
+                    _where = fact.arguments[1].name
+                    if not _is_a_room(_where):
+                        assert False, f"Expected arg[1] is_a room: {fact_str}"
+                    if fact.arguments[0].name == "P":  # initial location of the player
+                        assert first_room is None, f"Should be only one, unique at(P,room) - {first_room} {fact}"
+                        first_room = _where
+                # if fact.name != 'at' or fact.arguments[0].name != "P":  # filter out the player's initial location
                 where_is[fact.arguments[0].name] = fact.arguments[1].name
             # elif fact.name == 'free':
             #     room = fact.arguments[0].name
@@ -993,12 +1003,18 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
         aspfile.write("\n")
+        aspfile.write(f"#program initial_room(t).\n")  # special-case the player's initial location
+        #aspfile.write(f"at(player, {_initial_room}, t).\n\n")
+        for r_fact in room_facts[_initial_room]:
+            if r_fact.startswith("at(player,"):
+                aspfile.write(r_fact)
+        aspfile.write("\n\n")
         for room in sorted(room_facts.keys()):
-            if room == _initial_room:
-                aspfile.write(f"#program initial_room(t).\n")
-            else:
-                aspfile.write(f"#program room_{room}(t).\n")
-            aspfile.write('\n'.join(room_facts[room]))
+            aspfile.write(f"#program room_{room}(t).\n")  #TODO: load facts for initial room dynamically
+            for r_fact in room_facts[room]:
+                if not r_fact.startswith("at(player,"):
+                    aspfile.write(r_fact)
+                    aspfile.write("\n")
             aspfile.write('\n\n')
 
         # ---- GAME DYNAMICS
