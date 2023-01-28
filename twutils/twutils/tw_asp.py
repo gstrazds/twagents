@@ -57,12 +57,12 @@ def main(prg):
                 print(f"  -- {atom}")
                 _newly_explored.append("solved_all")
                 _solved_all = True
-            elif atom.name == 'have_visited' \\
+            elif atom.name == 'first_visited' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     _newly_explored.append(str(atom.arguments[0]))
-            elif atom.name == 'have_explored' \\
+            elif atom.name == 'first_opened' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
@@ -96,12 +96,12 @@ def main(prg):
                     elif _name == "cookbook":
                         if not _recipe_seen:
                             _recipe_newly_seen = True
-                            print(f"+++++ ADDING #program recipe({step-1})")
+                            print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
                             #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                         _recipe_seen = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
-                        print(f"ADDING #program room_{_name}({step-1}).")
+                        print(f"ADDING #program room_{_name} ({step-1}).")
                         parts.append((f"room_{_name}", [Number(step-1)]))
                     else:
                         print("%%%%% IGNORING NEWLY DISCOVERED", _name)
@@ -118,10 +118,9 @@ def main(prg):
 
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            parts.append(("cooking_step", [Number(step)]))
             if _recipe_seen:
                 #print(f"+ ADDING #program cooking_step({step})")
-                #parts.append(("cooking_step", [Number(step)]))
+                parts.append(("cooking_step", [Number(step)]))
                 parts.append(("check2", [Number(step)]))
             else:
                 parts.append(("check", [Number(step)]))
@@ -218,7 +217,7 @@ instance_of(unknownN;unknownS;unknownE;unknownW, unknown).
 
 need_to_find(find_first,0).  % initially, we're looking for the cookbook
 
-have_found(R,0,0) :- r(R), at(player,R,0). % have found the initial room
+% have_found(R,0,0) :- r(R), at(player,R,0). % have found the initial room (NOT ANYMORE: first room added dynamically at step 1)
 % can see a thing if player is in the same room as the thing
 have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
 % can see an object that's in a container if the container is open and player is in the same room
@@ -289,10 +288,10 @@ ACTION_STEP_RULES = \
 % Generate
 timestep(t).
 
-connected(R1,R2,east,t) :- connected(R1,unknownE,east), act(do_moveP(t,R1,unknownE,east),t), atP(t,R2).
-connected(R1,R2,south,t) :- connected(R1,unknownS,south), act(do_moveP(t,R1,unknownS,south),t), atP(t,R2).
-connected(R1,R2,north,t) :- connected(R1,unknownN,north), act(do_moveP(t,R1,unknownN,north),t), atP(t,R2).
-connected(R1,R2,west,t) :- connected(R1,unknownW,west), act(do_moveP(t,R1,unknownW,west),t), atP(t,R2).
+connected(R1,R2,east,t) :- connected(R1,unknownE,east), act(do_moveP(t,R1,unknownE,east),t), at(player,t,R2), r(R2), R1!=R2.
+connected(R1,R2,south,t) :- connected(R1,unknownS,south), act(do_moveP(t,R1,unknownS,south),t), at(player,t,R2), r(R2), R1!=R2.
+connected(R1,R2,north,t) :- connected(R1,unknownN,north), act(do_moveP(t,R1,unknownN,north),t), at(player,t,R2), r(R2), R1!=R2.
+connected(R1,R2,west,t) :- connected(R1,unknownW,west), act(do_moveP(t,R1,unknownW,west),t), at(player,t,R2), r(R2), R1!=R2.
 
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
@@ -311,15 +310,16 @@ need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inven
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
 
 % newly explored a container (that was previously closed)
-have_explored(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
+first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
 %have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
 
 % newly explored a room (that was previously unseen/unvisited)
-have_visited(R,t) :- r(R), have_found(R,t,t).
+first_visited(R,t) :- r(R), have_found(R,t,t).
+%first_visited(R,t) :- r(R), have_found(R,T,t), T<t, not first_visited(R,t-1).  % this handles special case of have_found(R,0,0).
 
 
 % Alias
-atP(t,R) :- at(player,R,t).                  % alias for player's current location
+%MOVED TO every_step(t) -- atP(t,R) :- at(player,R,t).                 % alias for player's current location
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 """
@@ -336,7 +336,7 @@ GAME_RULES_COMMON = \
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
 % player has visited room R
-have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).
+have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).  %GVS NOTE: not sure which version is better, T<t
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
 
 % can see an object that's in a container if the container is open and player is in the same room
@@ -403,7 +403,7 @@ at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _conne
 % Test constraints
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
 :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t-1).  % can't go that way: not a valid action
-:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),atP(R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly 
+:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),at(player,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly 
 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
 
@@ -650,20 +650,23 @@ need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not need_to_acquire
 
 CHECK_GOAL_ACHIEVED = \
 """
-#program check(t).
-% Test
-
-
 %--------------------
-need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
-:- not recipe_seen(t), not need_to_search(t), query1(t). 
-%:- need_to_find(X,t), not have_found(X,_,t), query1(t).
+#program check(t).
+%--------------------
 
-%:- need_to_find(_,t), not have_visted(_,t), not have_explored(_,t), query1(t).  % if need to search, stop to process each new discovery
+%need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
+%:- not recipe_seen(t), not need_to_search(t), query1(t). 
+
+%:- need_to_find(X,t), not have_found(X,_,t), query1(t).
+%:- need_to_find(_,t), not first_visited(_,t), not first_opened(_,t), query1(t).  % if need to search, stop to process each new discovery
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actually chosen actions from previous solving steps
+:- not recipe_seen(t), {first_visited(R,t):r(R)}<1, query1(t). 
 
+%--------------------
 #program check2(t).
+%--------------------
+
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 
 %--------------------
@@ -672,35 +675,37 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actu
 % solved2(t) :- have_prepped_ingredients(t-1), query2(t).
 % solved2(t) :- act(do_make_meal(t),t), query2(t).
 %--------------------
-
 %need_to_search2(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query2(t).
-need_to_search2(t) :- {need_to_find(F,t):in_recipe(F)}>0, query2(t).
-solved2(t) :- consumed(meal_0,t), query2(t).
--solved2(t) :- not solved2(t),  query2(t).
+%need_to_search2(t) :- {need_to_find(F,t):in_recipe(F)}>0, query2(t).
+%solved2(t) :- consumed(meal_0,t), query2(t).
+%-solved2(t) :- not solved2(t),  query2(t).
+%:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
 
-solved_all(t) :- solved2(t), query2(t).
-:- not solved_all(t), {have_visited(R,t):r(R)}=0, query2(t).
+solved2(t) :- query2(t).
 
+solved_all(t) :- recipe_seen(t), solved2(t), query2(t).
+:- not solved_all(t), query2(t).
+
+#show solved_all/1.
 #show solved2/1.
+#show recipe_seen/1.
 #show consumed/2.
 #show need_to_search2/1.
 #show need_to_acquire/2.
 #show in_recipe/2.
-#show in_inventory/2.
-#show solved_all/1.
+% #show in_inventory/2.
 #show need_to_find/2.
 #show have_found/3.
 #show need_to_search/1.
-#show recipe_seen/1.
-#show have_explored/2.
-#show have_visited/2.
-#show connected/3.
+#show first_opened/2.
+#show first_visited/2.
+#show connected/4.
 #show free/3.
 #show atP/2.
 
 % #show need_to_find/2.
 % #show contents_unknown/2.
-#show.
+% #show.
 
 """
 
@@ -1049,6 +1054,6 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         # aspfile.write("#show do_moveP/4.\n")
         # aspfile.write("#show do_open/2.\n")
         # aspfile.write("#show has_door/2.\n")
-        aspfile.write("% #show need_to_find/2.\n")
-        aspfile.write("% #show contents_unknown/2.\n")
+        # aspfile.write("% #show need_to_find/2.\n")
+        # aspfile.write("% #show contents_unknown/2.\n")
         aspfile.write("#show.\n")
