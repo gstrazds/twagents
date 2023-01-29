@@ -58,13 +58,10 @@ def main(prg):
                 print(f"  -- {atom}")
                 _newly_explored.append("solved_all")
                 _solved_all = True
-            elif atom.name == 'first_visited' \\
-              and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
-                if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
-                    print(f"  -- {atom}")
-                    _newly_explored.append(str(atom.arguments[0]))
-            elif atom.name == 'first_opened' \\
-              and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
+            elif (atom.name == 'first_visited' \\
+               or atom.name == 'first_opened'  \\
+               or atom.name == 'first_acquired') \\
+            and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     print(f"  -- {atom}")
                     _newly_explored.append(str(atom.arguments[0]))
@@ -99,7 +96,7 @@ def main(prg):
                             _recipe_newly_seen = True
                             print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
-                            #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
+                            parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                         _recipe_read = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
                         print(f"ADDING #program room_{_name} ({step-1}).")
@@ -313,14 +310,25 @@ connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW)
 
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,_,t-1), timestep(t).
 need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
+:- need_to_find(X,t), have_found(X,T,t-1), T<t.
 
 need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
+:- need_to_acquire(X,t), instance_of(X,o), in(X,inventory,t), timestep(t).
+:- need_to_acquire(X,t), first_acquired(X,T), T<t.   % if we've gotten it once, deprioritize it
+first_acquired(X,t) :- need_to_acquire(X,t-1), not need_to_acquire(X,t), timestep(t).
 
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
 
 % newly explored a container (that was previously closed)
 first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
+
 %have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
+
+%need_to_search(t) :- {not have_found(X,T,t):need_to_find(X,t),timestep(T),T<t}>0.
+need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0.
+need_to_search(t) :- {need_to_find(X,t):need_to_find(X,t)}>0.
+
+need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
 
 % newly explored a room (that was previously unseen/unvisited)
 first_visited(R,t) :- r(R), have_found(R,t,t).
@@ -380,7 +388,7 @@ have_examined(O,t,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t
 have_examined(R,t,t) :- act(do_look(t,R),t), r(R), timestep(t).
 
 % inertia
-have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), not act(do_examine(t,X),t), not act(do_look(t,X),t).
+have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), timestep(T), T<t.  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
 have_found(X,T,t) :- have_found(X,T,t-1), timestep(t).  % player is the only agent in deterministic world, with perfect memory
 
 recipe_read(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
@@ -615,7 +623,7 @@ COOKING_RULES = \
 :- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
-:- have_prepped_ingredients(t-1), not recipe_read(t), timestep(t).
+%:- have_prepped_ingredients(t), not recipe_read(t), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
@@ -628,7 +636,8 @@ consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
 """
 RECIPE_NEED_TO_FIND = \
 """%---------RECIPE_NEED_TO_FIND-----------
-need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not need_to_acquire(F,t-1). % if t-1, inertia rule applies
+need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), not need_to_acquire(F,t-1). % if t-1, inertia rule applies
+:- need_to_acquire(F,t), consumed(F,t).
 
 {need_to_acquire(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
 
@@ -667,39 +676,36 @@ CHECK_GOAL_ACHIEVED = \
 #program check(t).
 %--------------------
 
-%need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
-%:- not recipe_read(t), not need_to_search(t), query1(t).
-
-%:- need_to_find(X,t), not have_found(X,_,t), query1(t).
-%:- need_to_find(_,t), not first_visited(_,t), not first_opened(_,t), query1(t).  % if need to search, stop to process each new discovery
-
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actually chosen actions from previous solving steps
-:- not recipe_read(t), {first_visited(R,t):r(R)}<1, query1(t).
+
+goal1_achieved(t) :- recipe_read(t).
+
+% if incremental searching is not required, fail unless we achieve our main goal
+:- not need_to_search(t), not goal1_achieved(t), query1(t).
+
+% if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
+%:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal1_achieved(t), query1(t).
+:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal1_achieved(t), query1(t).
 
 %--------------------
 #program check2(t).
 %--------------------
-
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 
-%--------------------
-% solved1(t) :- recipe_read(t), query(t).
-% solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
-% solved2(t) :- have_prepped_ingredients(t-1), query2(t).
-% solved2(t) :- act(do_make_meal(t),t), query2(t).
-%--------------------
-%need_to_search2(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query2(t).
-%need_to_search2(t) :- {need_to_find(F,t):in_recipe(F)}>0, query2(t).
 
-%:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
-solved2(t) :- consumed(meal_0,t), query2(t).
+goal2_achieved(t) :- consumed(meal_0,t).
+solved_all(t) :- goal2_achieved(t).
 
-solved2(t) :- act(do_moveP(t,_,R2,_),t), r(R2), query2(t).
-:- solved2(t), act(do_moveP(t,_,R2,_),t), not r(R2), query2(t).  % FORCE a move to a room that is not unknown
+% if no more searching (or opportunistic gathering) is required, fail unless we achieve our main goal
+%:- not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query2(t).
+:- not goal2_achieved(t), not need_to_search(t), query2(t).
 
-solved_all(t) :- recipe_read(t), solved2(t), query2(t).
-:- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
+% if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
+%:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal2_achieved(t), query2(t).
+:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal2_achieved(t), query2(t).
 
+% if we don't know have all required items, allow (temporary) success for opportunistically taking on our way to other goals
+%:- not first_acquired(_,t), need_to_gather(t-1), not goal2_achieved(t), query2(t).
 
 
 
@@ -710,12 +716,14 @@ solved_all(t) :- recipe_read(t), solved2(t), query2(t).
 #show need_to_search2/1.
 #show need_to_acquire/2.
 #show in_recipe/2.
-% #show in_inventory/2.
+#show in_inventory/2.
 #show need_to_find/2.
 #show have_found/3.
 #show need_to_search/1.
 #show first_opened/2.
 #show first_visited/2.
+#show first_acquired/2.
+#show have_prepped_ingredients/1.
 #show connected/3.
 #show connected/4.
 #show free/3.
@@ -1066,13 +1074,4 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         # )
         #aspfile.write("_minimize(1,T) :- ngoal(T).\n")
 
-        #aspfile.write("#show timestep/1.\n")
-        #aspfile.write("#show atP/2.\n")
-        #aspfile.write("#show act/2.\n")
-        # aspfile.write("#show at_goal/2.\n")
-        # aspfile.write("#show do_moveP/4.\n")
-        # aspfile.write("#show do_open/2.\n")
-        # aspfile.write("#show has_door/2.\n")
-        # aspfile.write("% #show need_to_find/2.\n")
-        # aspfile.write("% #show contents_unknown/2.\n")
-        aspfile.write("#show.\n")
+        #aspfile.write("#show.\n")
