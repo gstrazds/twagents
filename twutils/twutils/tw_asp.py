@@ -31,7 +31,7 @@ def main(prg):
     _actions_list = []
     _actions_facts = []
     _newly_explored = []  # rooms or opened containers
-    _recipe_seen = False
+    _recipe_read = False
     def _get_chosen_actions(model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
         #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
@@ -48,9 +48,10 @@ def main(prg):
                 _actions_facts.append(str_atom)
                 print(f"  -- [{t}] : {str_atom}")
                 _actions_list.append(atom)
-            elif atom.name == 'recipe_seen' \\
+            elif atom.name == 'recipe_read' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
-                print(f"  -- {atom}")
+                if atom.arguments[0].number == step:
+                    print(f"  -- {atom}")
                 _newly_explored.append("cookbook")
             elif atom.name == 'solved_all' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
@@ -59,13 +60,13 @@ def main(prg):
                 _solved_all = True
             elif atom.name == 'first_visited' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
-                print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
+                    print(f"  -- {atom}")
                     _newly_explored.append(str(atom.arguments[0]))
             elif atom.name == 'first_opened' \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
-                print(f"  -- {atom}")
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
+                    print(f"  -- {atom}")
                     _newly_explored.append(str(atom.arguments[0]))
         if _solved_all:
             return False
@@ -94,12 +95,12 @@ def main(prg):
                     if _name == "solved_all":
                         solved_all = True
                     elif _name == "cookbook":
-                        if not _recipe_seen:
+                        if not _recipe_read:
                             _recipe_newly_seen = True
                             print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
                             #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
-                        _recipe_seen = True
+                        _recipe_read = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
                         print(f"ADDING #program room_{_name} ({step-1}).")
                         parts.append((f"room_{_name}", [Number(step-1)]))
@@ -118,16 +119,16 @@ def main(prg):
 
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            if _recipe_seen:
+            if _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
                 parts.append(("cooking_step", [Number(step)]))
                 parts.append(("check2", [Number(step)]))
             else:
                 parts.append(("check", [Number(step)]))
 
-            if _recipe_newly_seen or not _recipe_seen:
+            if _recipe_newly_seen or not _recipe_read:
                 prg.release_external(Function("query1", [Number(step-1)]))
-            else:  #if _recipe_seen and not _recipe_newly_seen:
+            else:  #if _recipe_read and not _recipe_newly_seen:
                 prg.release_external(Function("query2", [Number(step-1)]))
             prg.cleanup()
         else:  # step == 0
@@ -139,7 +140,7 @@ def main(prg):
             parts.append(("every_step", [Number(step)]))
         prg.ground(parts)
 
-        if _recipe_seen:
+        if _recipe_read:
             #prg.assign_external(Function("query1", [Number(step)]), False)
             prg.assign_external(Function("query2", [Number(step)]), True)
         else:
@@ -244,26 +245,17 @@ _connected(R1,R2,north) :- _connected(R2,R1,south), r(R1).
 """
 #  "class(A) :- instance_of(I,A).
 
-EVERY_STEP_ALIASES = \
+EVERY_STEP = \
 """
+% ------------------ every_step(t) t=[0...] ----------------------
 #program every_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
-
-%%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
-
-% define fluents that determine whether player can move from room R0 to R1
-free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
-not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
-
-%free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door: can never become closed/unpassable
 
 atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
 """
-# NOTE: MAP_RULES are also evaluated at every step
-MAP_RULES = \
+# NOTE: the following MAP_RULES are also evaluated at every step
+EVERY_STEP_MAP_RULES = \
 """
+
 % ------- Navigation (evaluated at every step: eventually grounded for all room combinations R1xR2) -------
 connected(R1,unknownE,east) :- east_of(unknownE, R1), r(R1).
 connected(R1,unknownS,south) :- south_of(unknownS, R1), r(R1).
@@ -282,12 +274,23 @@ connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 has_door(R,D) :- r(R), d(D), link(R,D,_).
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
+% define fluents that determine whether player can move from room R0 to R1
+%%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
+
+free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
+not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
+
+%free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door: can never become closed/unpassable
+
 """
 
 ACTION_STEP_RULES = \
 """
-
-#program step(t).
+% ------------------ step(t) t=[1...] ----------------------
+#program step(t).    % applied at each timestep >=1
 
 % Generate
 timestep(t).
@@ -380,9 +383,9 @@ have_examined(R,t,t) :- act(do_look(t,R),t), r(R), timestep(t).
 have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), not act(do_examine(t,X),t), not act(do_look(t,X),t).
 have_found(X,T,t) :- have_found(X,T,t-1), timestep(t).  % player is the only agent in deterministic world, with perfect memory
 
-recipe_seen(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
-% recipe_seen(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
-% recipe_seen(t) :- recipe_seen(t-1), timestep(t).
+recipe_read(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
+% recipe_read(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
+% recipe_read(t) :- recipe_read(t-1), timestep(t).
 
 
 % ------ GO ------
@@ -612,7 +615,7 @@ COOKING_RULES = \
 :- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
-:- have_prepped_ingredients(t-1), not recipe_seen(t), timestep(t).
+:- have_prepped_ingredients(t-1), not recipe_read(t), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
@@ -625,8 +628,10 @@ consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
 """
 RECIPE_NEED_TO_FIND = \
 """%---------RECIPE_NEED_TO_FIND-----------
-need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not need_to_acquire(F,t-1).
+need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not need_to_acquire(F,t-1). % if t-1, inertia rule applies
+
 {need_to_acquire(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
+
 {need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
 {need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
 {need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
@@ -663,13 +668,13 @@ CHECK_GOAL_ACHIEVED = \
 %--------------------
 
 %need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0, query1(t).
-%:- not recipe_seen(t), not need_to_search(t), query1(t).
+%:- not recipe_read(t), not need_to_search(t), query1(t).
 
 %:- need_to_find(X,t), not have_found(X,_,t), query1(t).
 %:- need_to_find(_,t), not first_visited(_,t), not first_opened(_,t), query1(t).  % if need to search, stop to process each new discovery
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actually chosen actions from previous solving steps
-:- not recipe_seen(t), {first_visited(R,t):r(R)}<1, query1(t).
+:- not recipe_read(t), {first_visited(R,t):r(R)}<1, query1(t).
 
 %--------------------
 #program check2(t).
@@ -678,7 +683,7 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query1(t).   % explicitly preserve actu
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query2(t).   % explicitly preserve actually chosen actions from previous solving steps
 
 %--------------------
-% solved1(t) :- recipe_seen(t), query(t).
+% solved1(t) :- recipe_read(t), query(t).
 % solved2(t) :- solved1(t), have_prepped_ingredients(t), query(t).
 % solved2(t) :- have_prepped_ingredients(t-1), query2(t).
 % solved2(t) :- act(do_make_meal(t),t), query2(t).
@@ -692,7 +697,7 @@ solved2(t) :- consumed(meal_0,t), query2(t).
 solved2(t) :- act(do_moveP(t,_,R2,_),t), r(R2), query2(t).
 :- solved2(t), act(do_moveP(t,_,R2,_),t), not r(R2), query2(t).  % FORCE a move to a room that is not unknown
 
-solved_all(t) :- recipe_seen(t), solved2(t), query2(t).
+solved_all(t) :- recipe_read(t), solved2(t), query2(t).
 :- not solved_all(t), {first_visited(R,t):r(R)}=0, query2(t).
 
 
@@ -700,7 +705,7 @@ solved_all(t) :- recipe_seen(t), solved2(t), query2(t).
 
 #show solved_all/1.
 #show solved2/1.
-#show recipe_seen/1.
+#show recipe_read/1.
 #show consumed/2.
 #show need_to_search2/1.
 #show need_to_acquire/2.
@@ -1016,8 +1021,14 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         aspfile.write("\n\n")
         aspfile.write("\n")
 
-        aspfile.write(EVERY_STEP_ALIASES)
-        aspfile.write(MAP_RULES)
+        aspfile.write("\n% ------- Recipe -------\n")
+        aspfile.write("#program recipe(t).\n")
+
+        aspfile.write('\n'.join(recipe_facts.keys()))
+        aspfile.write("\n\n")
+        aspfile.write("in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).\n")
+        aspfile.write("in_recipe(F) :- in_recipe(I,F).\n")
+        aspfile.write("\n\n")
 
         aspfile.write("\n% ------- ROOM fluents -------\n")
         aspfile.write("\n")
@@ -1036,20 +1047,15 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
             aspfile.write('\n\n')
 
         # ---- GAME DYNAMICS
+        aspfile.write(EVERY_STEP)
+        aspfile.write(EVERY_STEP_MAP_RULES)
+
         aspfile.write(ACTION_STEP_RULES)
         aspfile.write(GAME_RULES_COMMON)
         aspfile.write(GAME_RULES_NEW)
         aspfile.write(COOKING_RULES)
         aspfile.write(RECIPE_NEED_TO_FIND)
 
-        aspfile.write("\n% ------- Recipe -------\n")
-        aspfile.write("#program recipe(t).\n")
-
-        aspfile.write('\n'.join(recipe_facts.keys()))
-        aspfile.write("\n\n")
-        aspfile.write("in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).\n")
-        aspfile.write("in_recipe(F) :- in_recipe(I,F).\n")
-        aspfile.write("\n\n")
 
         aspfile.write(CHECK_GOAL_ACHIEVED)
         #aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
