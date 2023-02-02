@@ -259,12 +259,11 @@ connected(R1,unknownS,south) :- south_of(unknownS, R1), r(R1).
 connected(R1,unknownN,north) :- north_of(unknownN, R1), r(R1).
 connected(R1,unknownW,west) :- west_of(unknownW, R1), r(R1).
 
-% assume that all doors/exits can be traversed in both directions
-% assume that all doors/exits can be traversed in both directions
-connected(R1,R2,east,t) :- connected(R2,R1,west,t), r(R1).
-connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
-connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
-connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
+
+link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownE), link(R2,D,unknownW).
+link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownW), link(R2,D,unknownE).
+link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownN), link(R2,D,unknownS).
+link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
 %connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
 %connected(R1,R2) :- connected(R1,R2,NSEW,t), r(R2), direction(NSEW).
@@ -274,13 +273,13 @@ door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected
 % define fluents that determine whether player can move from room R0 to R1
 %%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
 
+
 free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
 not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
 
 %free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door: can never become closed/unpassable
 
 """
 
@@ -297,7 +296,16 @@ connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), at(player,R2,t
 connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), at(player,R2,t), r(R2), R1!=R2.
 connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), at(player,R2,t), r(R2), R1!=R2.
 
-connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW).
+% assume that all doors/exits can be traversed in both directions
+% assume that all doors/exits can be traversed in both directions
+connected(R1,R2,east,t) :- connected(R2,R1,west,t), r(R1).
+connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
+connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
+connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
+
+% inertia
+connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
+free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never become closed/unpassable
 
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
@@ -314,8 +322,9 @@ need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
 
 need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
 :- need_to_acquire(X,t), instance_of(X,o), in(X,inventory,t), timestep(t).
-:- need_to_acquire(X,t), first_acquired(X,T), T<t.   % if we've gotten it once, deprioritize it
-first_acquired(X,t) :- need_to_acquire(X,t-1), not need_to_acquire(X,t), timestep(t).
+%:- need_to_acquire(X,t), first_acquired(X,T), T<t.   % if we've gotten it once, deprioritize it
+
+first_acquired(X,t) :- need_to_acquire(X,t-1), in(X,inventory,t), timestep(t).
 
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
 
@@ -325,7 +334,6 @@ first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timeste
 %have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
 
 %need_to_search(t) :- {not have_found(X,T,t):need_to_find(X,t),timestep(T),T<t}>0.
-need_to_search(t) :- {not have_found(X,_,t):need_to_find(X,t)}>0.
 need_to_search(t) :- {need_to_find(X,t):need_to_find(X,t)}>0.
 
 need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
@@ -438,8 +446,8 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2),
 % unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
 
 % --- inertia: doors and containers don't change state unless player acts on them
-open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X)).
-open(X,t) :- is_openable(X), act(do_open(t,X),t), not open(X,t-1).
+open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X),t).
+open(X,t) :- is_openable(X), act(do_open(t,X),t).
 closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
 locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
 % ------ CONSTRAINTS ------
@@ -496,7 +504,7 @@ edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transit
 % Test constraints
 :- do_cook(t,X,A), at(player,R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
 
-is_action(do_cook(t,X,O), t) :- do_cook(t,X,O).
+is_action(do_cook(t,X,A), t) :- do_cook(t,X,A).
 
 % ------ CUT ------
 % chop :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> chopped(f)
@@ -684,8 +692,8 @@ goal1_achieved(t) :- recipe_read(t).
 :- not need_to_search(t), not goal1_achieved(t), query1(t).
 
 % if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
-%:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal1_achieved(t), query1(t).
-:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal1_achieved(t), query1(t).
+:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal1_achieved(t), query1(t).
+%:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal1_achieved(t), query1(t).
 
 %--------------------
 #program check2(t).
@@ -701,32 +709,40 @@ solved_all(t) :- goal2_achieved(t).
 :- not goal2_achieved(t), not need_to_search(t), query2(t).
 
 % if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
-%:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal2_achieved(t), query2(t).
-:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal2_achieved(t), query2(t).
+:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal2_achieved(t), query2(t).
+%:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal2_achieved(t), query2(t).
 
 % if we don't know have all required items, allow (temporary) success for opportunistically taking on our way to other goals
 %:- not first_acquired(_,t), need_to_gather(t-1), not goal2_achieved(t), query2(t).
 
+%--------------------
+#program check_search(t).  % invoked only if check1(t) or check2(t) is unsatisfiable at step=t AND need_to_search(t-1)==True
+%--------------------
+X1=X2 :- act(X1,T), did_act(X2,T), T<t,  qsearch(t).   % explicitly preserve actually chosen actions from previous solving steps
+
+:- not need_to_search(t-1), qsearch(t).
+:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, {first_acquired(O,t):instance_of(O,o)}<1, qsearch(t).
 
 
-#show solved_all/1.
-#show solved2/1.
-#show recipe_read/1.
-#show consumed/2.
-#show need_to_search2/1.
-#show need_to_acquire/2.
-#show in_recipe/2.
-#show in_inventory/2.
-#show need_to_find/2.
-#show have_found/3.
-#show need_to_search/1.
 #show first_opened/2.
 #show first_visited/2.
 #show first_acquired/2.
 #show have_prepped_ingredients/1.
-#show connected/3.
-#show connected/4.
-#show free/3.
+#show need_to_gather/1.
+#show need_to_search/1.
+
+#show solved_all/1.
+#show recipe_read/1.
+#show consumed/2.
+#show in_recipe/2.
+#show in_inventory/2.
+#show need_to_find/2.
+#show need_to_acquire/2.
+
+%#show have_found/3.
+%#show connected/3.
+%#show connected/4.
+%#show free/3.
 #show atP/2.
 
 % #show need_to_find/2.
