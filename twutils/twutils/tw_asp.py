@@ -146,6 +146,7 @@ def main(prg):
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
         finish_time = datetime.datetime.now()
         elapsed_time = finish_time-start_time
+        print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
         if step >= MIN_PRINT_STEP:
             print(f"--- [{step}] elapsed: {elapsed_time}")
         if elapsed_time > MAX_STEP_ELAPSED_TIME:
@@ -597,6 +598,14 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 
 0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
 0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
+
+% don't consume ingredients that will be needed for the recipe
+:- act(do_eat(t,F),t), in_recipe(F), timestep(t).
+:- act(do_drink(t,F),t), in_recipe(F), timestep(t).
+% don't consume ingredients that might be needed for the recipe
+:- act(do_eat(t,F),t), not recipe_seen(t), timestep(t).
+:- act(do_drink(t,F),t), not recipe_seen(t), timestep(t).
+
 
 is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
 is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
