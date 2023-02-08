@@ -603,8 +603,8 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 :- act(do_eat(t,F),t), in_recipe(F), timestep(t).
 :- act(do_drink(t,F),t), in_recipe(F), timestep(t).
 % don't consume ingredients that might be needed for the recipe
-:- act(do_eat(t,F),t), not recipe_seen(t), timestep(t).
-:- act(do_drink(t,F),t), not recipe_seen(t), timestep(t).
+:- act(do_eat(t,F),t), not recipe_read(t), timestep(t).
+:- act(do_drink(t,F),t), not recipe_read(t), timestep(t).
 
 
 is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
