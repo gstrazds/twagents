@@ -457,7 +457,7 @@ locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
 :- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
 
 % can open a closed but unlocked door
-0 {do_open(t,D)} 1 :- at(player,R0,t-1), r(R0), r(R1), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). 
+0 {do_open(t,D)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
 % can open a closed but unlocked container
 0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
 % Test constraints
