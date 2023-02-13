@@ -96,7 +96,7 @@ def main(prg):
                             _recipe_newly_seen = True
                             print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
-                            parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
+                            #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                         _recipe_read = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
                         print(f"ADDING #program room_{_name} ({step-1}).")
@@ -116,7 +116,7 @@ def main(prg):
 
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            if _recipe_read:
+            if True or _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
                 parts.append(("cooking_step", [Number(step)]))
                 #parts.append(("check2", [Number(step)]))
@@ -216,15 +216,17 @@ instance_of(unknownN;unknownS;unknownE;unknownW, unknown).
 
 need_to_find(find_first,0).  % initially, we're looking for the cookbook
 
-% have_found(R,0,0) :- r(R), at(player,R,0). % have found the initial room (NOT ANYMORE: first room added dynamically at step 1)
+%have_found(R,0) :- r(R), at(player,R,0). % have found the initial room (NOT ANYMORE: first room added dynamically at step 1)
+
 % can see a thing if player is in the same room as the thing
-have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
+%have_found(O,0) :- at(player,R,0), r(R), instance_of(O,thing), at(O,R,0).
 % can see an object that's in a container if the container is open and player is in the same room
-have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
+%have_found(O,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(C,c), at(C,R,0), in(O,C,0), open(C,0).
 % can see an object that is on a support if player is in the same room as the suppport
-have_found(O,0,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(S,s), at(S,R,0), on(O,S,0).
+%have_found(O,0) :- at(player,R,0), r(R), instance_of(O,o), instance_of(S,s), at(S,R,0), on(O,S,0).
 % have already found something if it is initially in the player's inventory
-have_found(O,0,0) :- in(O,inventory,0).
+%have_found(O,0) :- in(O,inventory,0).
+%first_visited(R,0) :- r(R), at(player,R,0).
 
 contents_unknown(C,0) :- instance_of(C,c), closed(C,0).  % can't see into closed containers
 
@@ -316,17 +318,19 @@ free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never bec
 % NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep:
 %  {at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
+need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
+need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,t).
+%:- need_to_find(X,t), have_found(X,t-1).
 
-need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,_,t-1), timestep(t).
-need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,_,t).
-:- need_to_find(X,t), have_found(X,T,t-1), T<t.
-
-need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
+%need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
+need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not have_acquired(X,t), timestep(t).
 :- need_to_acquire(X,t), instance_of(X,o), in(X,inventory,t), timestep(t).
-%:- need_to_acquire(X,t), first_acquired(X,T), T<t.   % if we've gotten it once, deprioritize it
-
-%first_acquired(X,t) :- need_to_acquire(X,t-1), in(X,inventory,t), timestep(t).
-first_acquired(X,t) :- need_to_acquire(X,t-1), not need_to_acquire(X,t), timestep(t).
+%:- need_to_acquire(X,t), have_acquired(X,t-1).   % if we've gotten it once, deprioritize it
+%first_acquired(X,t) :- need_to_acquire(X,t-1), not first_acquired(X,T), T<t, timestep(T), timestep(t).
+have_acquired(X,t) :- have_acquired(X,t-1).
+have_acquired(X,t) :- in(X,inventory,t), timestep(t).
+%first_acquired(X,t) :- need_to_acquire(X,t-1), not need_to_acquire(X,t), timestep(t).
+first_acquired(X,t) :- have_acquired(X,t), not have_acquired(X,t-1), timestep(t).
 
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
 
@@ -336,12 +340,13 @@ first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timeste
 %have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
 
 %need_to_search(t) :- {not have_found(X,T,t):need_to_find(X,t),timestep(T),T<t}>0.
-need_to_search(t) :- {need_to_find(X,t):need_to_find(X,t)}>0.
+%need_to_search(t) :- {need_to_find(X,t):need_to_find(X,t)}>0.
+need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
 
 need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
 
 % newly explored a room (that was previously unseen/unvisited)
-first_visited(R,t) :- r(R), have_found(R,t,t).
+first_visited(R,t) :- r(R), first_found(R,t).
 %first_visited(R,t) :- r(R), have_found(R,T,t), T<t, not first_visited(R,t-1).  % this handles special case of have_found(R,0,0).
 
 
@@ -362,27 +367,34 @@ GAME_RULES_COMMON = \
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
+first_found(R,t) :- have_found(R,t), not have_found(R,t-1).
+
+%inertia: once we've found something, it stays found forever
+% because the player is the only agent in a deterministic world, with perfect memory
+%T1=T1 :- have_found(O,T1,t), have_found(O,T2,t-1).
+have_found(X,t) :- have_found(X,t-1).
+
 % player has visited room R
-have_found(R,t,t) :- r(R), at(player,R,t), not have_found(R,_,t-1).
+have_found(R,t) :- r(R), at(player,R,t).
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
 
 % can see an object that's in a container if the container is open and player is in the same room
-have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t), not have_found(O,_,t-1).
-have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t), not have_found(O,_,t-1).
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+
 % examine/c :: can examine an object that's in a container if the container is open and player is in the same room
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
 % can see an object that is on a support if player is in the same room as the suppport
-have_found(O,t,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t), not have_found(O,_,t-1).
+have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 % examine/s :: can examine an object that is on a support if player is in the same room as the suppport
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 
 % can see a thing if player is in the same room as the thing
-have_found(O,t,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t), not have_found(O,_,t-1).
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
 % examine/t :: can examine a thing if player is in the same room as the thing
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
-
 
 
 % Test constraints
@@ -399,7 +411,6 @@ have_examined(R,t,t) :- act(do_look(t,R),t), r(R), timestep(t).
 
 % inertia
 have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), timestep(T), T<t.  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
-have_found(X,T,t) :- have_found(X,T,t-1), timestep(t).  % player is the only agent in deterministic world, with perfect memory
 
 recipe_read(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
 % recipe_read(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
@@ -637,11 +648,11 @@ COOKING_RULES = \
 
 
 % have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
-{have_prepped_ingredients(t-1)}  :- in_recipe(F), in(F,inventory,t-1), timestep(t).
+{have_prepped_ingredients(t-1)}  :- in_recipe(F), in(F,inventory,t-1), recipe_read(t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
 :- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
-%:- have_prepped_ingredients(t), not recipe_read(t), timestep(t).
+:- have_prepped_ingredients(t), not recipe_read(t-1), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
@@ -696,18 +707,25 @@ CHECK_GOAL_ACHIEVED = \
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).   % explicitly preserve actually chosen actions from previous solving steps
 
-goal1_achieved(t) :- recipe_read(t).
+goal1_achieved(t) :- recipe_read(t), not recipe_read(t-1).
+goal1_has_been_achieved(t) :- goal1_achieved(t).
+goal1_has_been_achieved(t) :- goal1_has_been_achieved(t-1).
 
-goal1_achieved(t) :- goal1_achieved(t-1).  % redundant, because recipe_read(t) also has t <- t-1 inertia
+%goal1_achieved(t) :- goal1_achieved(t-1).  % redundant, because recipe_read(t) also has t <- t-1 inertia
+%goal2_achieved(t) :- not need_to_gather(t). %have_prepped_ingredients(t).
+%goal2_achieved(t) :- act(do_make_meal(t),t), query(t). %have_prepped_ingredients(t-1).
+%goal2_achieved(t) :- act(do_eat(t,meal_0),t), query(t). %have_prepped_ingredients(t-1).
 goal2_achieved(t) :- consumed(meal_0,t).
+
+%goal2_achieved(t) :- goal1_achieved(t-2).
 solved_all(t) :- goal2_achieved(t).
-:- goal2_achieved(t), not goal1_achieved(t), query(t).  % impose strict sequential ordering: need to read the recipe first
+:- goal2_achieved(t), not goal1_has_been_achieved(t), query(t).  % impose strict sequential ordering: need to read the recipe first
 
 
 % if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
 % if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
 %:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal1_achieved(t), query(t).
-:- not goal1_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
+:- not goal1_has_been_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
 
 % :- not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
 
@@ -718,10 +736,10 @@ solved_all(t) :- goal2_achieved(t).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % if incremental searching is not required, fail unless we achieve our main goal
-:- not need_to_search(t), not goal1_achieved(t), query(t).
-:- not need_to_search(t), goal1_achieved(t), not goal2_achieved(t), query(t).
+:- not need_to_search(t), not goal1_has_been_achieved(t), query(t).
+:- not need_to_search(t), goal1_has_been_achieved(t), not goal1_achieved(t), not goal2_achieved(t), query(t).
 
-:- goal1_achieved(t-1), not goal2_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
 
 %--------------------
 %#program check2(t).
@@ -752,8 +770,11 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  qsearch(t).   % explicitly preserve act
 :- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, {first_acquired(O,t):instance_of(O,o)}<1, qsearch(t).
 
 
+#show atP/2.
+
 #show first_opened/2.
 #show first_visited/2.
+#show first_found/2.
 #show first_acquired/2.
 #show have_prepped_ingredients/1.
 #show need_to_gather/1.
@@ -767,13 +788,11 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  qsearch(t).   % explicitly preserve act
 #show need_to_find/2.
 #show need_to_acquire/2.
 
-%#show have_found/3.
+%#show have_found/2.
 %#show connected/3.
 %#show connected/4.
 %#show free/3.
-#show atP/2.
 
-% #show need_to_find/2.
 % #show contents_unknown/2.
 % #show.
 
