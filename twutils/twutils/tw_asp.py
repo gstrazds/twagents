@@ -30,7 +30,7 @@ def main(prg):
 
     _actions_list = []
     _actions_facts = []
-    _newly_explored = []  # rooms or opened containers
+    _newly_discovered_facts = []  # rooms or opened containers
     _recipe_read = False
     def _get_chosen_actions(model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
@@ -38,7 +38,7 @@ def main(prg):
         print(f"_get_chosen_actions(model,{step})......")
         _actions_list.clear()
         _actions_facts.clear()
-        _newly_explored.clear()
+        _newly_discovered_facts.clear()
         _solved_all = False
         for atom in model.symbols(atoms=True):
             if (atom.name == "act" and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number):
@@ -52,11 +52,11 @@ def main(prg):
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
                     print(f"  -- {atom}")
-                _newly_explored.append("cookbook")
+                _newly_discovered_facts.append("cookbook")
             elif atom.name == 'solved_all' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 print(f"  -- {atom}")
-                _newly_explored.append("solved_all")
+                _newly_discovered_facts.append("solved_all")
                 _solved_all = True
             elif (atom.name == 'first_visited' \\
                or atom.name == 'first_opened'  \\
@@ -64,7 +64,7 @@ def main(prg):
             and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     print(f"  -- {atom}")
-                    _newly_explored.append(str(atom.arguments[0]))
+                    _newly_discovered_facts.append(str(atom.arguments[0]))
         if _solved_all:
             return False
         return True  # False -> stop after first model
@@ -85,10 +85,17 @@ def main(prg):
         parts = []
         if step >= MIN_PRINT_STEP:
             print(f"solving:[{step}] ", end='', flush=True)
-        if step > 0:
+        if step == 0:
+            parts.append(("base", []))
+            parts.append(("recipe", [Number(step)]))
+            parts.append(("initial_state", [Number(0)]))
+            parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
+            parts.append(("every_step", [Number(step)]))
+            parts.append(("check", [Number(step)]))
+        else:  #if step > 0:
             #  query(t-1) becomes permanently = False (removed from set of Externals)
             if ret and ret.satisfiable:
-                for _name in _newly_explored:
+                for _name in _newly_discovered_facts:
                     if _name == "solved_all":
                         solved_all = True
                     elif _name == "cookbook":
@@ -120,29 +127,14 @@ def main(prg):
                 print(f"+ ADDING #program cooking_step({step})")
                 parts.append(("cooking_step", [Number(step)]))
                 #parts.append(("check2", [Number(step)]))
-                parts.append(("check", [Number(step)]))
-            else:
-                parts.append(("check", [Number(step)]))
-
-            if _recipe_newly_seen or not _recipe_read:
-                prg.release_external(Function("query", [Number(step-1)]))
-            else:  #if _recipe_read and not _recipe_newly_seen:
-                prg.release_external(Function("query", [Number(step-1)]))
-            prg.cleanup()
-        else:  # step == 0
             parts.append(("check", [Number(step)]))
-            parts.append(("base", []))
-            parts.append(("recipe", [Number(step)]))
-            parts.append(("initial_state", [Number(0)]))
-            parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            parts.append(("every_step", [Number(step)]))
+
+            prg.release_external(Function("query", [Number(step-1)]))
+            prg.cleanup()
         prg.ground(parts)
 
-        if _recipe_read:
-            prg.assign_external(Function("query", [Number(step)]), True)
-        else:
-            prg.assign_external(Function("query", [Number(step)]), True)
-
+        prg.assign_external(Function("query", [Number(step)]), True)
+ 
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
         finish_time = datetime.datetime.now()
         elapsed_time = finish_time-start_time
