@@ -61,7 +61,7 @@ def main(prg):
             elif (atom.name == 'first_visited' \\
                or atom.name == 'first_opened'  \\
                or atom.name == 'first_acquired') \\
-            and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
+              and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
                     print(f"  -- {atom}")
                     _newly_discovered_facts.append(str(atom.arguments[0]))
@@ -109,7 +109,7 @@ def main(prg):
                         print(f"ADDING #program room_{_name} ({step-1}).")
                         parts.append((f"room_{_name}", [Number(step-1)]))
                     else:
-                        print("%%%%% IGNORING NEWLY DISCOVERED", _name)
+                        print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
                 if solved_all:
                     break      # stop solving immediately
 
@@ -280,12 +280,12 @@ link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
 %connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
 %connected(R1,R2) :- connected(R1,R2,NSEW,t), r(R2), direction(NSEW).
-has_door(R,D) :- r(R), d(D), link(R,D,_).
+%has_door(R,D) :- r(R), d(D), link(R,D,_).
+has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
 % define fluents that determine whether player can move from room R0 to R1
 %%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
-
 
 free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
 not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
@@ -293,16 +293,6 @@ not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
 %free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
-
-"""
-
-ACTION_STEP_RULES = \
-"""
-% ------------------ step(t) t=[1...] ----------------------
-#program step(t).    % applied at each timestep >=1
-
-% Generate
-timestep(t).
 
 connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), at(player,R2,t), r(R2), R1!=R2.
 connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), at(player,R2,t), r(R2), R1!=R2.
@@ -315,6 +305,18 @@ connected(R1,R2,east,t) :- connected(R2,R1,west,t), r(R1).
 connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
 connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
 connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
+
+"""
+
+ACTION_STEP_RULES = \
+"""
+% ------------------ step(t) t=[1...] ----------------------
+#program step(t).    % applied at each timestep >=1
+
+% Generate
+timestep(t).
+
+
 
 % inertia
 connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
