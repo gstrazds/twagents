@@ -637,13 +637,13 @@ COOKING_RULES = \
 
 
 % have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
-{have_prepped_ingredients(t-1)}  :- in_recipe(F), in(F,inventory,t-1), recipe_read(t-1), timestep(t).
-:- have_prepped_ingredients(t-1), in_recipe(F), not in(F,inventory,t-1), timestep(t).
-:- have_prepped_ingredients(t-1), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t-1), timestep(t).
-:- have_prepped_ingredients(t-1), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t-1), timestep(t).
+{have_prepped_ingredients(t)}  :- in_recipe(F), in(F,inventory,t-1), recipe_read(t-1), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(F), not in(F,inventory,t-1), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
 :- have_prepped_ingredients(t), not recipe_read(t-1), timestep(t).
 
-0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t-1), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
+0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
 
 is_action(do_make_meal(t),t) :- do_make_meal(t), timestep(t).
