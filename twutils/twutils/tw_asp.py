@@ -103,7 +103,7 @@ def main(prg):
                             _recipe_newly_seen = True
                             print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
                             #parts.append(("recipe", [Number(step-1)]))
-                            #parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
+                            parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                         _recipe_read = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
                         print(f"ADDING #program room_{_name} ({step-1}).")
@@ -123,10 +123,9 @@ def main(prg):
 
             parts.append(("every_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            if True or _recipe_read:
+            if _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
                 parts.append(("cooking_step", [Number(step)]))
-                #parts.append(("check2", [Number(step)]))
             parts.append(("check", [Number(step)]))
 
             prg.release_external(Function("query", [Number(step-1)]))
@@ -242,8 +241,27 @@ EVERY_STEP = \
 % ------------------ every_step(t) t=[0...] ----------------------
 #program every_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
+% player has visited room R
+have_found(R,t) :- r(R), at(player,R,t).
+first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
+first_visited(R,t) :- r(R), first_found(R,t).
+
+% can see an object that's in a container if the container is open and player is in the same room
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+% can see an object that is on a support if player is in the same room as the suppport
+have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
+% can see a thing if player is in the same room as the thing
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+
+need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
+
+need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
+
 atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
+in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 """
+
 # NOTE: the following MAP_RULES are also evaluated at every step
 EVERY_STEP_MAP_RULES = \
 """
@@ -331,20 +349,10 @@ first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timeste
 
 %have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
 
-%need_to_search(t) :- {not have_found(X,T,t):need_to_find(X,t),timestep(T),T<t}>0.
-%need_to_search(t) :- {need_to_find(X,t):need_to_find(X,t)}>0.
-need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
-
-need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
-
-% newly explored a room (that was previously unseen/unvisited)
-first_visited(R,t) :- r(R), first_found(R,t).
-%first_visited(R,t) :- r(R), have_found(R,T,t), T<t, not first_visited(R,t-1).  % this handles special case of have_found(R,0,0).
-
 
 % Alias
 %MOVED TO every_step(t) -- atP(R,t) :- at(player,R,t).                 % alias for player's current location
-in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
+%in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 """
 
@@ -359,35 +367,22 @@ GAME_RULES_COMMON = \
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
-first_found(R,t) :- have_found(R,t), not have_found(R,t-1).
-
 %inertia: once we've found something, it stays found forever
 % because the player is the only agent in a deterministic world, with perfect memory
 %T1=T1 :- have_found(O,T1,t), have_found(O,T2,t-1).
 have_found(X,t) :- have_found(X,t-1).
 
-% player has visited room R
-have_found(R,t) :- r(R), at(player,R,t).
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
-
-% can see an object that's in a container if the container is open and player is in the same room
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
 % examine/c :: can examine an object that's in a container if the container is open and player is in the same room
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
-% can see an object that is on a support if player is in the same room as the suppport
-have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 % examine/s :: can examine an object that is on a support if player is in the same room as the suppport
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 
-% can see a thing if player is in the same room as the thing
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
 % examine/t :: can examine a thing if player is in the same room as the thing
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
-
 
 % Test constraints
 % have to be in the same room to examine something
