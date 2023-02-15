@@ -246,13 +246,13 @@ have_found(R,t) :- r(R), at(player,R,t).
 first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
 first_visited(R,t) :- r(R), first_found(R,t).
 
-% can see an object that's in a container if the container is open and player is in the same room
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
 have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
-% can see an object that is on a support if player is in the same room as the suppport
-have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 % can see a thing if player is in the same room as the thing
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+have_found(O,t) :- instance_of(O,thing), is_here(O,t), timestep(t).
+% can see an object that is on a support if player is in the same room as the suppport
+%have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
+% can see an object that's in a container if the container is open and player is in the same room
+%have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
 
 need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
 
@@ -306,6 +306,15 @@ connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
 connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
 connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 
+% is the thing X close enough to the player to interact with
+in_room(X,R,t) :- r(R), r(X), X=R.
+in_room(X,R,t) :- at(X,R,t), r(R).
+in_room(X,R,t) :- on(X,S,t), in_room(S,R,t), instance_of(S,s), r(R).
+in_room(X,R,t) :- in(X,C,t), in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
+
+is_here(X,t) :- at(player,R,t), in_room(X,R,t), r(R).
+can_take(O,t) :- instance_of(O,o), is_here(O,t). 
+
 """
 
 ACTION_STEP_RULES = \
@@ -346,8 +355,6 @@ contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % n
 % newly explored a container (that was previously closed)
 first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
 
-%have_explored(X,T,t) :- have_explored(X,T,t-1), timestep(t).
-
 
 % Alias
 %MOVED TO every_step(t) -- atP(R,t) :- at(player,R,t).                 % alias for player's current location
@@ -373,15 +380,15 @@ have_found(X,t) :- have_found(X,t-1).
 
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
 
-% examine/c :: can examine an object that's in a container if the container is open and player is in the same room
-0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+0 {do_examine(t,O)} 1 :- is_here(O,t), instance_of(O,thing), timestep(t).
 0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
+% examine/c :: can examine an object that's in a container if the container is open and player is in the same room
+%0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
 % examine/s :: can examine an object that is on a support if player is in the same room as the suppport
-0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
-
+%0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 % examine/t :: can examine a thing if player is in the same room as the thing
-0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
+%0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,thing), at(O,R,t), timestep(t).
 
 % Test constraints
 % have to be in the same room to examine something
@@ -582,6 +589,10 @@ in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it mov
 % drop :: can drop an object on the floor of a room if player is in the room and has the object
 0 {do_put(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), in(O,inventory,t-1), timestep(t).
 
+% TEMPORARY OPTIMIZATION HACK don't drop things unless we need to.
+:- do_put(t,_,_), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} < N.
+:- do_put(t,_,_), not inventory_max(_).
+
 is_action(do_put(t,O,X),t) :- do_put(t,O,X).
 on(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,s).  % player puts an object onto a supporting object
 in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object into a container
@@ -643,6 +654,8 @@ COOKING_RULES = \
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
 
+:- do_put(t,_,_), have_prepped_ingredients(t).
+
 is_action(do_make_meal(t),t) :- do_make_meal(t), timestep(t).
 
 in(meal_0,inventory,t) :- act(do_make_meal(t),t), timestep(t).
@@ -661,6 +674,7 @@ need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
 {need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
 {need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
 
+can_acquire(t) :- {need_acquire(O,t):can_take(O,t)} > 0.
 """
 
 # GAME_RULES_OLD = \
