@@ -399,13 +399,13 @@ have_found(X,t) :- have_found(X,t-1).
 is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
 is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 
-have_examined(O,t,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t).
-have_examined(R,t,t) :- act(do_look(t,R),t), r(R), timestep(t).
+have_examined(O,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t).
+have_examined(R,t) :- act(do_look(t,R),t), r(R), timestep(t).
 
 % inertia
-have_examined(X,T,t) :- have_examined(X,T,t-1), timestep(t), timestep(T), T<t.  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
+have_examined(X,t) :- have_examined(X,t-1), timestep(t).  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
 
-recipe_read(t) :- have_examined(o_0, _, t).   % o_0 is always the RECIPE
+recipe_read(t) :- have_examined(o_0,t).   % o_0 is always the RECIPE
 % recipe_read(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
 % recipe_read(t) :- recipe_read(t-1), timestep(t).
 
