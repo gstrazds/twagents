@@ -334,14 +334,11 @@ need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
 need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,t).
 %:- need_to_find(X,t), have_found(X,t-1).
 
-%need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not in(X,inventory,t), timestep(t).
-need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not have_acquired(X,t), timestep(t).
-:- need_to_acquire(X,t), instance_of(X,o), in(X,inventory,t), timestep(t).
-%:- need_to_acquire(X,t), have_acquired(X,t-1).   % if we've gotten it once, deprioritize it
-%first_acquired(X,t) :- need_to_acquire(X,t-1), not first_acquired(X,T), T<t, timestep(T), timestep(t).
+need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not have_acquired(X,t-1), timestep(t).
+:- need_to_acquire(X,t), have_acquired(X,t-1).   % if we've gotten it once, deprioritize it
 have_acquired(X,t) :- have_acquired(X,t-1).
-have_acquired(X,t) :- in(X,inventory,t), timestep(t).
-%first_acquired(X,t) :- need_to_acquire(X,t-1), not need_to_acquire(X,t), timestep(t).
+have_acquired(X,t) :- in(X,inventory,t), need_to_acquire(X,t-1), timestep(t).
+
 first_acquired(X,t) :- have_acquired(X,t), not have_acquired(X,t-1), timestep(t).
 
 contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % not act(do_open(t,C),t).
@@ -654,10 +651,11 @@ consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
 """
 RECIPE_NEED_TO_FIND = \
 """%---------RECIPE_NEED_TO_FIND-----------
-need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), not need_to_acquire(F,t-1). % if t-1, inertia rule applies
+need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), not have_acquired(F,t-1). % if t-1, inertia rule applies
 :- need_to_acquire(F,t), consumed(F,t).
 
-{need_to_acquire(O,t):sharp(O)} 1 :- in_recipe(I,F), should_cut(I,V), cuttable(F), sharp(O), not cut_state(F,V,t-1), timestep(t).
+need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
+     sharp(O), not cut_state(F,V,t-1), not have_acquired(O,t-1), timestep(t).
 
 {need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
 {need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
@@ -696,70 +694,65 @@ CHECK_GOAL_ACHIEVED = \
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).   % explicitly preserve actually chosen actions from previous solving steps
 
+new_acquire(t) :- {first_acquired(O,t):instance_of(O,o)}>0.
+new_room(t) :- {first_visited(R,t):r(R)}>0.
+newly_opened(t) :- {first_opened(C,t):instance_of(C,c)}>0.
+
 goal1_achieved(t) :- recipe_read(t), not recipe_read(t-1).
 goal1_has_been_achieved(t) :- goal1_achieved(t).
 goal1_has_been_achieved(t) :- goal1_has_been_achieved(t-1).
 
-%goal1_achieved(t) :- goal1_achieved(t-1).  % redundant, because recipe_read(t) also has t <- t-1 inertia
-%goal2_achieved(t) :- not need_to_gather(t). %have_prepped_ingredients(t).
-%goal2_achieved(t) :- act(do_make_meal(t),t), query(t). %have_prepped_ingredients(t-1).
-%goal2_achieved(t) :- act(do_eat(t,meal_0),t), query(t). %have_prepped_ingredients(t-1).
 goal2_achieved(t) :- consumed(meal_0,t).
 
-%goal2_achieved(t) :- goal1_achieved(t-2).
 solved_all(t) :- goal2_achieved(t).
 :- goal2_achieved(t), not goal1_has_been_achieved(t), query(t).  % impose strict sequential ordering: need to read the recipe first
 
 
-% if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
-% if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
-%:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal1_achieved(t), query(t).
-:- not goal1_has_been_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
+%% Prioritize search (exploring unseen locations) UNTIL WE FIND THE RECIPE
+%:- not goal1_has_been_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
+:- not goal1_has_been_achieved(t), need_to_search(t), not new_room(t), not newly_opened(t), query(t).
+:- not goal1_has_been_achieved(t), not need_to_search(t), query(t).  % FAIL UNTIL WE FIND the Recipe
 
-% :- not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
+% After finding the recipe, if incremental searching or gathering is not required, fail unless we achieve our main goal
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
 
-% % :- not goal2_achieved(t), need_to_search(t-1), not need_to_gather(t), not first_visited(_,t), not first_opened(_,t), query(t).
-% :- not goal2_achieved(t), not need_to_search(t-1), need_to_gather(t-1), not first_acquired(_,t), query(t).
+% Fail unless/until we gather a required item
+%:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), need_to_gather(t), not first_acquired(_,t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), need_to_gather(t), not new_acquire(t), query(t).
+% Fail unless/until we explore a new room or container
+%:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not need_to_gather(t),
+%   not first_visited(_,t), not first_opened(_,t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not need_to_gather(t),
+    not new_room(t), not newly_opened(t), query(t).
+ 
+% Allow success upon exploring or gathering, if appropriate
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), need_to_gather(t),
+         not new_room(t), not newly_opened(t), not new_acquire(t), query(t).
+% NOTE (GVS ?unknown why the following don't work vs. new_xxx(t) which do) ----
+%      not first_visited(_,t), not first_opened(_,t), not first_acquired(_,t), query(t).
 
-% % :- not first_acquired(_,t), need_to_gather(t-1), not goal2_achieved(t), query(t).
+% can_acquire(2) :- t=2, query(t).
+ 
+%------------------------------------------
+
+:- need_to_gather(t), can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
+:- need_to_search(t), can_open(t), {first_visited(R,t):r(R)}>0, query(t).    % prefer opening a container over exploring a aew roon
+:- need_to_gather(t), can_acquire(t), {first_opened(C,t):instance_of(C,c)}>0, query(t).  % prefer greedy/1-step acquire over opening a new container
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% if incremental searching is not required, fail unless we achieve our main goal
-:- not need_to_search(t), not goal1_has_been_achieved(t), query(t).
-:- not need_to_search(t), goal1_has_been_achieved(t), not goal1_achieved(t), not goal2_achieved(t), query(t).
-
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
-
-%--------------------
-%#program check2(t).
-%--------------------
-%X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).   % explicitly preserve actually chosen actions from previous solving steps
-%
-%
-%goal2_achieved(t) :- consumed(meal_0,t).
-%solved_all(t) :- goal2_achieved(t).
-%
-%% if no more searching (or opportunistic gathering) is required, fail unless we achieve our main goal
-%%:- not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
-%:- not goal2_achieved(t), not need_to_search(t), query(t).
-%
-%% if we don't know the location of something we need, allow (temporary) success if we find a new room or newly open a container
-%:- not first_visited(_,t), not first_opened(_,t), need_to_search(t-1), not goal2_achieved(t), query(t).
-%%:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, need_to_search(t-1), not goal2_achieved(t), query(t).
-%
-%% if we don't know have all required items, allow (temporary) success for opportunistically taking on our way to other goals
-%%:- not first_acquired(_,t), need_to_gather(t-1), not goal2_achieved(t), query(t).
-
-%--------------------
-#program check_search(t).  % invoked only if check1(t) or check2(t) is unsatisfiable at step=t AND need_to_search(t-1)==True
-%--------------------
-X1=X2 :- act(X1,T), did_act(X2,T), T<t,  qsearch(t).   % explicitly preserve actually chosen actions from previous solving steps
-
-:- not need_to_search(t-1), qsearch(t).
-:- {first_visited(R,t):r(R)}<1, {first_opened(C,t):instance_of(C,c)}<1, {first_acquired(O,t):instance_of(O,o)}<1, qsearch(t).
 
 
 #show atP/2.
+#show goal1_achieved/1.
+#show recipe_read/1.
+#show goal1_has_been_achieved/1.
+#show solved_all/1.
+
+#show can_acquire/1.
+#show new_acquire/1.
+#show new_room/1.
+#show newly_opened/1.
 
 #show first_opened/2.
 #show first_visited/2.
@@ -769,8 +762,6 @@ X1=X2 :- act(X1,T), did_act(X2,T), T<t,  qsearch(t).   % explicitly preserve act
 #show need_to_gather/1.
 #show need_to_search/1.
 
-#show solved_all/1.
-#show recipe_read/1.
 #show consumed/2.
 #show in_recipe/2.
 #show in_inventory/2.
