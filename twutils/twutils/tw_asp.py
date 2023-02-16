@@ -87,7 +87,7 @@ def main(prg):
             print(f"solving:[{step}] ", end='', flush=True)
         if step == 0:
             parts.append(("base", []))
-            parts.append(("recipe", [Number(step)]))
+            #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
             parts.append(("every_step", [Number(step)]))
@@ -101,8 +101,8 @@ def main(prg):
                     elif _name == "cookbook":
                         if not _recipe_read:
                             _recipe_newly_seen = True
-                            print(f"+++++ _recipe_newly_seen: (NOT ADDING) #program recipe({step-1})")
-                            #parts.append(("recipe", [Number(step-1)]))
+                            print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step-1})")
+                            parts.append(("recipe", [Number(step-1)]))
                             parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                         _recipe_read = True
                     elif _name.startswith("r_"):    # have entered a previously unseen room
