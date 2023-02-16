@@ -428,13 +428,12 @@ at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _conne
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
  % can move to a connected room, if not blocked by a closed door
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t),connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t), direction(NSEW), r(R0). %
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
 
-
 % Test constraints
+:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t).  % can't go that way: not a valid action
 :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
-:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t-1).  % can't go that way: not a valid action
 :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),at(player,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly
 
 
@@ -783,9 +782,11 @@ solved_all(t) :- goal2_achieved(t).
 #show need_to_acquire/2.
 
 %#show have_found/2.
-%#show connected/3.
-%#show connected/4.
-%#show free/3.
+%#show is_here/2.
+
+#show connected/3.
+#show connected/4.
+#show free/3.
 
 % #show contents_unknown/2.
 % #show.
