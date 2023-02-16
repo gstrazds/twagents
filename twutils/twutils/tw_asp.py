@@ -90,7 +90,7 @@ def main(prg):
             #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            parts.append(("every_step", [Number(step)]))
+            parts.append(("obs_step", [Number(step)]))
             parts.append(("check", [Number(step)]))
         else:  #if step > 0:
             #  query(t-1) becomes permanently = False (removed from set of Externals)
@@ -121,7 +121,7 @@ def main(prg):
                 prg.add("prev_actions", [], actions_facts_str)
                 parts.append(("prev_actions", []))
 
-            parts.append(("every_step", [Number(step)]))
+            parts.append(("obs_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
             if _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
@@ -236,15 +236,19 @@ _connected(R1,R2,north) :- _connected(R2,R1,south), r(R1).
 """
 #  "class(A) :- instance_of(I,A).
 
-EVERY_STEP = \
+OBSERVATION_STEP = \
 """
-% ------------------ every_step(t) t=[0...] ----------------------
-#program every_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
+% ------------------ obs_step(t) t=[0...] ----------------------
+#program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
 % player has visited room R
 have_found(R,t) :- r(R), at(player,R,t).
 first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
 first_visited(R,t) :- r(R), first_found(R,t).
+
+%inertia: once we've found something, it stays found forever
+% (because the player is the only agent in a deterministic world, with perfect memory)
+have_found(X,t) :- have_found(X,t-1).
 
 have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 % can see a thing if player is in the same room as the thing
@@ -262,7 +266,7 @@ atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 """
 
-# NOTE: the following MAP_RULES are also evaluated at every step
+# NOTE: the following MAP_RULES are also evaluated at every observation step
 EVERY_STEP_MAP_RULES = \
 """
 
@@ -306,6 +310,9 @@ connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
 connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
 connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 
+"""
+EVERY_STEP_OBS_RULES = \
+"""
 % is the thing X close enough to the player to interact with
 in_room(X,R,t) :- r(R), r(X), X=R.
 in_room(X,R,t) :- at(X,R,t), r(R).
@@ -315,29 +322,9 @@ in_room(X,R,t) :- in(X,C,t), in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
 is_here(X,t) :- at(player,R,t), in_room(X,R,t), r(R).
 can_take(O,t) :- instance_of(O,o), is_here(O,t). 
 
-"""
-
-ACTION_STEP_RULES = \
-"""
-% ------------------ step(t) t=[1...] ----------------------
-#program step(t).    % applied at each timestep >=1
-
-% Generate
-timestep(t).
-
-
-
 % inertia
 connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
 free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never become closed/unpassable
-
-{act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
-
-{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
-% NOTE/IMPORTANT - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY:
-%  {at(player,R,t)} = 1 :- r(R), timestep(t).
-% NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep:
-%  {at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
 need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,t).
@@ -355,10 +342,108 @@ contents_unknown(C,t) :- contents_unknown(C,t-1), timestep(t), closed(C,t).  % n
 % newly explored a container (that was previously closed)
 first_opened(C,t) :- contents_unknown(C,t-1), not contents_unknown(C,t), timestep(t).
 
-
 % Alias
-%MOVED TO every_step(t) -- atP(R,t) :- at(player,R,t).                 % alias for player's current location
+%MOVED TO obs_step(t) -- atP(R,t) :- at(player,R,t).                 % alias for player's current location
 %in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
+
+have_examined(O,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t).
+have_examined(R,t) :- act(do_look(t,R),t), r(R), timestep(t).
+
+% inertia
+have_examined(X,t) :- have_examined(X,t-1), timestep(t).  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
+
+recipe_read(t) :- have_examined(o_0,t).   % o_0 is always the RECIPE
+% recipe_read(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
+% recipe_read(t) :- recipe_read(t-1), timestep(t).
+
+% --- inertia: doors and containers don't change state unless player acts on them
+open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X),t).
+open(X,t) :- is_openable(X), act(do_open(t,X),t).
+closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
+locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
+% ------ CONSTRAINTS ------
+:- open(X,t), closed(X,t).  %[,is_openable(X).]    % any door or container can be either open or closed but not both
+:- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
+
+% - CONSTRAINTS -
+:- cookable(X), {cooked_state(X,V,t):instance_of(V,cooked_state)} > 1.   % disjoint set of attribute values for cookable items
+:- edible(F,t), inedible(F,t).   % disjoint set of attribute values for potentially edible items
+
+cooked(X,t) :- cooked_state(X,V,t), V != raw, V != needs_cooking, instance_of(V,cooked_state).
+inedible(F,t) :- cooked_state(F,burned,t).    % burned foods are considered to be inedible
+
+% --- inertia: cookable items change state only if the player acts on them
+cooked_state(X,V,t) :- cooked_state(X,V,t-1), not act(do_cook(t,X,_),t).
+% burned foods stay burned forever after
+cooked_state(X,burned,t) :- cooked_state(X,burned,t-1).
+:- cooked_state(X,S1,t), S1 != burned, cooked_state(X,burned,t-1).
+
+cooked_state(X,grilled,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
+cooked_state(X,fried,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
+cooked_state(X,roasted,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
+cooked_state(X,burned,t) :- cooked(X,t-1), act(do_cook(t,X,_), t).   % cooking something twice causes it to burn
+
+inedible(X,t) :- inedible(X,t-1), not act(do_cook(t,X,_),t).
+edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
+%edible(X,t) :- cooked_state(X,needs_cooking,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
+edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
+
+% ---- inertia: objects don't move unless moved by the player
+at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
+on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not act(do_take(t,X,_),t).
+in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not act(do_take(t,X,_),t).
+in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed(X,t).
+
+in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
+
+on(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,s).  % player puts an object onto a supporting object
+in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object into a container
+at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object to the floor of a room
+
+
+% --- inertia: player stays in the current room unless acts to move to another
+  % stay in the current room unless current action is do_moveP
+%at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
+at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
+
+  % player moved at time t, from previous room R0 to new room R
+at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+
+% ------ CONSTRAINTS ------
+:- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
+
+% --- inertia: cuttable items change state only if the player acts on them
+cut_state(X,uncut,t) :- cut_state(X,uncut,t-1), not act(do_cut(t,_,X,_),t).
+cut_state(X,chopped,t) :- cut_state(X,uncut,t-1), act(do_cut(t,chop,X,_),t).
+cut_state(X,diced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,dice,X,_),t).
+cut_state(X,sliced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,slice,X,_),t).
+
+% cut-up items remain cut-up, and can't be cut up any further
+cut_state(X,V,t) :- cut_state(X,V,t-1), V != uncut.
+
+
+consumed(F,t) :- act(do_eat(t,F),t).
+consumed(F,t) :- act(do_drink(t,F),t).
+
+consumed(F,t) :- consumed(F,t-1), timestep(t).
+
+"""
+
+ACTION_STEP_RULES = \
+"""
+% ------------------ step(t) t=[1...] ----------------------
+#program step(t).    % applied at each timestep >=1
+
+% Generate
+timestep(t).
+
+{act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
+
+{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
+% NOTE/IMPORTANT - THE FOLLOWING IS NOT THE SAME as prev line, DOES NOT WORK CORRECTLY:
+%  {at(player,R,t)} = 1 :- r(R), timestep(t).
+% NOTE - THE FOLLOWING ALSO DOESN'T WORK (expands too many do_moveP ground instances at final timestep:
+%  {at(player,R,t)} = 1 :- r(R), at(player,R,t), timestep(t).
 
 """
 
@@ -373,10 +458,6 @@ GAME_RULES_COMMON = \
 % examine/s :: $at(P, r) & $at(s, r) & $on(o, s) -> 
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
-%inertia: once we've found something, it stays found forever
-% because the player is the only agent in a deterministic world, with perfect memory
-%T1=T1 :- have_found(O,T1,t), have_found(O,T2,t-1).
-have_found(X,t) :- have_found(X,t-1).
 
 0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
 
@@ -399,16 +480,6 @@ have_found(X,t) :- have_found(X,t-1).
 is_action(do_examine(t,O), t) :- do_examine(t,O). %, instance_of(O,thing).
 is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 
-have_examined(O,t) :- act(do_examine(t,O),t), instance_of(O,thing), timestep(t).
-have_examined(R,t) :- act(do_look(t,R),t), r(R), timestep(t).
-
-% inertia
-have_examined(X,t) :- have_examined(X,t-1), timestep(t).  %, not act(do_examine(t,X),t), not act(do_look(t,X),t).
-
-recipe_read(t) :- have_examined(o_0,t).   % o_0 is always the RECIPE
-% recipe_read(t) :- act(do_examine(t,o_0),t), timestep(t).   % o_0 is always the RECIPE
-% recipe_read(t) :- recipe_read(t-1), timestep(t).
-
 
 % ------ GO ------
 % go/east :: at(P, r) & $west_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
@@ -416,13 +487,7 @@ recipe_read(t) :- have_examined(o_0,t).   % o_0 is always the RECIPE
 % go/south :: at(P, r) & $north_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
 % go/west :: at(P, r) & $west_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
 
-% --- inertia: player stays in the current room unless acts to move to another
-  % stay in the current room unless current action is do_moveP
-%at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
-at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
-
-  % player moved at time t, from previous room R0 to new room R
-at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+room_changed(R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
 % Test constraints
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
@@ -450,14 +515,6 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2),
 % unlock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & locked(c) -> closed(c)
 % unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
 
-% --- inertia: doors and containers don't change state unless player acts on them
-open(X,t) :- is_openable(X), open(X,t-1), not act(do_close(t,X),t).
-open(X,t) :- is_openable(X), act(do_open(t,X),t).
-closed(X,t) :- closed(X,t-1), not act(do_open(t,X),t).
-locked(X,t) :- locked(X,t-1), not act(do_unlock(t,X,_),t).
-% ------ CONSTRAINTS ------
-:- open(X,t), closed(X,t).  %[,is_openable(X).]    % any door or container can be either open or closed but not both
-:- locked(X,t), open(X,t).  %[,is_lockable(X).]    % can't be both locked and open at the same time
 
 % can open a closed but unlocked door
 0 {do_open(t,D)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
@@ -482,28 +539,6 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/needs_cooking :: $at(P, r) & $at(toaster, r) & $in(f, I) & needs_cooking(f) & inedible(f) -> grilled(f) & edible(f) & cooked(f)
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
-% - CONSTRAINTS -
-:- cookable(X), {cooked_state(X,V,t):instance_of(V,cooked_state)} > 1.   % disjoint set of attribute values for cookable items
-:- edible(F,t), inedible(F,t).   % disjoint set of attribute values for potentially edible items
-
-cooked(X,t) :- cooked_state(X,V,t), V != raw, V != needs_cooking, instance_of(V,cooked_state).
-inedible(F,t) :- cooked_state(F,burned,t).    % burned foods are considered to be inedible
-
-% --- inertia: cookable items change state only if the player acts on them
-cooked_state(X,V,t) :- cooked_state(X,V,t-1), not act(do_cook(t,X,_),t).
-% burned foods stay burned forever after
-cooked_state(X,burned,t) :- cooked_state(X,burned,t-1).
-:- cooked_state(X,S1,t), S1 != burned, cooked_state(X,burned,t-1).
-
-cooked_state(X,grilled,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
-cooked_state(X,fried,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
-cooked_state(X,roasted,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
-cooked_state(X,burned,t) :- cooked(X,t-1), act(do_cook(t,X,_), t).   % cooking something twice causes it to burn
-
-inedible(X,t) :- inedible(X,t-1), not act(do_cook(t,X,_),t).
-edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
-%edible(X,t) :- cooked_state(X,needs_cooking,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
-edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
 
 0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in(X,inventory,t-1), at(A,R,t-1).
 % Test constraints
@@ -515,18 +550,6 @@ is_action(do_cook(t,X,A), t) :- do_cook(t,X,A).
 % chop :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> chopped(f)
 % dice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> diced(f)
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
-
-% ------ CONSTRAINTS ------
-:- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
-
-% --- inertia: cuttable items change state only if the player acts on them
-cut_state(X,uncut,t) :- cut_state(X,uncut,t-1), not act(do_cut(t,_,X,_),t).
-cut_state(X,chopped,t) :- cut_state(X,uncut,t-1), act(do_cut(t,chop,X,_),t).
-cut_state(X,diced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,dice,X,_),t).
-cut_state(X,sliced,t) :- cut_state(X,uncut,t-1), act(do_cut(t,slice,X,_),t).
-
-% cut-up items remain cut-up, and can't be cut up any further
-cut_state(X,V,t) :- cut_state(X,V,t-1), V != uncut.
 
 % can chop, slice or dice cuttable ingredients that are in player's inventory if also have a knife (a sharp object), 
 0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1). %, not cooked(F,t-1).
@@ -549,11 +572,6 @@ GAME_RULES_NEW = \
 %- take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
 %+ take/s :: $at(P, r) & $at(s, r) & on(o, s) & free(slot) -> in(o, I) & used(slot)",
 
-% ---- inertia: objects don't move unless moved by the player
-at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
-on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not act(do_take(t,X,_),t).
-in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not act(do_take(t,X,_),t).
-in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed(X,t).
 
 % -- take/c :: can take an object that's in a container if the container is open and player is in the same room
 0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
@@ -570,7 +588,6 @@ in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed
 :- do_take(t,_,_), timestep(t), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} > N.
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
-in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
 
 
 % ------ DROP/PUT ------
@@ -593,10 +610,6 @@ in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it mov
 :- do_put(t,_,_), not inventory_max(_).
 
 is_action(do_put(t,O,X),t) :- do_put(t,O,X).
-on(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,s).  % player puts an object onto a supporting object
-in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object into a container
-at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object to the floor of a room
-
 
 % ------ CONSUME ------
 % drink :: in(f, I) & drinkable(f) -> consumed(f)
@@ -617,11 +630,6 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 
 is_action(do_eat(t,F),t) :- do_eat(t,F), instance_of(F,f), timestep(t).
 is_action(do_drink(t,F),t) :- do_drink(t,F), instance_of(F,f), timestep(t).
-
-consumed(F,t) :- act(do_eat(t,F),t).
-consumed(F,t) :- act(do_drink(t,F),t).
-
-consumed(F,t) :- consumed(F,t-1), timestep(t).
 
 % --------------------------------------------------------------------------------
 
@@ -675,28 +683,6 @@ need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
 
 can_acquire(t) :- {need_acquire(O,t):can_take(O,t)} > 0.
 """
-
-# GAME_RULES_OLD = \
-# """
-# % ------ MAKE ------
-# % make/recipe/1 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & raw(meal)
-# % make/recipe/2 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & raw(meal)
-# % make/recipe/3 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & raw(meal)
-# % make/recipe/4 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & raw(meal)
-# % make/recipe/5 :: $at(P, r) & $cooking_location(r, RECIPE) & in(f, I) & $ingredient_1(f) & in(f', I) & $ingredient_2(f') & in(f'', I) & $ingredient_3(f'') & in(f''', I) & $ingredient_4(f''') & in(f'''', I) & $ingredient_5(f'''') & $out(meal, RECIPE) -> in(meal, I) & edible(meal) & used(f) & used(f') & used(f'') & used(f''') & used(f'''') & raw(meal)
-# % ------ CONSUME ------
-# % drink :: in(f, I) & drinkable(f) -> consumed(f)
-# % eat :: in(f, I) & edible(f) -> consumed(f)
-# % ------ TAKE ------
-# % take :: $at(P, r) & at(o, r) -> in(o, I)
-# % take/c :: $at(P, r) & $at(c, r) & $open(c) & in(o, c) -> in(o, I)
-# % take/s :: $at(P, r) & $at(s, r) & on(o, s) -> in(o, I)
-# % ------ DROP/PUT ------
-# % put :: $at(P, r) & $at(s, r) & in(o, I) -> on(o, s)
-# % drop :: $at(P, r) & in(o, I) -> at(o, r)
-# % insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) -> in(o, c)
-
-# """
 
 
 CHECK_GOAL_ACHIEVED = \
@@ -1113,8 +1099,10 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
             aspfile.write('\n\n')
 
         # ---- GAME DYNAMICS
-        aspfile.write(EVERY_STEP)
+        aspfile.write(OBSERVATION_STEP)
         aspfile.write(EVERY_STEP_MAP_RULES)
+        aspfile.write(EVERY_STEP_OBS_RULES)
+
 
         aspfile.write(ACTION_STEP_RULES)
         aspfile.write(GAME_RULES_COMMON)
