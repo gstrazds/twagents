@@ -85,6 +85,24 @@ def main(prg):
         parts = []
         if step >= MIN_PRINT_STEP:
             print(f"solving:[{step}] ", end='', flush=True)
+        if ret and ret.satisfiable:
+            for _name in _newly_discovered_facts:
+                if _name == "solved_all":
+                    solved_all = True
+                elif _name == "cookbook":
+                    if not _recipe_read:
+                        _recipe_newly_seen = True
+                        print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step-1})")
+                        parts.append(("recipe", [Number(step-1)]))
+                        parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
+                    _recipe_read = True
+                elif _name.startswith("r_"):    # have entered a previously unseen room
+                    print(f"ADDING #program room_{_name} ({step}).")
+                    parts.append((f"room_{_name}", [Number(step)]))
+                else:
+                    print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
+            if solved_all:
+                break      # stop solving immediately
         if step == 0:
             parts.append(("base", []))
             #parts.append(("recipe", [Number(step)]))
@@ -93,25 +111,6 @@ def main(prg):
             parts.append(("obs_step", [Number(step)]))
             parts.append(("check", [Number(step)]))
         else:  #if step > 0:
-            #  query(t-1) becomes permanently = False (removed from set of Externals)
-            if ret and ret.satisfiable:
-                for _name in _newly_discovered_facts:
-                    if _name == "solved_all":
-                        solved_all = True
-                    elif _name == "cookbook":
-                        if not _recipe_read:
-                            _recipe_newly_seen = True
-                            print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step-1})")
-                            parts.append(("recipe", [Number(step-1)]))
-                            parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
-                        _recipe_read = True
-                    elif _name.startswith("r_"):    # have entered a previously unseen room
-                        print(f"ADDING #program room_{_name} ({step-1}).")
-                        parts.append((f"room_{_name}", [Number(step-1)]))
-                    else:
-                        print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
-                if solved_all:
-                    break      # stop solving immediately
 
             if len(_actions_facts):
                 actions_facts_str = "\\n".join(_actions_facts)
@@ -128,6 +127,7 @@ def main(prg):
                 parts.append(("cooking_step", [Number(step)]))
             parts.append(("check", [Number(step)]))
 
+            #  query(t-1) becomes permanently = False (removed from set of Externals)
             prg.release_external(Function("query", [Number(step-1)]))
             prg.cleanup()
         prg.ground(parts)
@@ -242,7 +242,7 @@ OBSERVATION_STEP = \
 #program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
 % player has visited room R
-have_found(R,t) :- r(R), at(player,R,t).
+have_found(R,t) :- r(R), room_changed(R0,R,t).
 first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
 first_visited(R,t) :- r(R), first_found(R,t).
 
@@ -298,10 +298,10 @@ not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
 free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
 
-connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), at(player,R2,t), r(R2), R1!=R2.
-connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), at(player,R2,t), r(R2), R1!=R2.
-connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), at(player,R2,t), r(R2), R1!=R2.
-connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), at(player,R2,t), r(R2), R1!=R2.
+connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), room_changed(R1,R2,t), r(R2), R1!=R2.
 
 % assume that all doors/exits can be traversed in both directions
 % assume that all doors/exits can be traversed in both directions
@@ -314,12 +314,13 @@ connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 EVERY_STEP_OBS_RULES = \
 """
 % is the thing X close enough to the player to interact with
-in_room(X,R,t) :- r(R), r(X), X=R.
+%in_room(X,R,t) :- r(R), r(X), X=R.
 in_room(X,R,t) :- at(X,R,t), r(R).
 in_room(X,R,t) :- on(X,S,t), in_room(S,R,t), instance_of(S,s), r(R).
 in_room(X,R,t) :- in(X,C,t), in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
 
 is_here(X,t) :- at(player,R,t), in_room(X,R,t), r(R).
+is_here(R,t) :- at(player,R,t), r(R).
 can_take(O,t) :- instance_of(O,o), is_here(O,t). 
 
 % inertia
@@ -407,7 +408,8 @@ at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object t
 at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
 
   % player moved at time t, from previous room R0 to new room R
-at(player,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+%room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+at(player,R,t) :- room_changed(R0,R,t-1).
 
 % ------ CONSTRAINTS ------
 :- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
@@ -487,7 +489,6 @@ is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 % go/south :: at(P, r) & $north_of(r, r') & $free(r, r') & $free(r', r) -> at(P, r')
 % go/west :: at(P, r) & $west_of(r', r) & $free(r, r') & $free(r', r) -> at(P, r')
 
-room_changed(R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
 % Test constraints
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
@@ -495,6 +496,8 @@ room_changed(R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _co
  % can move to a connected room, if not blocked by a closed door
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t),connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t), direction(NSEW), r(R0). %
 0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+
+room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
 % Test constraints
 :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t).  % can't go that way: not a valid action
@@ -681,7 +684,7 @@ need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
 {need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
 {need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
 
-can_acquire(t) :- {need_acquire(O,t):can_take(O,t)} > 0.
+%can_acquire(t) :- {need_to_acquire(O,t):can_take(O,t)} > 0.
 """
 
 
@@ -730,13 +733,13 @@ solved_all(t) :- goal2_achieved(t).
 % NOTE (GVS ?unknown why the following don't work vs. new_xxx(t) which do) ----
 %      not first_visited(_,t), not first_opened(_,t), not first_acquired(_,t), query(t).
 
-% can_acquire(2) :- t=2, query(t).
- 
 %------------------------------------------
 
-:- need_to_gather(t), can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
+can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
+
+:- can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
 :- need_to_search(t), can_open(t), {first_visited(R,t):r(R)}>0, query(t).    % prefer opening a container over exploring a aew roon
-:- need_to_gather(t), can_acquire(t), {first_opened(C,t):instance_of(C,c)}>0, query(t).  % prefer greedy/1-step acquire over opening a new container
+:- can_acquire(t), {first_opened(C,t):instance_of(C,c)}>0, query(t).  % prefer greedy/1-step acquire over opening a new container
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -767,12 +770,12 @@ solved_all(t) :- goal2_achieved(t).
 #show need_to_find/2.
 #show need_to_acquire/2.
 
-%#show have_found/2.
-%#show is_here/2.
+#show have_found/2.
+#show is_here/2.
 
-#show connected/3.
-#show connected/4.
-#show free/3.
+%#show connected/3.
+%#show connected/4.
+%#show free/3.
 
 % #show contents_unknown/2.
 % #show.
@@ -1089,6 +1092,8 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         for r_fact in room_facts[_initial_room]:
             if r_fact.startswith("at(player,"):
                 aspfile.write(r_fact)
+        aspfile.write("\n")
+        aspfile.write(f"first_visited({_initial_room},t).")
         aspfile.write("\n\n")
         for room in sorted(room_facts.keys()):
             aspfile.write(f"#program room_{room}(t).\n")  #TODO: load facts for initial room dynamically
