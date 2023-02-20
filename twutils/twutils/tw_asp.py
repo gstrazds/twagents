@@ -97,8 +97,8 @@ def main(prg):
                         parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
                     _recipe_read = True
                 elif _name.startswith("r_"):    # have entered a previously unseen room
-                    print(f"ADDING #program room_{_name} ({step}).")
-                    parts.append((f"room_{_name}", [Number(step)]))
+                    print(f"ADDING #program room_{_name} ({step-1}).")
+                    parts.append((f"room_{_name}", [Number(step-1)]))
                 else:
                     print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
             if solved_all:
@@ -108,8 +108,8 @@ def main(prg):
             #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            parts.append(("obs_step", [Number(step)]))
-            parts.append(("check", [Number(step)]))
+            parts.append(("obs_step", [Number(step)]))  #step==0
+            parts.append(("check", [Number(step)]))     #step==0
         else:  #if step > 0:
 
             if len(_actions_facts):
@@ -120,7 +120,8 @@ def main(prg):
                 prg.add("prev_actions", [], actions_facts_str)
                 parts.append(("prev_actions", []))
 
-            parts.append(("obs_step", [Number(step)]))
+            if step > 1:
+                parts.append(("obs_step", [Number(step-1)]))
             parts.append(("step", [Number(step)]))
             if _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
