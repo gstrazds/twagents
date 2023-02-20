@@ -409,7 +409,7 @@ at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):di
 
   % player moved at time t, from previous room R0 to new room R
 %room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
-at(player,R,t) :- room_changed(R0,R,t-1).
+at(player,R,t) :- room_changed(R0,R,t).
 
 % ------ CONSTRAINTS ------
 :- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
@@ -737,9 +737,10 @@ solved_all(t) :- goal2_achieved(t).
 
 can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 
-:- can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
-:- need_to_search(t), can_open(t), {first_visited(R,t):r(R)}>0, query(t).    % prefer opening a container over exploring a aew roon
-:- can_acquire(t), {first_opened(C,t):instance_of(C,c)}>0, query(t).  % prefer greedy/1-step acquire over opening a new container
+%:- can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
+:- can_acquire(t), new_room(t), query(t). % prefer greedy/1-step acquire over exploring a aew roon
+:- can_acquire(t), newly_opened(t), query(t).  % prefer greedy/1-step acquire over opening a new container
+:- need_to_search(t), can_open(t), new_room(t), query(t).    % prefer opening a container over exploring a aew roon
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
