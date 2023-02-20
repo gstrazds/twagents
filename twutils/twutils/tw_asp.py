@@ -108,7 +108,8 @@ def main(prg):
             #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            parts.append(("obs_step", [Number(step)]))  #step==0
+            parts.append(("obs_step", [Number(0)]))  #step==0
+            #parts.append(("predict_step", [Number(0)]))
             parts.append(("check", [Number(step)]))     #step==0
         else:  #if step > 0:
 
@@ -120,8 +121,8 @@ def main(prg):
                 prg.add("prev_actions", [], actions_facts_str)
                 parts.append(("prev_actions", []))
 
-            if step > 1:
-                parts.append(("obs_step", [Number(step-1)]))
+            parts.append(("obs_step", [Number(step)]))
+            parts.append(("predict_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
             if _recipe_read:
                 print(f"+ ADDING #program cooking_step({step})")
@@ -434,6 +435,9 @@ consumed(F,t) :- consumed(F,t-1), timestep(t).
 
 ACTION_STEP_RULES = \
 """
+% ------------------ predict_step(t) t=[1...] ----------------------
+#program predict_step(t).    % applied at each timestep >=1
+
 % ------------------ step(t) t=[1...] ----------------------
 #program step(t).    % applied at each timestep >=1
 
@@ -462,10 +466,10 @@ GAME_RULES_COMMON = \
 % examine/t :: $at(P, r) & $at(t, r) -> 
 
 
-0 {do_look(t,R)} 1 :- at(player,R,t), r(R), timestep(t).
+0 {do_look(t,R):r(R),at(player,R,t)} 1 :- at(player,R,t), r(R), timestep(t).
 
-0 {do_examine(t,O)} 1 :- is_here(O,t), instance_of(O,thing), timestep(t).
-0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+0 {do_examine(t,O):is_here(O,t),instance_of(O,thing)} 1 :- is_here(O,t), instance_of(O,thing), timestep(t).
+0 {do_examine(t,O):in(O,inventory,t)} 1 :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
 
 % examine/c :: can examine an object that's in a container if the container is open and player is in the same room
 %0 {do_examine(t,O)} 1 :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
@@ -521,9 +525,9 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2),
 
 
 % can open a closed but unlocked door
-0 {do_open(t,D)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
+0 {do_open(t,D):d(D),closed(D,t-1)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
 % can open a closed but unlocked container
-0 {do_open(t,C)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
+0 {do_open(t,C):instance_of(C,c),closed(C,t-1)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
 % Test constraints
 :- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
 :- do_open(t,D), d(D), r(R), at(player,R,t), not has_door(R,D).  % can only open a door if player is in appropriate room
@@ -544,7 +548,7 @@ is_action(do_open(t,CD), t) :- do_open(t,CD).  %, is_openable(CD).
 % cook/toaster/cooked/raw :: $at(P, r) & $at(toaster, r) & $in(f, I) & raw(f) -> grilled(f) & cooked(f)
 
 
-0 {do_cook(t,X,A)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in(X,inventory,t-1), at(A,R,t-1).
+0 {do_cook(t,X,A):cookable(X),instance_of(A,cooker)} 1 :- at(player,R,t-1), r(R), cookable(X), instance_of(A,cooker), in(X,inventory,t-1), at(A,R,t-1).
 % Test constraints
 :- do_cook(t,X,A), at(player,R,t), at(A,R2,t), R != R2. % can't cook using an appliance that isn't in the current room
 
@@ -556,7 +560,8 @@ is_action(do_cook(t,X,A), t) :- do_cook(t,X,A).
 % slice :: $in(f, I) & $in(o, I) & $sharp(o) & uncut(f) -> sliced(f)
 
 % can chop, slice or dice cuttable ingredients that are in player's inventory if also have a knife (a sharp object), 
-0 {do_cut(t,V,F,O):cutting_verb(V) } 1 :- cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1). %, not cooked(F,t-1).
+0 {do_cut(t,V,F,O):cutting_verb(V),cuttable(F),sharp(O),in(O,inventory,t-1),in(F,inventory,t-1) } 1 :- 
+    cuttable(F), cut_state(F,uncut,t-1), in(F,inventory,t-1), sharp(O), in(O,inventory,t-1). %, not cooked(F,t-1).
 %:- do_cut(t,_,F,_), cooked(F,t).       % can't cut up an ingredient that has already been cooked (in TextWorld)
 
 :- do_cut(t,_,F,O), not cut_state(F,uncut,t-1).  % can't cut up something that's already cut up
@@ -578,12 +583,12 @@ GAME_RULES_NEW = \
 
 
 % -- take/c :: can take an object that's in a container if the container is open and player is in the same room
-0 {do_take(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
+0 {do_take(t,O,C):in(O,C,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,C,t-1), open(C,t-1), timestep(t).
 % -- take/s :: can take an object that's on a support if player is in the same room as the suppport
-0 {do_take(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(S,s), at(S,R,t-1), on(O,S,t-1), timestep(t).
+0 {do_take(t,O,S):on(O,S,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(S,s), at(S,R,t-1), on(O,S,t-1), timestep(t).
 
 % -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
-0 {do_take(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
+0 {do_take(t,O,R):at(O,R,t-1),at(player,R,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
 %count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
 %#show count_inventory/2.
@@ -603,11 +608,11 @@ is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 %+ insert :: $at(P, r) & $at(c, r) & $open(c) & in(o, I) & used(slot) -> in(o, c) & free(slot)",
 
 % insert :: can put an object into a container if the player has the object, container is open and player is in the same room as container
-0 {do_put(t,O,C)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,inventory,t-1), open(C,t-1), timestep(t).
+0 {do_put(t,O,C):in(O,inventory,t-1),instance_of(C,c)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t-1), in(O,inventory,t-1), open(C,t-1), timestep(t).
 % put :: can put an object onto a support if player has the object and is in the same room as the suppport
-0 {do_put(t,O,S)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), in(O,inventory,t-1), timestep(t).
+0 {do_put(t,O,S):in(O,inventory,t-1),instance_of(S,s)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), s(S), at(S,R,t-1), in(O,inventory,t-1), timestep(t).
 % drop :: can drop an object on the floor of a room if player is in the room and has the object
-0 {do_put(t,O,R)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), in(O,inventory,t-1), timestep(t).
+0 {do_put(t,O,R):in(O,inventory,t-1),at(player,R,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), in(O,inventory,t-1), timestep(t).
 
 % TEMPORARY OPTIMIZATION HACK don't drop things unless we need to.
 :- do_put(t,_,_), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} < N.
@@ -621,8 +626,8 @@ is_action(do_put(t,O,X),t) :- do_put(t,O,X).
 % eat :: in(f, I) & edible(f) -> consumed(f)
 %+ eat :: in(f, I) & edible(f) & used(slot) -> consumed(f) & free(slot)",
 
-0 {do_eat(t,F)} 1 :- edible(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
-0 {do_drink(t,F)} 1 :- drinkable(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
+0 {do_eat(t,F):edible(F,t-1),in(F,inventory,t-1)} 1 :- edible(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
+0 {do_drink(t,F):drinkable(F,t-1),in(F,inventory,t-1)} 1 :- drinkable(F,t-1), instance_of(F,f), in(F,inventory,t-1), timestep(t).
 
 % don't consume ingredients that will be needed for the recipe
 :- act(do_eat(t,F),t), in_recipe(F), timestep(t).
@@ -662,7 +667,7 @@ COOKING_RULES = \
 :- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
 :- have_prepped_ingredients(t), not recipe_read(t-1), timestep(t).
 
-0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t), cooking_location(R, recipe), r(R), at(player,R,t), timestep(t).
+0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t), cooking_location(R,recipe), r(R), at(player,R,t), timestep(t).
 :- do_make_meal(t), cooking_location(R, recipe), r(R), not at(player,R,t), timestep(t).
 
 :- do_put(t,_,_), have_prepped_ingredients(t).
