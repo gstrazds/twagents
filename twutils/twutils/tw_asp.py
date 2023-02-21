@@ -46,16 +46,16 @@ def main(prg):
                 action = atom.arguments[0]
                 str_atom = f"{atom}."
                 _actions_facts.append(str_atom)
-                print(f"  -- [{t}] : {str_atom}")
+                print(f"  {'++' if step == t else '--'} [{t}] : {str_atom}")
                 _actions_list.append(atom)
             elif atom.name == 'recipe_read' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
-                    print(f"  -- {atom}")
+                    print(f"  ++ {atom}")
                 _newly_discovered_facts.append("cookbook")
             elif atom.name == 'solved_all' \\
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
-                print(f"  -- {atom}")
+                print(f"  ++! {atom}")
                 _newly_discovered_facts.append("solved_all")
                 _solved_all = True
             elif (atom.name == 'first_visited' \\
@@ -63,8 +63,10 @@ def main(prg):
                or atom.name == 'first_acquired') \\
               and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number:
                 if atom.arguments[1].number == step:    #, f"[{step}] {atom.name} {atom.arguments[1]}"
-                    print(f"  -- {atom}")
+                    print(f"  ++ {atom}")
                     _newly_discovered_facts.append(str(atom.arguments[0]))
+                else:
+                    print(f"  -- {atom}")
         if _solved_all:
             return False
         return True  # False -> stop after first model
@@ -109,7 +111,7 @@ def main(prg):
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
             parts.append(("obs_step", [Number(0)]))  #step==0
-            #parts.append(("predict_step", [Number(0)]))
+            parts.append(("predict_step", [Number(0)]))
             parts.append(("check", [Number(step)]))     #step==0
         else:  #if step > 0:
 
@@ -243,29 +245,6 @@ OBSERVATION_STEP = \
 % ------------------ obs_step(t) t=[0...] ----------------------
 #program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
-% player has visited room R
-have_found(R,t) :- r(R), room_changed(R0,R,t).
-first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
-first_visited(R,t) :- r(R), first_found(R,t).
-
-%inertia: once we've found something, it stays found forever
-% (because the player is the only agent in a deterministic world, with perfect memory)
-have_found(X,t) :- have_found(X,t-1).
-
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
-% can see a thing if player is in the same room as the thing
-have_found(O,t) :- instance_of(O,thing), is_here(O,t), timestep(t).
-% can see an object that is on a support if player is in the same room as the suppport
-%have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
-% can see an object that's in a container if the container is open and player is in the same room
-%have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
-
-need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
-
-need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
-
-atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
-in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 """
 
 # NOTE: the following MAP_RULES are also evaluated at every observation step
@@ -284,8 +263,6 @@ link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownW), link(R2,D,unknownE).
 link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownN), link(R2,D,unknownS).
 link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
-%connected(R1,R2) :- connected(R1,R2,NSEW), direction(NSEW).
-%connected(R1,R2) :- connected(R1,R2,NSEW,t), r(R2), direction(NSEW).
 %has_door(R,D) :- r(R), d(D), link(R,D,_).
 has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
@@ -293,28 +270,19 @@ door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected
 % define fluents that determine whether player can move from room R0 to R1
 %%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
 
-free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
-not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
+free(R0,R1,t+1) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
+not free(R0,R1,t+1) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
 
 %free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t+1) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t+1) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
 
-connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), room_changed(R1,R2,t), r(R2), R1!=R2.
-connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), room_changed(R1,R2,t), r(R2), R1!=R2.
-connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), room_changed(R1,R2,t), r(R2), R1!=R2.
-connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), room_changed(R1,R2,t), r(R2), R1!=R2.
-
-% assume that all doors/exits can be traversed in both directions
-% assume that all doors/exits can be traversed in both directions
-connected(R1,R2,east,t) :- connected(R2,R1,west,t), r(R1).
-connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
-connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
-connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 
 """
-EVERY_STEP_OBS_RULES = \
+EVERY_STEP_RULES = \
 """
+#program predict_step(t).
+
 % is the thing X close enough to the player to interact with
 %in_room(X,R,t) :- r(R), r(X), X=R.
 in_room(X,R,t) :- at(X,R,t), r(R).
@@ -326,7 +294,6 @@ is_here(R,t) :- at(player,R,t), r(R).
 can_take(O,t) :- instance_of(O,o), is_here(O,t). 
 
 % inertia
-connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
 free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never become closed/unpassable
 
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
@@ -435,8 +402,48 @@ consumed(F,t) :- consumed(F,t-1), timestep(t).
 
 ACTION_STEP_RULES = \
 """
-% ------------------ predict_step(t) t=[1...] ----------------------
-#program predict_step(t).    % applied at each timestep >=1
+% ------------------ predict_step(t) t=[0...] ----------------------
+#program predict_step(t).    % applied at each timestep >=0
+
+connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
+connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
+connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
+connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
+
+% assume that all doors/exits can be traversed in both directions
+% assume that all doors/exits can be traversed in both directions
+connected(R1,R2,east,t) :- connected(R2,R1,west,t), r(R1).
+connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
+connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
+connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
+
+% inertiaconnected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
+
+atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
+in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
+
+
+% player has visited room R
+have_found(R,t) :- r(R), room_changed(R0,R,t).
+first_found(X,t) :- have_found(X,t), not have_found(X,t-1).
+first_visited(R,t) :- r(R), first_found(R,t).
+
+%inertia: once we've found something, it stays found forever
+% (because the player is the only agent in a deterministic world, with perfect memory)
+have_found(X,t) :- have_found(X,t-1).
+
+have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+% can see a thing if player is in the same room as the thing
+have_found(O,t) :- instance_of(O,thing), is_here(O,t), timestep(t).
+% can see an object that is on a support if player is in the same room as the suppport
+%have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
+% can see an object that's in a container if the container is open and player is in the same room
+%have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), instance_of(C,c), at(C,R,t), in(O,C,t), open(C,t), timestep(t).
+
+need_to_search(t) :- {not have_found(X,t):need_to_find(X,t)}>0.
+
+need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
+
 
 % ------------------ step(t) t=[1...] ----------------------
 #program step(t).    % applied at each timestep >=1
@@ -719,7 +726,7 @@ solved_all(t) :- goal2_achieved(t).
 %% Prioritize search (exploring unseen locations) UNTIL WE FIND THE RECIPE
 %:- not goal1_has_been_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
 :- not goal1_has_been_achieved(t), need_to_search(t), not new_room(t), not newly_opened(t), query(t).
-:- not goal1_has_been_achieved(t), not need_to_search(t), query(t).  % FAIL UNTIL WE FIND the Recipe
+:- not goal1_has_been_achieved(t), not need_to_search(t), t>0, query(t).  % FAIL UNTIL WE FIND the Recipe
 
 % After finding the recipe, if incremental searching or gathering is not required, fail unless we achieve our main goal
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
@@ -1113,7 +1120,7 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         # ---- GAME DYNAMICS
         aspfile.write(OBSERVATION_STEP)
         aspfile.write(EVERY_STEP_MAP_RULES)
-        aspfile.write(EVERY_STEP_OBS_RULES)
+        aspfile.write(EVERY_STEP_RULES)
 
 
         aspfile.write(ACTION_STEP_RULES)
