@@ -101,6 +101,7 @@ def main(prg):
                 elif _name.startswith("r_"):    # have entered a previously unseen room
                     print(f"ADDING #program room_{_name} ({step-1}).")
                     parts.append((f"room_{_name}", [Number(step-1)]))
+                    parts.append(("obs_step", [Number(step-1)]))
                 else:
                     print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
             if solved_all:
@@ -110,7 +111,7 @@ def main(prg):
             #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            parts.append(("obs_step", [Number(0)]))  #step==0
+            #parts.append(("obs_step", [Number(0)]))  #step==0
             parts.append(("predict_step", [Number(0)]))
             parts.append(("check", [Number(step)]))     #step==0
         else:  #if step > 0:
@@ -123,7 +124,7 @@ def main(prg):
                 prg.add("prev_actions", [], actions_facts_str)
                 parts.append(("prev_actions", []))
 
-            parts.append(("obs_step", [Number(step)]))
+            #parts.append(("obs_step", [Number(step)]))
             parts.append(("predict_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
             if _recipe_read:
@@ -245,6 +246,13 @@ OBSERVATION_STEP = \
 % ------------------ obs_step(t) t=[0...] ----------------------
 #program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
+_have_found(O,t) :- instance_of(O,thing), _in_room(O,R2,t), room_changed(R,R2,t), timestep(t).
+
+_in_room(X,R,t) :- at(X,R,t), r(R).
+_in_room(X,R,t) :- on(X,S,t), _in_room(S,R,t), instance_of(S,s), r(R).
+_in_room(X,R,t) :- in(X,C,t), _in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
+
+
 """
 
 # NOTE: the following MAP_RULES are also evaluated at every observation step
@@ -263,19 +271,6 @@ link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownW), link(R2,D,unknownE).
 link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownN), link(R2,D,unknownS).
 link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
-%has_door(R,D) :- r(R), d(D), link(R,D,_).
-has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
-door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
-
-% define fluents that determine whether player can move from room R0 to R1
-%%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
-
-free(R0,R1,t+1) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
-not free(R0,R1,t+1) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
-
-%free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t+1) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
-free(R0,R1,t+1) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
 
 
 """
@@ -292,9 +287,6 @@ in_room(X,R,t) :- in(X,C,t), in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
 is_here(X,t) :- at(player,R,t), in_room(X,R,t), r(R).
 is_here(R,t) :- at(player,R,t), r(R).
 can_take(O,t) :- instance_of(O,o), is_here(O,t). 
-
-% inertia
-free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never become closed/unpassable
 
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
 need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,t).
@@ -371,15 +363,6 @@ in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object in
 at(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,r).  % player drops an object to the floor of a room
 
 
-% --- inertia: player stays in the current room unless acts to move to another
-  % stay in the current room unless current action is do_moveP
-%at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
-at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
-
-  % player moved at time t, from previous room R0 to new room R
-%room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
-at(player,R,t) :- room_changed(R0,R,t).
-
 % ------ CONSTRAINTS ------
 :- cuttable(X), {cut_state(X,V,t):instance_of(V,cut_state) } > 1.   % disjoint set of attribute values for cuttable items
 
@@ -405,10 +388,23 @@ ACTION_STEP_RULES = \
 % ------------------ predict_step(t) t=[0...] ----------------------
 #program predict_step(t).    % applied at each timestep >=0
 
-connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
-connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
-connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
-connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t-1), room_changed(R1,R2,t-1), r(R2), R1!=R2.
+% define fluents that determine whether player can move from room R0 to R1
+%%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
+
+free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
+not free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), not open(D,t). %, r(R1)
+
+%free(R0,R1,t) :- r(R0), connected(R0,R1), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW), direction(NSEW), not link(R0,_,R1).  %, r(R1), % if there is no door, exit is always traversible.
+free(R0,R1,t) :- r(R0), connected(R0,R1,NSEW,t), not door_direction(R0,_,NSEW).  %, r(R1), % if there is no door, exit is always traversible.
+% inertia
+%free(R0,R1,t) :- free(R0,R1,t-1), not link(R0,_,R1).  % no door -> can never become closed/unpassable
+
+
+connected(R1,R2,east,t) :- act(do_moveP(t,R1,unknownE,east),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,south,t) :- act(do_moveP(t,R1,unknownS,south),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,north,t) :- act(do_moveP(t,R1,unknownN,north),t), room_changed(R1,R2,t), r(R2), R1!=R2.
+connected(R1,R2,west,t) :- act(do_moveP(t,R1,unknownW,west),t), room_changed(R1,R2,t), r(R2), R1!=R2.
 
 % assume that all doors/exits can be traversed in both directions
 % assume that all doors/exits can be traversed in both directions
@@ -417,7 +413,18 @@ connected(R1,R2,west,t) :- connected(R2,R1,east,t), r(R1).
 connected(R1,R2,south,t) :- connected(R2,R1,north,t), r(R1).
 connected(R1,R2,north,t) :- connected(R2,R1,south,t), r(R1).
 
-% inertiaconnected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
+% inertia
+connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW). % once connected -> always connected
+
+% --- inertia: player stays in the current room unless acts to move to another
+  % stay in the current room unless current action is do_moveP
+%at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
+%at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
+at(player,R,t) :- at(player,R,t-1), not room_changed(R,_,t).
+
+  % player moved at time t, from previous room R0 to new room R
+%room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
+at(player,R,t) :- room_changed(R0,R,t).
 
 atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
@@ -433,8 +440,10 @@ first_visited(R,t) :- r(R), first_found(R,t).
 have_found(X,t) :- have_found(X,t-1).
 
 have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+have_found(O,t) :- _have_found(O,t-1).
+
 % can see a thing if player is in the same room as the thing
-have_found(O,t) :- instance_of(O,thing), is_here(O,t), timestep(t).
+%have_found(O,t) :- instance_of(O,thing), is_here(O,t), timestep(t).
 % can see an object that is on a support if player is in the same room as the suppport
 %have_found(O,t) :- at(player,R,t), r(R), at(S,R,t), on(O,S,t), timestep(t).
 % can see an object that's in a container if the container is open and player is in the same room
@@ -506,18 +515,25 @@ is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
  % can move to a connected room, if not blocked by a closed door
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t),connected(R0,R,NSEW),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t), direction(NSEW), r(R0). %
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW)} 1 :- at(player,R0,t-1), free(R0,R,t-1), direction(NSEW), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW)} 1 :-
+                         free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW), at(player,R0,t-1), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1)} 1 :-
+                         free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1), r(R0). %
 
 room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
 % Test constraints
 :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t).  % can't go that way: not a valid action
-:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t-1).  % can't go that way: not a valid action
-:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),r(R2),at(player,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly
-
+:- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t).  % can't go that way: not a valid action
+:- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),room_changed(R0,R2,t),free(R0,R2,t-1).  % if dest room is known, use it explicitly
 
 is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2), direction(NSEW).
+
+%++++++  DEBUGGING
+%do_look(t,R) :- first_visited(R,t-1).
+%%is_action(do_look(t,R)) :- room_changed(R0,R,t-1).
+%act(do_look(t,R), t) :- first_visited(R,t-1).
+%------  DEBUGGING
 
 
 % ------ OPEN/CLOSE UNLOCK/LOCK ------
@@ -530,6 +546,10 @@ is_action(do_moveP(t,R1,R2,NSEW), t) :- do_moveP(t,R1,R2,NSEW). %, r(R1), r(R2),
 % unlock/c :: $at(P, r) & $at(c, r) & $in(k, I) & $match(k, c) & locked(c) -> closed(c)
 % unlock/d :: $at(P, r) & $link(r, d, r') & $link(r', d, r) & $in(k, I) & $match(k, d) & locked(d) -> closed(d)
 
+
+%has_door(R,D) :- r(R), d(D), link(R,D,_).
+has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
+door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
 % can open a closed but unlocked door
 0 {do_open(t,D):d(D),closed(D,t-1)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
@@ -693,9 +713,16 @@ need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), 
 need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
      sharp(O), not cut_state(F,V,t-1), not have_acquired(O,t-1), timestep(t).
 
-{need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
-{need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
-{need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
+%{need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
+%{need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
+%{need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
+
+{need_to_find(A,t):toaster(A),not have_found(A,t-1)} 1 :-
+    in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), toaster(A), not have_found(A,t), timestep(t).
+{need_to_find(A,t):oven(A),not have_found(A,t-1)} 1 :-
+    in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), oven(A), not have_found(A,t), timestep(t).
+{need_to_find(A,t):stove(A),not have_found(A,t-1)} 1 :-
+    in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), stove(A), not have_found(A,t), timestep(t).
 
 %can_acquire(t) :- {need_to_acquire(O,t):can_take(O,t)} > 0.
 """
@@ -1105,9 +1132,10 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
         #aspfile.write(f"at(player, {_initial_room}, t).\n\n")
         for r_fact in room_facts[_initial_room]:
             if r_fact.startswith("at(player,"):
-                aspfile.write(r_fact)
-        aspfile.write("\n")
-        aspfile.write(f"first_visited({_initial_room},t).")
+                aspfile.write(r_fact+"\n")
+        # aspfile.write(f"have_found({_initial_room},t).")
+        aspfile.write(f"room_changed(nowhere,{_initial_room},t).")
+
         aspfile.write("\n\n")
         for room in sorted(room_facts.keys()):
             aspfile.write(f"#program room_{room}(t).\n")  #TODO: load facts for initial room dynamically
