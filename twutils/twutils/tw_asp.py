@@ -301,10 +301,11 @@ need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
 need_to_find(X,t) :- need_to_acquire(X,t), not have_found(X,t).
 %:- need_to_find(X,t), have_found(X,t-1).
 
-need_to_acquire(X,t) :- need_to_acquire(X,t-1), instance_of(X,o), not have_acquired(X,t-1), timestep(t).
-:- need_to_acquire(X,t), have_acquired(X,t-1).   % if we've gotten it once, deprioritize it
+need_to_acquire(X,t) :- need_to_acquire(X,t-1), not have_acquired(X,t-1), timestep(t).
+%:- need_to_acquire(X,t), have_acquired(X,t-1).   % if we've gotten it once, deprioritize it
 have_acquired(X,t) :- have_acquired(X,t-1).
-have_acquired(X,t) :- in(X,inventory,t), need_to_acquire(X,t-1), timestep(t).
+%MOVED have_acquired(X,t) [-> nearer to have_found(X,t), below]
+%have_acquired(X,t) :- in(X,inventory,t), need_to_acquire(X,t-1), timestep(t).
 
 first_acquired(X,t) :- have_acquired(X,t), not have_acquired(X,t-1), timestep(t).
 
@@ -451,7 +452,9 @@ first_visited(R,t) :- r(R), first_found(R,t).
 % (because the player is the only agent in a deterministic world, with perfect memory)
 have_found(X,t) :- have_found(X,t-1).
 
-have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+%SIMPLIFIED: have_found(O,t) :- at(player,R,t), r(R), instance_of(O,o), in(O,inventory,t), timestep(t).
+have_found(O,t) :- in(O,inventory,t), timestep(t).
+have_acquired(O,t) :- in(O,inventory,t), timestep(t).
 have_found(O,t) :- _have_found(O,t-1).
 
 % can see a thing if player is in the same room as the thing
@@ -722,22 +725,25 @@ consumed(F,t) :- act(do_make_meal(t),t), in_recipe(F), timestep(t).
 """
 RECIPE_NEED_TO_FIND = \
 """%---------RECIPE_NEED_TO_FIND-----------
-need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), not have_acquired(F,t-1). % if t-1, inertia rule applies
+need_to_acquire(F,t) :- in_recipe(F), not in(F,inventory,t), not consumed(F,t), not have_acquired(F,t). % if t-1, inertia rule applies
 :- need_to_acquire(F,t), consumed(F,t).
 
 need_to_acquire(O,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F),
-     sharp(O), not cut_state(F,V,t-1), not have_acquired(O,t-1), timestep(t).
+     sharp(O), not cut_state(F,V,t), not have_acquired(O,t), timestep(t).
 
 %{need_to_find(A,t):toaster(A)} 1 :- in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), timestep(t).
 %{need_to_find(A,t):oven(A)} 1 :- in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), timestep(t).
 %{need_to_find(A,t):stove(A)} 1 :- in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), timestep(t).
 
-{need_to_find(A,t):toaster(A),not have_found(A,t-1)} 1 :-
+%{need_to_find(A,t):toaster(A),not have_found(A,t-1)} 1 :-
+ need_to_find(A,t) :-
     in_recipe(I,F), should_cook(I,grilled), cookable(F), not cooked_state(F,grilled,t-1), toaster(A), not have_found(A,t), timestep(t).
-{need_to_find(A,t):oven(A),not have_found(A,t-1)} 1 :-
-    in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), oven(A), not have_found(A,t), timestep(t).
-{need_to_find(A,t):stove(A),not have_found(A,t-1)} 1 :-
-    in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), stove(A), not have_found(A,t), timestep(t).
+%{need_to_find(A,t):oven(A),not have_found(A,t-1)} 1 :-
+need_to_find(A,t) :-
+     in_recipe(I,F), should_cook(I,roasted), cookable(F), not cooked_state(F,roasted,t-1), oven(A), not have_found(A,t), timestep(t).
+%{need_to_find(A,t):stove(A),not have_found(A,t-1)} 1 :-
+need_to_find(A,t) :-
+     in_recipe(I,F), should_cook(I,fried), cookable(F), not cooked_state(F,fried,t-1), stove(A), not have_found(A,t), timestep(t).
 
 %can_acquire(t) :- {need_to_acquire(O,t):can_take(O,t)} > 0.
 """
@@ -751,7 +757,7 @@ CHECK_GOAL_ACHIEVED = \
 
 X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).   % explicitly preserve actually chosen actions from previous solving steps
 
-new_acquire(t) :- {first_acquired(O,t):instance_of(O,o)}>0.
+new_acquire(t) :- {first_acquired(O,t):need_to_acquire(O,t-1)}>0.
 new_room(t) :- {first_visited(R,t):r(R)}>0.
 newly_opened(t) :- {first_opened(C,t):instance_of(C,c)}>0.
 
