@@ -12,8 +12,10 @@ from textworld.generator.inform7 import Inform7Game
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
-#const find_first=o_0.  % the cookbook is always o_0
-%#const first_room=r_4.  %this is a temporary hack [can override from command line with -c first_room=r_N]
+#const find_first=o_0.   % the cookbook is always o_0
+#const step_max_mins=3.  % (default value)
+#const step_max_secs=30. % (default value)  Give up if a solving step takes > step_max_mins:step_max_secs
+
 #script (python)
 import datetime
 from clingo import Function, Symbol, String, Number, SymbolType
@@ -27,6 +29,10 @@ def main(prg):
     imax = get(prg.get_const("imax"), Number(500))
     istop = get(prg.get_const("istop"), String("SAT"))
     #first_room = get(prg.get_const("first_room"), String("r_4"))
+    MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
+    STEP_MAX_MINS = 3
+    STEP_MAX_SECS = 30
+    STEP_MAX_ELAPSED_TIME = datetime.timedelta(minutes=STEP_MAX_MINS, seconds=STEP_MAX_SECS)
 
     _actions_list = []
     _actions_facts = []
@@ -71,8 +77,6 @@ def main(prg):
             return False
         return True  # False -> stop after first model
 
-    MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
-    MAX_STEP_ELAPSED_TIME = datetime.timedelta(minutes=1, seconds=20)
     step, ret = 0, None
     solved_all = False
     while ((imax is None or step < imax.number) and
@@ -118,9 +122,9 @@ def main(prg):
 
             if len(_actions_facts):
                 actions_facts_str = "\\n".join(_actions_facts)
-                actions_facts_str = actions_facts_str.replace("act(", "did_act(")
+                actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
                 print(f"\\n+++++ ADDING prev_actions: +++\\n{actions_facts_str}\\n----", flush=True)
-                print("\\t", "\\n\\t".join(_actions_facts), flush=True)
+                #print("\\t", "\\n\\t".join(_actions_facts), flush=True)
                 prg.add("prev_actions", [], actions_facts_str)
                 parts.append(("prev_actions", []))
 
@@ -145,8 +149,8 @@ def main(prg):
         print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
         if step >= MIN_PRINT_STEP:
             print(f"--- [{step}] elapsed: {elapsed_time}")
-        if elapsed_time > MAX_STEP_ELAPSED_TIME:
-            print(f"--- [{step}] Exceded step time threshhold({MAX_STEP_ELAPSED_TIME})... Stop solving.")
+        if elapsed_time > STEP_MAX_ELAPSED_TIME:
+            print(f"--- [{step}] Step time {elapsed_time} > {STEP_MAX_ELAPSED_TIME} ... Stop solving.")
             break
         step = step+1
 
@@ -642,8 +646,8 @@ is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 0 {do_put(t,O,R):in(O,inventory,t-1),at(player,R,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), in(O,inventory,t-1), timestep(t).
 
 % TEMPORARY OPTIMIZATION HACK don't drop things unless we need to.
-:- do_put(t,_,_), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} < N.
-:- do_put(t,_,_), not inventory_max(_).
+%:- do_put(t,_,_), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} < N.
+%:- do_put(t,_,_), not inventory_max(_).
 
 is_action(do_put(t,O,X),t) :- do_put(t,O,X).
 
@@ -786,40 +790,40 @@ can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-#show atP/2.
-#show goal1_achieved/1.
-#show recipe_read/1.
-#show goal1_has_been_achieved/1.
-#show solved_all/1.
+%#show atP/2.
+%#show goal1_achieved/1.
+%#show recipe_read/1.
+%#show goal1_has_been_achieved/1.
+%#show solved_all/1.
 
-#show can_acquire/1.
-#show new_acquire/1.
-#show new_room/1.
-#show newly_opened/1.
+%#show can_acquire/1.
+%#show new_acquire/1.
+%#show new_room/1.
+%#show newly_opened/1.
 
-#show first_opened/2.
-#show first_visited/2.
-#show first_found/2.
-#show first_acquired/2.
-#show have_prepped_ingredients/1.
-#show need_to_gather/1.
-#show need_to_search/1.
+%#show first_opened/2.
+%#show first_visited/2.
+%#show first_found/2.
+%#show first_acquired/2.
+%#show have_prepped_ingredients/1.
+%#show need_to_gather/1.
+%#show need_to_search/1.
 
-#show consumed/2.
-#show in_recipe/2.
-#show in_inventory/2.
-#show need_to_find/2.
-#show need_to_acquire/2.
+%#show consumed/2.
+%#show in_recipe/2.
+%#show in_inventory/2.
+%#show need_to_find/2.
+%#show need_to_acquire/2.
 
-#show have_found/2.
-#show is_here/2.
+%#show have_found/2.
+%#show is_here/2.
 
 %#show connected/3.
 %#show connected/4.
 %#show free/3.
 
 % #show contents_unknown/2.
-% #show.
+#show.
 
 """
 
