@@ -106,8 +106,12 @@ def main(prg):
                     print(f"ADDING #program room_{_name} ({step-1}).")
                     parts.append((f"room_{_name}", [Number(step-1)]))
                     parts.append(("obs_step", [Number(step-1)]))
+                elif _name.startswith("c_"):    # opened a container for the first time
+                    print(f"OBSERVING CONTENTS OF {_name} ({step-1}).")
+                    #parts.append((f"c_{_name}", [Number(step-1)]))
+                    parts.append(("obs_step", [Number(step-1)]))
                 else:
-                    print("%%%%% IGNORING FIRST OPENED or ACQUIRED:", _name)
+                    print("%%%%% IGNORING FIRST ACQUIRED:", _name)
             if solved_all:
                 break      # stop solving immediately
         if step == 0:
@@ -250,11 +254,12 @@ OBSERVATION_STEP = \
 % ------------------ obs_step(t) t=[0...] ----------------------
 #program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
-_have_found(O,t) :- instance_of(O,thing), _in_room(O,R2,t), room_changed(R,R2,t), timestep(t).
+%_have_found(O,t) :- instance_of(O,thing), _visible_in_room(O,R2,t), room_changed(R,R2,t), timestep(t).
+_have_found(O,t) :- instance_of(O,thing), _visible_in_room(O,R,t), at(player,R,t), timestep(t).
 
-_in_room(X,R,t) :- at(X,R,t), r(R).
-_in_room(X,R,t) :- on(X,S,t), _in_room(S,R,t), instance_of(S,s), r(R).
-_in_room(X,R,t) :- in(X,C,t), _in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
+_visible_in_room(X,R,t) :- at(X,R,t), r(R).
+_visible_in_room(X,R,t) :- on(X,S,t), _visible_in_room(S,R,t), instance_of(S,s), r(R).
+_visible_in_room(X,R,t) :- in(X,C,t), _visible_in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
 
 
 """
@@ -519,10 +524,10 @@ is_action(do_look(t,R), t) :- do_look(t,R). %, r(R).
 %:- at(player,R0,t-1), at(player,R,t), r(R0), r(R), R!=R0, not free(R,R0,t-1).
 
  % can move to a connected room, if not blocked by a closed door
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW)} 1 :-
-                         free(R0,R,t-1),connected(R0,R,NSEW),direction(NSEW), at(player,R0,t-1), r(R0). %
-0 {do_moveP(t,R0,R,NSEW):free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1)} 1 :-
-                         free(R0,R,t-1),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t),connected(R0,R,NSEW),direction(NSEW)} 1 :-
+                         free(R0,R,t),connected(R0,R,NSEW),direction(NSEW), at(player,R0,t-1), r(R0). %
+0 {do_moveP(t,R0,R,NSEW):free(R0,R,t),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1)} 1 :-
+                         free(R0,R,t),connected(R0,R,NSEW,t-1),direction(NSEW),at(player,R0,t-1), r(R0). %
 
 room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 
@@ -556,9 +561,9 @@ has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW)
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
 % can open a closed but unlocked door
-0 {do_open(t,D):d(D),closed(D,t-1)} 1 :- at(player,R0,t), r(R0), link(R0,D,R1), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
+0 {do_open(t,D):d(D),closed(D,t-1),at(player,R0,t),has_door(R0,D)} 1 :- at(player,R0,t), has_door(R0,D), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
 % can open a closed but unlocked container
-0 {do_open(t,C):instance_of(C,c),closed(C,t-1)} 1 :- at(player,R0,t-1), r(R0), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
+0 {do_open(t,C):instance_of(C,c),closed(C,t-1),is_here(C,t)} 1 :- is_here(C,t), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
 % Test constraints
 :- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
 :- do_open(t,D), d(D), r(R), at(player,R,t), not has_door(R,D).  % can only open a door if player is in appropriate room
