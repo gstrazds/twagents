@@ -349,6 +349,9 @@ cooked_state(X,V,t) :- cooked_state(X,V,t-1), not act(do_cook(t,X,_),t).
 cooked_state(X,burned,t) :- cooked_state(X,burned,t-1).
 :- cooked_state(X,S1,t), S1 != burned, cooked_state(X,burned,t-1).
 
+%GVS 22-02-2023
+:- cooked(X,t-1), act(do_cook(t,X,_), t).    % explicitly prevent burning already cooked food.
+
 cooked_state(X,grilled,t) :- act(do_cook(t,X,A), t), instance_of(A,toaster), not cooked(X,t-1).  % cooking with a BBQ or grill or toaster
 cooked_state(X,fried,t) :- act(do_cook(t,X,A), t), instance_of(A,stove), not cooked(X,t-1).   % cooking on a stove => frying
 cooked_state(X,roasted,t) :- act(do_cook(t,X,A), t), instance_of(A,oven), not cooked(X,t-1).   % cooking in an oven => roasting
@@ -698,9 +701,12 @@ COOKING_RULES = \
 
 % have_prepped_ingredients is True if all required ingredients have been fully prepared and are currently in player's inventory
 {have_prepped_ingredients(t)}  :- in_recipe(F), in(F,inventory,t-1), recipe_read(t-1), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(F), not in(F,inventory,t-1), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
-:- have_prepped_ingredients(t), in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
+not_available_ingredient(F,t) :- in_recipe(F), not in(F,inventory,t-1), timestep(t).
+not_cooked_ingredient(F,t) :- in_recipe(I,F), should_cook(I,V), cookable(F), not cooked_state(F,V,t), timestep(t).
+not_cut_ingredient(F,t) :- in_recipe(I,F), should_cut(I,V), cuttable(F), not cut_state(F,V,t), timestep(t).
+:- have_prepped_ingredients(t), not_available_ingredient(F,t).
+:- have_prepped_ingredients(t), not_cooked_ingredient(F,t).
+:- have_prepped_ingredients(t), not_cut_ingredient(F,t).
 :- have_prepped_ingredients(t), not recipe_read(t-1), timestep(t).
 
 0 { do_make_meal(t) } 1 :- have_prepped_ingredients(t), cooking_location(R,recipe), r(R), at(player,R,t), timestep(t).
