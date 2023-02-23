@@ -28,10 +28,10 @@ def main(prg):
     imin = get(prg.get_const("imin"), Number(1))
     imax = get(prg.get_const("imax"), Number(500))
     istop = get(prg.get_const("istop"), String("SAT"))
-    #first_room = get(prg.get_const("first_room"), String("r_4"))
+
     MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
-    STEP_MAX_MINS = 3
-    STEP_MAX_SECS = 30
+    STEP_MAX_MINS = get(prg.get_const("step_max_mins"), Number(2)).number
+    STEP_MAX_SECS = get(prg.get_const("step_max_secs"), Number(30)).number
     STEP_MAX_ELAPSED_TIME = datetime.timedelta(minutes=STEP_MAX_MINS, seconds=STEP_MAX_SECS)
 
     _actions_list = []

@@ -1,7 +1,4 @@
 
-#program check(t).   % redundant declaration (logic is defined below)
-#external query(t).
-
 
 % --------------------------------------------------------------------------------
 #program base.
@@ -685,4 +682,7 @@ can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 %#show free/3.
 
 % #show contents_unknown/2.
+
+% #show X : holds(X).  % Example: how to show terms of predicates in the answer set
+
 #show.
