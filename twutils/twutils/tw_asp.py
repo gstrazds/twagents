@@ -160,6 +160,7 @@ def main(prg):
 
 #end.
 
+% --------------------------------------------------------------------------------
 #program check(t).   % redundant declaration (logic is defined below)
 #external query(t).
 
@@ -380,115 +381,125 @@ def group_facts_by_room(initial_facts, room_facts):
             del initial_facts[fact_str]
     return first_room
 
+def convert_to_asp(game, hfacts):
+ 
+    type_infos = types_to_asp(game.kb.types)
+    recipe_facts = {}
+    room_facts = {}
+    initial_fluents = {}
+    static_facts = {}
+    directions_map = {}
+    for fact in game.world.facts:
+        if fact.name in CONNECTION_REL: # east_of(R1,R2), north_of, etc...
+            r1 = fact.arguments[0].name
+            r2 = fact.arguments[1].name
+            assert _is_a_room(r1), str(fact)
+            assert _is_a_room(r2), str(fact)
+            direction = fact.name[0].upper()
+            if r2 in directions_map:
+                directions_map[r2][r1] = direction
+            else:
+                directions_map[r2] = {r1: direction}
+    print(directions_map)
+    for fact, hfact in zip(game.world.facts, hfacts):
+        fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
+        if is_part_of_recipe:
+            recipe_facts[fact_str] = fact
+        elif is_static_fact and not fact.name in CONNECTION_REL and not fact.name in LINK_REL:
+            static_facts[fact_str] = fact
+        else:
+            if fact.name in CONNECTION_REL:
+                _transition = "_"+fact_str
+                static_facts[_transition] = fact  # privileged knowledge for transitions in partially observable world
+                regex_direction_of = re.compile(r'\(r_(\d)+')      # dir_of(r_1, r_2) => dir_of(unkown, r_2)
+                unknownStr = '(unknown'+fact.name[0].upper()
+                fact_str = regex_direction_of.sub(unknownStr, fact_str)
+                print(fact_str)
+            elif fact.name == 'link':
+                regex_link = re.compile(r', r_(\d)+\)')             # link(r_1, d_N, r_2)
+                r1 = fact.arguments[0].name
+                r2 = fact.arguments[2].name
+                unknownStr = f", unknown{directions_map[r1][r2]})"
+                fact_str = regex_link.sub(unknownStr, fact_str)  #  => link(r_1, d_N, unknown)
+                print(fact_str)
+            elif fact.name == 'free':
+                #regex_free = re.compile(r', r_(\d)+, ') #.sub(', unknown, ')
+                regex_free = re.compile(r'^free')             # free(r_1, r_2, t)
+                fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
+                print(fact_str)
+            initial_fluents[fact_str] = fact
+    _initial_room = group_facts_by_room(initial_fluents, room_facts)
+
+
+    asp_lines = [
+        '% ------- Types -------',
+        '',
+        '% ------- IS_A -------',
+    ]
+
+    for typename, _ in type_infos:
+        # asp_str.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
+        asp_lines.append(f"instance_of(X,{typename}) :- {typename}(X).")
+    for typename, parent_type in type_infos:
+        if parent_type:  
+            # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
+            asp_lines.append(f"subclass_of({typename},{parent_type}).")
+
+    asp_lines += [
+        '', # single empty line
+        '% ------- Things -------'
+    ]
+
+    for info in game._infos.values():
+        asp_lines.append(info_to_asp(info))
+
+    asp_lines += [
+        '',  # emtpy line
+         '% ------- Facts -------',
+        '\n'.join(static_facts.keys()),
+        '\n',
+        "% ------- initial fluents (initialized with t=0) -------",
+        "#program initial_state(t).",
+        '',
+        '\n'.join(initial_fluents.keys()),
+        '\n',
+        "% ------- Recipe -------",
+        "#program recipe(t).",
+        '',
+        '\n'.join(recipe_facts.keys()),
+        '',
+        "in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).",
+        "in_recipe(F) :- in_recipe(I,F).",
+        '\n',
+        "% ------- ROOM fluents -------",
+        '',
+        f"#program initial_room(t).",
+        '\n'.join([r_fact for r_fact in room_facts[_initial_room] if r_fact.startswith("at(player,")]),
+        f"room_changed(nowhere,{_initial_room},t).",
+        '',
+    ]
+    for room in sorted(room_facts.keys()):
+        asp_lines.append(f"#program room_{room}(t).")
+        for r_fact in room_facts[room]:
+            if not r_fact.startswith("at(player,"):
+                asp_lines.append(r_fact)
+        asp_lines.append('')  #an empty line after each set of room facts
+
+    asp_str = '\n'.join(asp_lines) + '\n'
+    return asp_str
+
 
 def generate_ASP_for_game(game, asp_file_path, hfacts=None):
     if not hfacts:
         _inform7 = Inform7Game(game)
         hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
 
+    game_definition = convert_to_asp(game, hfacts)
+
     with open(asp_file_path, "w") as aspfile:
-        aspfile.write(INCREMENTAL_SOLVING)
-        aspfile.write("% ------- Types -------\n")
-        #aspfile.write(TYPE_RULES)
-        type_infos = types_to_asp(game.kb.types)
-        aspfile.write("\n% ------- IS_A -------\n")
-        for typename, _ in type_infos:
-            # aspfile.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
-            aspfile.write(f"instance_of(X,{typename}) :- {typename}(X).\n")
-        for typename, parent_type in type_infos:
-            if parent_type:  
-                # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
-                aspfile.write(f"subclass_of({typename},{parent_type}).\n")
-        aspfile.write("\n% ------- Things -------\n")
-        for info in game._infos.values():
-            aspfile.write(info_to_asp(info))
-            aspfile.write('\n')
-        aspfile.write("\n\n")
-        aspfile.write("\n% ------- Facts -------\n")
-        recipe_facts = {}
-        room_facts = {}
-        initial_fluents = {}
-        static_facts = {}
-        directions_map = {}
-        for fact in game.world.facts:
-            if fact.name in CONNECTION_REL: # east_of(R1,R2), north_of, etc...
-                r1 = fact.arguments[0].name
-                r2 = fact.arguments[1].name
-                assert _is_a_room(r1), str(fact)
-                assert _is_a_room(r2), str(fact)
-                direction = fact.name[0].upper()
-                if r2 in directions_map:
-                    directions_map[r2][r1] = direction
-                else:
-                    directions_map[r2] = {r1: direction}
-        print(directions_map)
-        for fact, hfact in zip(game.world.facts, hfacts):
-            fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
-            if is_part_of_recipe:
-                recipe_facts[fact_str] = fact
-            elif is_static_fact and not fact.name in CONNECTION_REL and not fact.name in LINK_REL:
-                static_facts[fact_str] = fact
-            else:
-                if fact.name in CONNECTION_REL:
-                    _transition = "_"+fact_str
-                    static_facts[_transition] = fact  # privileged knowledge for transitions in partially observable world
-                    regex_direction_of = re.compile(r'\(r_(\d)+')      # dir_of(r_1, r_2) => dir_of(unkown, r_2)
-                    unknownStr = '(unknown'+fact.name[0].upper()
-                    fact_str = regex_direction_of.sub(unknownStr, fact_str)
-                    print(fact_str)
-                elif fact.name == 'link':
-                    regex_link = re.compile(r', r_(\d)+\)')             # link(r_1, d_N, r_2)
-                    r1 = fact.arguments[0].name
-                    r2 = fact.arguments[2].name
-                    unknownStr = f", unknown{directions_map[r1][r2]})"
-                    fact_str = regex_link.sub(unknownStr, fact_str)  #  => link(r_1, d_N, unknown)
-                    print(fact_str)
-                elif fact.name == 'free':
-                    #regex_free = re.compile(r', r_(\d)+, ') #.sub(', unknown, ')
-                    regex_free = re.compile(r'^free')             # free(r_1, r_2, t)
-                    fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
-                    print(fact_str)
-                initial_fluents[fact_str] = fact
-        _initial_room = group_facts_by_room(initial_fluents, room_facts)
-
-        aspfile.write('\n'.join(static_facts.keys()))
-        aspfile.write("\n")
-        aspfile.write("\n% ------- initial fluents (initialized with t=0) -------\n")
-        aspfile.write("#program initial_state(t).\n")
-        aspfile.write('\n')
-        aspfile.write('\n'.join(initial_fluents.keys()))
-        aspfile.write("\n\n")
-        aspfile.write("\n")
-
-        aspfile.write("\n% ------- Recipe -------\n")
-        aspfile.write("#program recipe(t).\n")
-
-        aspfile.write('\n'.join(recipe_facts.keys()))
-        aspfile.write("\n\n")
-        aspfile.write("in_recipe(I,F) :- ingredient(I), in(I,recipe), base(F,I), instance_of(F,f).\n")
-        aspfile.write("in_recipe(F) :- in_recipe(I,F).\n")
-        aspfile.write("\n\n")
-
-        aspfile.write("\n% ------- ROOM fluents -------\n")
-        aspfile.write("\n")
-        aspfile.write(f"#program initial_room(t).\n")  # special-case the player's initial location
-        #aspfile.write(f"at(player, {_initial_room}, t).\n\n")
-        for r_fact in room_facts[_initial_room]:
-            if r_fact.startswith("at(player,"):
-                aspfile.write(r_fact+"\n")
-        # aspfile.write(f"have_found({_initial_room},t).")
-        aspfile.write(f"room_changed(nowhere,{_initial_room},t).")
-
-        aspfile.write("\n\n")
-        for room in sorted(room_facts.keys()):
-            aspfile.write(f"#program room_{room}(t).\n")  #TODO: load facts for initial room dynamically
-            for r_fact in room_facts[room]:
-                if not r_fact.startswith("at(player,"):
-                    aspfile.write(r_fact)
-                    aspfile.write("\n")
-            aspfile.write('\n\n')
-
-        # ---- GAME DYNAMICS
+        aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
+        aspfile.write(game_definition)   # initial state of one specific game
+        # ---- GAME DYNAMICS               # logic/rules common to all games
         source_path = Path(__file__).resolve()
         source_dir = source_path.parent
         # print("SOURCE DIRECTORY:", source_dir)
