@@ -160,12 +160,6 @@ def main(prg):
 
 #end.
 
-% --------------------------------------------------------------------------------
-#program check(t).   % redundant declaration (logic is defined below)
-#external query(t).
-
-#program base.
-% Define
 """
 
 
@@ -497,6 +491,9 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
     game_definition = convert_to_asp(game, hfacts)
 
     with open(asp_file_path, "w") as aspfile:
+        aspfile.write("#const find_first=o_0.   % the cookbook is always o_0")
+        aspfile.write('\n')
+
         aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
         aspfile.write(game_definition)   # initial state of one specific game
         # ---- GAME DYNAMICS               # logic/rules common to all games
