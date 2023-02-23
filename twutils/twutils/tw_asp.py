@@ -12,7 +12,6 @@ from textworld.generator.inform7 import Inform7Game
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
-#const find_first=o_0.   % the cookbook is always o_0
 #const step_max_mins=3.  % (default value)
 #const step_max_secs=30. % (default value)  Give up if a solving step takes > step_max_mins:step_max_secs
 
@@ -159,7 +158,6 @@ def main(prg):
         step = step+1
 
 #end.
-
 """
 
 
@@ -483,7 +481,7 @@ def convert_to_asp(game, hfacts):
     return asp_str
 
 
-def generate_ASP_for_game(game, asp_file_path, hfacts=None):
+def generate_ASP_for_game(game, asp_file_path, hfacts=None, no_python=False):
     if not hfacts:
         _inform7 = Inform7Game(game)
         hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
@@ -493,8 +491,9 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None):
     with open(asp_file_path, "w") as aspfile:
         aspfile.write("#const find_first=o_0.   % the cookbook is always o_0")
         aspfile.write('\n')
+        if not no_python:
+            aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
 
-        aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
         aspfile.write(game_definition)   # initial state of one specific game
         # ---- GAME DYNAMICS               # logic/rules common to all games
         source_path = Path(__file__).resolve()

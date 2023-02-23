@@ -167,5 +167,5 @@ def run(files: Sequence[str]):
 
 print('Examaple 1:')
 run(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games2/'+
-'Ptw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.lp'])
+'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.lp'])
 

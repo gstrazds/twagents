@@ -72,6 +72,7 @@ if __name__ == "__main__":
                                 help="Output format to use when recompiling games with --simplify-grammar. Default: %(default)s")
 
     parser.add_argument("-a", "--asp", action="store_true", help="Output ASP logic program.")
+    parser.add_argument("--no-python", action="store_true", help="Don't embed the python solver loop")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode.")
 
     args = parser.parse_args()
@@ -149,8 +150,8 @@ if __name__ == "__main__":
         if args.asp:
             asp_file = output_file.with_suffix(".lp")
             if args.verbose:
-                print(f"ASP out: {asp_file}")
-            generate_ASP_for_game(game, asp_file, hfacts=hfacts)
+                print(f"ASP out: {asp_file} {'(no Python)' if args.no_python else ''}")
+            generate_ASP_for_game(game, asp_file, hfacts=hfacts, no_python=args.no_python)
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)
