@@ -1,5 +1,6 @@
 from typing import List, Sequence, Tuple, Optional
-import datetime
+from operator import itemgetter
+from datetime import datetime, timedelta
 
 from clingo.control import Control
 from clingo import Function, String, Number, Symbol, SymbolType
@@ -16,7 +17,7 @@ MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
 STEP_MAX_MINUTES = 2
 STEP_MAX_SECS = 30
 
-STEP_MAX_ELAPSED_TIME = datetime.timedelta(minutes=STEP_MAX_MINUTES, seconds=STEP_MAX_SECS)
+STEP_MAX_ELAPSED_TIME = timedelta(minutes=STEP_MAX_MINUTES, seconds=STEP_MAX_SECS)
 
 def get(val, default):
     return val if val != None else default
@@ -30,6 +31,9 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
     def _get_chosen_actions(model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
         #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
+        nonlocal _actions_list
+        nonlocal _actions_facts
+        nonlocal _newly_discovered_facts
         print(f"_get_chosen_actions(model,{step})......")
         _actions_list.clear()
         _actions_facts.clear()
@@ -39,10 +43,11 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
             if (atom.name == "act" and len(atom.arguments)==2 and atom.arguments[1].type is SymbolType.Number):
                 t = atom.arguments[1].number
                 action = atom.arguments[0]
+                assert action.arguments[0].number == t, f"!ACTION timestep mismatch: [{t}] {action}"
                 str_atom = f"{atom}."
                 _actions_facts.append(str_atom)
                 print(f"  {'++' if step == t else '--'} [{t}] : {str_atom}")
-                _actions_list.append(atom)
+                _actions_list.append((t, action))
             elif atom.name == 'recipe_read' \
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
@@ -62,6 +67,7 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
                     _newly_discovered_facts.append(str(atom.arguments[0]))
                 else:
                     print(f"  -- {atom}")
+        _actions_list = sorted(_actions_list, key=itemgetter(0))
         if _solved_all:
             return False
         return True  # False -> stop after first model
@@ -75,7 +81,7 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
                or (istop == "UNKNOWN" and not ret.unknown)
               )
            ))):
-        start_time = datetime.datetime.now()
+        start_time = datetime.now()
         _recipe_newly_seen = False  # becomes True during the step that finds the recipe
         parts = []
         if step >= MIN_PRINT_STEP:
@@ -137,7 +143,7 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
         prg.assign_external(Function("query", [Number(step)]), True)
  
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
-        finish_time = datetime.datetime.now()
+        finish_time = datetime.now()
         elapsed_time = finish_time-start_time
         print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
         if step >= MIN_PRINT_STEP:
@@ -146,6 +152,10 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
             print(f"--- [{step}] Step time {elapsed_time} > {STEP_MAX_ELAPSED_TIME} ... Stop solving.")
             break
         step = step+1
+    if ret.satisfiable:
+        return _actions_list, step
+    else:
+        return None, step
 
 
 def part_str(part: Tuple[str, List[Symbol]]):
@@ -163,7 +173,14 @@ def run(files: Sequence[str]):
     for file_ in files:
         print(f'  - {file_}')
         ctl.load(file_)
-    tw_solve_incremental(ctl, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT")
+    actions, iters = tw_solve_incremental(ctl, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT")
+    if actions is not None:
+        print(f"SOLVED! {files} ACTIONS =")
+        #assert iters == len(actions)+1, f"{iters} {len(actions)}"
+        for t, action in actions:
+            print(f"[{t}] {str(action)}")
+    else:
+        print(f"FAILED TO SOLVE: steps={iters}, {files}")
 
 print('Examaple 1:')
 run(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games2/'+
