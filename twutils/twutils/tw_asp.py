@@ -424,8 +424,10 @@ def convert_to_asp(game, hfacts):
 
 
     asp_lines = [
-        '% ------- Types -------',
+        "#const find_first=o_0.   % the cookbook is always o_0",
         '',
+
+        '% ======= Types ======',
         '% ------- IS_A -------',
     ]
 
@@ -447,7 +449,7 @@ def convert_to_asp(game, hfacts):
 
     asp_lines += [
         '',  # emtpy line
-         '% ------- Facts -------',
+         '% ======= Facts =======',
         '\n'.join(static_facts.keys()),
         '\n',
         "% ------- initial fluents (initialized with t=0) -------",
@@ -488,36 +490,37 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None, no_python=False):
 
     game_definition = convert_to_asp(game, hfacts)
 
-    with open(asp_file_path, "w") as aspfile:
-        aspfile.write("#const find_first=o_0.   % the cookbook is always o_0")
-        aspfile.write('\n')
-        if not no_python:
-            aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
+    if asp_file_path:
+        with open(asp_file_path, "w") as aspfile:
+            aspfile.write(game_definition)   # initial state of one specific game
+            # ---- GAME DYNAMICS               # logic/rules common to all games
+            source_path = Path(__file__).resolve()
+            source_dir = source_path.parent
+            # print("SOURCE DIRECTORY:", source_dir)
+            with open(source_dir / 'tw_asp.lp', "r") as rulesfile:
+                aspfile.write(rulesfile.read())
+            #aspfile.write(TYPE_RULES)
+            #aspfile.write(OBSERVATION_STEP)
+            #aspfile.write(EVERY_STEP_MAP_RULES)
+            #aspfile.write(EVERY_STEP_RULES)
 
-        aspfile.write(game_definition)   # initial state of one specific game
-        # ---- GAME DYNAMICS               # logic/rules common to all games
-        source_path = Path(__file__).resolve()
-        source_dir = source_path.parent
-        # print("SOURCE DIRECTORY:", source_dir)
-        with open(source_dir / 'tw_asp.lp', "r") as rulesfile:
-            aspfile.write(rulesfile.read())
-        #aspfile.write(TYPE_RULES)
-        #aspfile.write(OBSERVATION_STEP)
-        #aspfile.write(EVERY_STEP_MAP_RULES)
-        #aspfile.write(EVERY_STEP_RULES)
+            #aspfile.write(ACTION_STEP_RULES)
+            #aspfile.write(GAME_RULES_COMMON)
+            #aspfile.write(GAME_RULES_NEW)
+            #aspfile.write(COOKING_RULES)
+            #aspfile.write(RECIPE_NEED_TO_FIND)
 
-        #aspfile.write(ACTION_STEP_RULES)
-        #aspfile.write(GAME_RULES_COMMON)
-        #aspfile.write(GAME_RULES_NEW)
-        #aspfile.write(COOKING_RULES)
-        #aspfile.write(RECIPE_NEED_TO_FIND)
+            #aspfile.write(CHECK_GOAL_ACHIEVED)
 
-        #aspfile.write(CHECK_GOAL_ACHIEVED)
+            if not no_python:
+                aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
+    return game_definition
 
-        # ##aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
-        # ## For branch & bound optimization:
-        # ## aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
-        # ##     "ngoal(T) :- at(player,R,T), r(R), R!=r_0 .  % want to end up in the kitchen (r_0)\n" \
-        # ##     ":- ngoal(maxT).\n  % anti-goal -- fail if goal not achieved"
-        # ## )
-        # ##aspfile.write("_minimize(1,T) :- ngoal(T).\n")
+
+# ##aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
+# ## For branch & bound optimization:
+# ## aspfile.write( #":- not at(player,r_0,maxT).  % end up in the kitchen\n")
+# ##     "ngoal(T) :- at(player,R,T), r(R), R!=r_0 .  % want to end up in the kitchen (r_0)\n" \
+# ##     ":- ngoal(maxT).\n  % anti-goal -- fail if goal not achieved"
+# ## )
+# ##aspfile.write("_minimize(1,T) :- ngoal(T).\n")

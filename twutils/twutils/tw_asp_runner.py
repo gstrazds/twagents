@@ -22,7 +22,7 @@ STEP_MAX_ELAPSED_TIME = timedelta(minutes=STEP_MAX_MINUTES, seconds=STEP_MAX_SEC
 def get(val, default):
     return val if val != None else default
 
-def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT"):
+def tw_solve_incremental(prg: Control, initprg=None, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT"):
 
     _actions_list = []
     _actions_facts = []
@@ -109,6 +109,8 @@ def tw_solve_incremental(prg: Control, imin=MIN_STEPS, imax=MAX_STEPS, istop="SA
                     print("%%%%% IGNORING FIRST ACQUIRED:", _name)
             if solved_all:
                 break      # stop solving immediately
+        if initprg:
+            prg.add("initprg", [], initprg)
         if step == 0:
             parts.append(("base", []))
             #parts.append(("recipe", [Number(step)]))
@@ -167,12 +169,14 @@ def part_str(part: Tuple[str, List[Symbol]]):
     return f'{part[0]}'
 
 
-def run(files: Sequence[str]):
+def run(files: Sequence[str], initprg=None):
     ctl = Control()
     print('  loading files:')
     for file_ in files:
         print(f'  - {file_}')
         ctl.load(file_)
+    if initprg:
+        ctl.add(initprg)
     actions, iters = tw_solve_incremental(ctl, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT")
     if actions is not None:
         print(f"SOLVED! {files} ACTIONS =")
@@ -182,7 +186,29 @@ def run(files: Sequence[str]):
     else:
         print(f"FAILED TO SOLVE: steps={iters}, {files}")
 
-print('Examaple 1:')
-run(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games2/'+
-'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.lp'])
 
+def run_gamefile(files: Sequence[str]):
+    from tw_asp import generate_ASP_for_game
+    from textworld.generator import Game
+    from pathlib import Path
+    source_path = Path(__file__).resolve()
+    source_dir = source_path.parent
+    # print("SOURCE DIRECTORY:", source_dir)
+    for game_filename in files:
+        input_filename = game_filename.replace(".ulx", ".json")
+        input_filename = input_filename.replace(".z8", ".json")
+        game = Game.load(input_filename)
+        asp_for_game = generate_ASP_for_game(game, asp_file_path=None)
+        run([str(source_dir / 'tw_asp.lp')], initprg=asp_for_game)
+
+# print("-------------")
+# print('Examaple 1:')
+# run(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_gamesNP/'+
+# 'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.lp'])
+
+print()
+print("-------------")
+print('Examaple 2:')
+
+run_gamefile(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games/'+
+'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.z8'])
