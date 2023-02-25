@@ -591,7 +591,7 @@ def tw_command_from_asp_action(action, infos) -> str:
             obj2_name = ''   # don't mention the room (target is the floor) 
         elif id2.startswith('c_') or id2.startswith('oven_'):
             preposition = ' into '
-        elif id1.startswith('s_') or id2.startswith('stove_'):
+        elif id2.startswith('s_') or id2.startswith('stove_'):
             preposition = ' on '
         else:
             assert False, "Unexpected target for "+str_action
