@@ -3,7 +3,7 @@
 
 from typing import Optional
 from textworld import Agent, Environment, GameState
-from symbolic.wrappers.gym_wrappers import TWoWrapper
+from symbolic.wrappers.gym_wrappers import TWoWrapper, TwAspWrapper
 
 
 class WalkthroughDone(NameError):
@@ -33,6 +33,9 @@ class TwOracleAgent(Agent):
 
         print(env, env.reset)
         game_state = env.reset()
+        if game_state.feedback is None:
+            game_state.feedback = "(NO INITIAL FEEDBACK)"  # prevent crash due to calling (None).rstrip()
+ 
         self._game_state = game_state
         #print(game_state)
         if not hasattr(game_state, "next_command"):
@@ -41,10 +44,10 @@ class TwOracleAgent(Agent):
 
         if self.commands is not None:
             self._commands = iter(self.commands)
-            return  # Commands already specified.
+            return  # Command sequence was given to constructor
         # Load command from the generated game.
         if not hasattr(game_state, "extra.walkthrough"):
-            msg = "TwOracleAgent only works for games with extra.walkthrough property"
+            msg = "TwOracleAgent only works with games that have an extra.walkthrough property"
             print(game_state)
             raise NameError(msg)
         else:
@@ -52,12 +55,13 @@ class TwOracleAgent(Agent):
 
     def act(self, game_state, reward, done):
         command = game_state.get("next_command", None)
-        print("next_command =", command)
+        if command:
+            print("next_command =", command)
         if not command:
-            if self._commands:
+            if self._commands:   # fallback strategy - use pre-specified GT command sequence
                 try:
                     action = next(self._commands)
-                    print("action from walkthrough =", action)
+                    print("Using command from walkthrough =", action)
                     command = action
                 except StopIteration:
                     raise WalkthroughDone()
@@ -66,3 +70,14 @@ class TwOracleAgent(Agent):
                 raise WalkthroughDone()
         command = command.strip()  # Remove trailing \n, if any.
         return command  # will be followed by a call to env.step(command)
+
+class TwAnswerSetAgent(TwOracleAgent):
+    """ Agent that uses Answer Set Programming (via clingo) to play a TextWorld game. """
+
+    def __init__(self, commands=None, **kwargs):
+        super().__init__(commands=commands, **kwargs)
+
+    @property
+    def wrappers(self):
+        return [TwAspWrapper]
+

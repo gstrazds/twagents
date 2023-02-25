@@ -180,7 +180,7 @@ class TWoWrapper(textworld.core.Wrapper):
 
     def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = False, idx: int = 0, **kwargs):
         super().__init__(*args, **kwargs)
-        print(f"###### TWoWrapper.__init__(randdom_seed={random_seed}, passive_mode={passive_oracle_mode})")
+        print(f"###### TWoWrapper.__init__(random_seed={random_seed}, passive_mode={passive_oracle_mode})")
         if random_seed is None:
             random_seed = 42
         self.random_seed = random_seed
@@ -360,11 +360,6 @@ class TWoWrapper(textworld.core.Wrapper):
         self.next_command = actiontxt
         return actiontxt, _tasks
 
-
-
-
-
-
 #-------------------------------------
     # def step(self, command: str) -> Tuple[GameState, float, bool]:
     #     gs, reward, done = self._wrapped_env.step(command)
@@ -400,7 +395,41 @@ class TWoWrapper(textworld.core.Wrapper):
         return env
 
 
+
+class TwAspWrapper(TWoWrapper):
+
+    def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = True, idx: int = 0, **kwargs):
+        super().__init__(*args, random_seed=random_seed, passive_oracle_mode=passive_oracle_mode, **kwargs)
+        print(f"###### TwAspWrapper.__init__(random_seed={random_seed}, passive_mode={passive_oracle_mode})")
+
+    def load(self, path: str) -> None:
+        """ Loads a new text-based game.
+        Arguments:
+            path: Path to the game file to load.
+        """
+        print(f"========= TwAspWrapper.load({path})")
+        from twutils.tw_asp_runner import run_gamefile
+        self._commands_from_asp = run_gamefile(path)
+        return super().load(path)
+
+    def reset(self):
+        print(f"@@@@@@@@@@@ TwAspWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
+        game_state = super().reset()
+        original_walkthrough = game_state.get('extra.walkthrough', None)
+        print("ORIGINAL WALKTHROUGH:", original_walkthrough)
+        if original_walkthrough is not None:
+            game_state['extra._walkthrough'] = original_walkthrough
+        game_state['extra.walkthrough']  = self._commands_from_asp
+        print("WALKTHROUGH from ASP:", game_state.get('extra.walkthrough'))
+        return game_state
+
+    def copy(self) -> "TwAspWrapper":
+        env = TwAspWrapper()
+        env._wrapped_env = self._wrapped_env.copy()
+        return env
+
 #
+
 # game.metadata = metadata
 # uuid = "tw-interactive_qa-{specs}-{seeds}"
 # uuid = uuid.format(specs=encode_seeds((options.nb_rooms, options.nb_objects)),

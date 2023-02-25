@@ -181,34 +181,42 @@ def run(files: Sequence[str], initprg=None):
     if actions is not None:
         print(f"SOLVED! {files} ACTIONS =")
         #assert iters == len(actions)+1, f"{iters} {len(actions)}"
+        commands = []
         for t, action in actions:
             print(f"[{t}] {str(action)}")
+            commands.append(action)
+        return commands
     else:
         print(f"FAILED TO SOLVE: steps={iters}, {files}")
+        return []
 
 
-def run_gamefile(files: Sequence[str]):
-    from tw_asp import generate_ASP_for_game
+def run_gamefile(filepath: str):
+    from twutils.tw_asp import generate_ASP_for_game, tw_command_from_asp_action
     from textworld.generator import Game
     from pathlib import Path
     source_path = Path(__file__).resolve()
     source_dir = source_path.parent
     # print("SOURCE DIRECTORY:", source_dir)
-    for game_filename in files:
-        input_filename = game_filename.replace(".ulx", ".json")
-        input_filename = input_filename.replace(".z8", ".json")
-        game = Game.load(input_filename)
-        asp_for_game = generate_ASP_for_game(game, asp_file_path=None)
-        run([str(source_dir / 'tw_asp.lp')], initprg=asp_for_game)
+    input_filename = filepath.replace(".ulx", ".json")
+    input_filename = input_filename.replace(".z8", ".json")
+    game = Game.load(input_filename)
+    game_infos = game._infos 
+    asp_for_game = generate_ASP_for_game(game, asp_file_path=None)
+    actions = run([str(source_dir / 'tw_asp.lp')], initprg=asp_for_game)
+    commands = []
+    for action in actions:
+        commands.append(tw_command_from_asp_action(action, game_infos))
+    return commands
 
 # print("-------------")
 # print('Examaple 1:')
 # run(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_gamesNP/'+
 # 'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.lp'])
 
-print()
-print("-------------")
-print('Examaple 2:')
+# print()
+# print("-------------")
+# print('Examaple 2:')
 
-run_gamefile(['/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games/'+
-'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.z8'])
+# run_gamefile('/Users/gstrazds/work2/github/gstrazds/TextWorld/tw_games/'+
+# 'tw-cooking-recipe3+take3+cook+cut+open+go9-X3Y1sGOyca0phPxJ.z8')

@@ -516,6 +516,95 @@ def generate_ASP_for_game(game, asp_file_path, hfacts=None, no_python=False):
                 aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
     return game_definition
 
+def lookup_human_readable_name(asp_id:str, infos) -> str:
+    def _get_name(info):
+        return info.name if info.name else info.id
+    info = infos.get(asp_id, None)
+    if info:
+        return _get_name(info)
+    assert False, f"FAILED TO FIND info for {asp_id}"
+    return asp_id   # Fallback if FAIL
+
+def tw_command_from_asp_action(action, infos) -> str:
+    """
+      -- special cases
+      do_look(t,R)            -- look
+      do_moveP(t,R1,R2,NSEW)  -- go NSEW
+      
+      do_take(t,O,CR)         -- take O [from C (unless CR is a room)]
+      do_put(t,O,C)           -- put O into C
+      do_put(t,O,S)           -- put O on S
+      do_put(t,O,R)           -- drop O
+
+      -- regular pattern: verb obj1 [obj2]
+      do_examine(t,O)
+      do_eat(t,F)
+      do_drink(t,F)
+      do_open(t,CD)
+      do_cook(t,X,A)    - cook X with A
+
+      do_cut(t,V,F,O)   - V F with O
+    """
+
+    str_action = str(action)   # for logging and debugging
+    if not action.name.startswith("do_"):
+        assert False, f"Unexpected action: {str_action}"
+    if action.name == 'do_make_meal':
+        return "prepare meal"
+    # by default, simply remove the "do_" prefix
+    verb = action.name[3:]
+    if verb == "moveP":  # special case
+        verb = "go"
+        assert len(action.arguments) == 4, str_action
+        direction = action.arguments[3].name
+        return f"go {direction}"
+    num_args = len(action.arguments)
+    assert num_args >= 1, str_action
+    if num_args == 1:
+        return verb
+
+    obj2_name = ''
+    
+    if num_args > 4:
+        assert False, "UNEXPECTED: "+str_action
+    if num_args == 4:
+        assert verb == 'cut', str_action
+        verb = action.arguments[1]
+        id1 = action.arguments[2].name
+        id2 = action.arguments[3].name
+    else:  #num_args >= 2:    # 1st arg is timestep, 2nd is an entity id
+        id1 = action.arguments[1].name
+        if num_args > 2:
+            id2 = action.arguments[2].name
+        else:
+            id2 = None
+    obj1_name = lookup_human_readable_name(id1, infos)
+    if id2:
+        obj2_name = lookup_human_readable_name(id2, infos)
+    else:
+        obj2_name = ''
+
+    preposition = ''
+    if verb == 'put':
+        if id2.startswith('r_'):
+            verb = 'drop'
+            obj2_name = ''   # don't mention the room (target is the floor) 
+        elif id2.startswith('c_') or id2.startswith('oven_'):
+            preposition = ' into '
+        elif id1.startswith('s_') or id2.startswith('stove_'):
+            preposition = ' on '
+        else:
+            assert False, "Unexpected target for "+str_action
+    elif verb == 'take':
+        if id2.startswith('r_'):
+            obj2_name = ''   # don't mention the room (object is on the floor)
+        else:
+            preposition = ' from '
+    elif obj2_name:
+        preposition = ' with '
+    return f"{verb} {obj1_name}{preposition}{obj2_name}"
+
+
 
 # ##aspfile.write(":- movedP(T,R,R1), at(player,R1,T0), timestep(T0), T0<T .  % disallow loops\n")
 # ## For branch & bound optimization:
