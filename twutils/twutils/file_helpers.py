@@ -18,7 +18,7 @@ def reformat_go_skill(sk):
         return sk
 
 
-def split_gamename(gname:str) -> (str, str):
+def split_gamename(gname:str):  # -> (str, str):
     pieces = gname.split('-')
     if len(pieces) > 2 and pieces[0] == 'tw' and pieces[1] == 'cooking':
         pieces = pieces[2:]

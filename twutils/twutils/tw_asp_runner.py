@@ -1,3 +1,5 @@
+import json
+
 from typing import List, Sequence, Tuple, Optional
 from operator import itemgetter
 from datetime import datetime, timedelta
@@ -45,6 +47,7 @@ def run(files: Sequence[str], initprg=None, idstr=None):
 def plan_commands_for_game(filepath: str):
     from twutils.tw_asp import generate_ASP_for_game, tw_command_from_asp_action
     from textworld.generator import Game
+    from textworld.generator.game import EntityInfo
     from pathlib import Path
     source_path = Path(__file__).resolve()
     source_dir = source_path.parent
@@ -54,14 +57,17 @@ def plan_commands_for_game(filepath: str):
     input_filename = filepath.replace(".ulx", ".json")
     input_filename = input_filename.replace(".z8", ".json")
     input_filename = input_filename.replace(".0.lp", ".json")
-    game = Game.load(input_filename)
-    game_infos = game._infos 
 
     if filepath.endswith(".lp"):
+        with open(input_filename, "r") as jsonfile:
+            data = json.load(jsonfile)
+        game_infos = {k: EntityInfo.deserialize(v) for k, v in data["infos"]}
         files = [filepath]
         if filepath.endswith(".0.lp"):  # was generated without shared rules
             files.append(str(source_dir / 'tw_asp.lp'))
     else: # not filepath.endswith(".lp"):
+        game = Game.load(input_filename)
+        game_infos = game._infos
         files = []
         print(f"## Converting {input_filename} to ASP")
         asp_for_game = generate_ASP_for_game(game,
@@ -71,6 +77,8 @@ def plan_commands_for_game(filepath: str):
     tw_commands = []
     for action in actions:
         tw_commands.append(tw_command_from_asp_action(action, game_infos))
+    if filepath.endswith(".lp"):
+        print(tw_commands)
     return tw_commands
 
 # print("-------------")
