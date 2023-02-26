@@ -42,20 +42,32 @@ def run(files: Sequence[str], initprg=None, idstr=None):
         return []
 
 
-def run_gamefile(filepath: str):
+def plan_commands_for_game(filepath: str):
     from twutils.tw_asp import generate_ASP_for_game, tw_command_from_asp_action
     from textworld.generator import Game
     from pathlib import Path
     source_path = Path(__file__).resolve()
     source_dir = source_path.parent
     # print("SOURCE DIRECTORY:", source_dir)
+    asp_for_game = None
+    # need to get game_infos from corresponding .json file
     input_filename = filepath.replace(".ulx", ".json")
     input_filename = input_filename.replace(".z8", ".json")
-    print(f"## Converting {input_filename} to ASP")
+    input_filename = input_filename.replace(".0.lp", ".json")
     game = Game.load(input_filename)
     game_infos = game._infos 
-    asp_for_game = generate_ASP_for_game(game, asp_file_path=None)
-    actions = run([str(source_dir / 'tw_asp.lp')], initprg=asp_for_game, idstr=str(filepath))
+
+    if filepath.endswith(".lp"):
+        files = [filepath]
+        if filepath.endswith(".0.lp"):  # was generated without shared rules
+            files.append(str(source_dir / 'tw_asp.lp'))
+    else: # not filepath.endswith(".lp"):
+        files = []
+        print(f"## Converting {input_filename} to ASP")
+        asp_for_game = generate_ASP_for_game(game,
+            asp_file_path=None, standalone=True, emb_python=False)
+
+    actions = run(files, initprg=asp_for_game, idstr=str(filepath))
     tw_commands = []
     for action in actions:
         tw_commands.append(tw_command_from_asp_action(action, game_infos))

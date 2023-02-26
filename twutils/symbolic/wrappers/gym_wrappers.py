@@ -408,8 +408,8 @@ class TwAspWrapper(TWoWrapper):
             path: Path to the game file to load.
         """
         print(f"========= TwAspWrapper.load({path})")
-        from twutils.tw_asp_runner import run_gamefile
-        self._commands_from_asp = run_gamefile(path)
+        from twutils.tw_asp_runner import plan_commands_for_game
+        self._commands_from_asp = plan_commands_for_game(path)
         return super().load(path)
 
     def reset(self):

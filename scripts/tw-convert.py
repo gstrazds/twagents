@@ -73,6 +73,7 @@ if __name__ == "__main__":
 
     parser.add_argument("-a", "--asp", action="store_true", help="Output ASP logic program.")
     parser.add_argument("--no-python", action="store_true", help="Don't embed the python solver loop")
+    parser.add_argument("--standalone", action="store_true", help="Include shared ASP rules for TW game dynamics")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode.")
 
     args = parser.parse_args()
@@ -151,7 +152,13 @@ if __name__ == "__main__":
             asp_file = output_file.with_suffix(".lp")
             if args.verbose:
                 print(f"ASP out: {asp_file} {'(no Python)' if args.no_python else ''}")
-            generate_ASP_for_game(game, asp_file, hfacts=hfacts, no_python=args.no_python)
+            if not args.no_python:
+                emb_python = True
+            else:
+                emb_python = False
+            generate_ASP_for_game(game, asp_file, hfacts=hfacts,
+                standalone=args.standalone,
+                emb_python=emb_python)
 
         # Path(destdir).mkdir(parents=True, exist_ok=True)
         # Path(make_dsfilepath(destdir, args.which)).unlink(missing_ok=True)

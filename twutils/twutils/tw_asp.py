@@ -363,43 +363,51 @@ def convert_to_asp(game, hfacts):
     return asp_str
 
 
-def generate_ASP_for_game(game, asp_file_path, hfacts=None, no_python=False):
+def generate_ASP_for_game(game, asp_file_path, hfacts=None, standalone=False, emb_python=False):
     if not hfacts:
         _inform7 = Inform7Game(game)
         hfacts = list(map(_inform7.get_human_readable_fact, game.world.facts))
 
     game_definition = convert_to_asp(game, hfacts)
 
+    # ---- GAME DYNAMICS               # logic/rules common to all games
+    source_path = Path(__file__).resolve()
+    source_dir = source_path.parent
+    # print("SOURCE DIRECTORY:", source_dir)
+    if standalone:
+        with open(source_dir / 'tw_asp.lp', "r") as rulesfile:
+            asp_rules = rulesfile.read()
+            game_definition += '\n'
+            game_definition += asp_rules
+
+        #aspfile.write(TYPE_RULES)
+        #aspfile.write(OBSERVATION_STEP)
+        #aspfile.write(EVERY_STEP_MAP_RULES)
+        #aspfile.write(EVERY_STEP_RULES)
+
+        #aspfile.write(ACTION_STEP_RULES)
+        #aspfile.write(GAME_RULES_COMMON)
+        #aspfile.write(GAME_RULES_NEW)
+        #aspfile.write(COOKING_RULES)
+        #aspfile.write(RECIPE_NEED_TO_FIND)
+
+        #aspfile.write(CHECK_GOAL_ACHIEVED)
+
+    else:  #if not standalone:
+        asp_file_path = str(asp_file_path)
+        if asp_file_path and asp_file_path.endswith(".lp") \
+            and not asp_file_path.endswith(".0.lp"):
+            asp_file_path = asp_file_path[0:-3] + ".0.lp"
+    if emb_python:
+        with open(source_dir / 'tw_asp_incremental.py', "r") as embedpython:
+            game_definition += '\n#script (python)\n'
+            game_definition +=  embedpython.read()
+            game_definition += '\n#end.\n'
+            game_definition += INCREMENTAL_SOLVING # embedded python loop for solving TW games
+
     if asp_file_path:
         with open(asp_file_path, "w") as aspfile:
             aspfile.write(game_definition)   # initial state of one specific game
-            # ---- GAME DYNAMICS               # logic/rules common to all games
-            source_path = Path(__file__).resolve()
-            source_dir = source_path.parent
-            # print("SOURCE DIRECTORY:", source_dir)
-            with open(source_dir / 'tw_asp.lp', "r") as rulesfile:
-                aspfile.write(rulesfile.read())
-            #aspfile.write(TYPE_RULES)
-            #aspfile.write(OBSERVATION_STEP)
-            #aspfile.write(EVERY_STEP_MAP_RULES)
-            #aspfile.write(EVERY_STEP_RULES)
-
-            #aspfile.write(ACTION_STEP_RULES)
-            #aspfile.write(GAME_RULES_COMMON)
-            #aspfile.write(GAME_RULES_NEW)
-            #aspfile.write(COOKING_RULES)
-            #aspfile.write(RECIPE_NEED_TO_FIND)
-
-            #aspfile.write(CHECK_GOAL_ACHIEVED)
-
-            if not no_python:
-                aspfile.write('\n')
-                aspfile.write('#script (python)\n')
-                with open(source_dir / 'tw_asp_incremental.py', "r") as embedpython:
-                    aspfile.write(embedpython.read())
-                aspfile.write('\n')
-                aspfile.write('#end.\n')
-                aspfile.write(INCREMENTAL_SOLVING) # embedded python loop for solving TW games
     return game_definition
 
 def lookup_human_readable_name(asp_id:str, infos) -> str:

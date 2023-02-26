@@ -49,8 +49,8 @@ def main():
         agent = textworld.agents.HumanAgent(oracle=args.hint)
     elif args.mode == 'walkthrough':
         if args.asp:
-            from twutils.tw_asp_runner import run_gamefile
-            commands = run_gamefile(args.game)
+            from twutils.tw_asp_runner import plan_commands_for_game
+            commands = plan_commands_for_game(args.game)
             #commands = ["examine cookbook", "prepare meal", "eat meal"]
         else:
             commands = None
