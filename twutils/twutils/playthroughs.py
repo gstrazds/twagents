@@ -16,7 +16,7 @@ from .twlogic import filter_observables, subst_names
 from .feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
 
 from symbolic.knowledge_graph import KnowledgeGraph
-from symbolic.wrappers.gym_wrappers import TWoWrapper
+from symbolic.wrappers.gym_wrappers import TWoWrapper, TwAspWrapper
 
 
 # default directory paths, usually overriden by env, config or cmd line args
@@ -363,7 +363,7 @@ def start_twenv_for_playthrough(gamefiles,
                                    last_action=True, last_command=True, intermediate_reward=True)
     batch_size = len(gamefiles)
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
-    twenv = textworld.start(gamefiles[0], wrappers=[TWoWrapper], infos=env_infos)
+    twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], infos=env_infos)
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in gather_infos_for_playthroughs( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
@@ -408,9 +408,10 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
         'game_score': [],
         'done': [],
         'tw_o_step': [],
-        'tw_o_stack': [],
         # 'admissible_commands': [],
     }
+    if game_states and hasattr(game_states[0], '_tasks'):
+        infos['tw_o_stack'] = []
     obs = []
     for idx, gs in enumerate(game_states):
         if dones[idx] and gs.last_command == 'do nothing':   # stop appending to infos for finished games
@@ -429,9 +430,10 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
             infos['reward'].append(gs.reward)
             infos['game_score'].append(gs.score)
             infos['tw_o_step'].append(gs.next_command)
-            infos['tw_o_stack'].append(gs._tasks)
+            if hasattr(gs, '_tasks'):
+                infos['tw_o_stack'].append(gs._tasks)
 
-            obs.append(gs.feedback)
+            obs.append(gs.feedback if gs.feedback else '')
             # rewards.append(gs.reward)
     # if oracle_stack:
     #     infos['tw_o_stack'] = []

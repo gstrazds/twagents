@@ -284,7 +284,6 @@ class TWoWrapper(textworld.core.Wrapper):
         if not hasattr(gs, 'score'):
             gs.score = float(score)
         gs.reward = reward
-
         return gs, reward, done
 
     def close(self):
@@ -360,7 +359,7 @@ class TWoWrapper(textworld.core.Wrapper):
         self.next_command = actiontxt
         return actiontxt, _tasks
 
-#-------------------------------------
+    #-------------------------------------
     # def step(self, command: str) -> Tuple[GameState, float, bool]:
     #     gs, reward, done = self._wrapped_env.step(command)
     #     print(f"TWoWrapper.step({command}) -> {reward}, {done}, {gs.keys()}")
@@ -410,18 +409,31 @@ class TwAspWrapper(TWoWrapper):
         print(f"========= TwAspWrapper.load({path})")
         from twutils.tw_asp_runner import plan_commands_for_game
         self._commands_from_asp = plan_commands_for_game(path)
+        #MOVED TO reset():  self._next_cmd_from_asp = iter(self._commands_from_asp)
         return super().load(path)
 
     def reset(self):
         print(f"@@@@@@@@@@@ TwAspWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
+        self._next_cmd_from_asp = iter(self._commands_from_asp)
         game_state = super().reset()
+
         original_walkthrough = game_state.get('extra.walkthrough', None)
         print("ORIGINAL WALKTHROUGH:", original_walkthrough)
         if original_walkthrough is not None:
             game_state['extra._walkthrough'] = original_walkthrough
-        game_state['extra.walkthrough']  = self._commands_from_asp
+        game_state['extra.walkthrough'] = self._commands_from_asp
         print("WALKTHROUGH from ASP:", game_state.get('extra.walkthrough'))
         return game_state
+
+    def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
+        actiontxt, _tasks = super().invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
+        assert self.passive_oracle_mode
+        if self.passive_oracle_mode:
+            actiontxt = next(self._next_cmd_from_asp, None)
+            print("TwAspWrapper: using _next_cmd_from_asp:", actiontxt)
+        self.next_command = actiontxt
+        return actiontxt, _tasks
+
 
     def copy(self) -> "TwAspWrapper":
         env = TwAspWrapper()
@@ -681,6 +693,7 @@ class QaitEnvWrapper(gym.Wrapper):
 
 
 def _update_infos(infos, idx, actiontxt, taskstack, batch_size):
+    print("_UPDATE_INFOS", idx, actiontxt)
     if actiontxt:
         if 'tw_o_step' not in infos:
             assert idx == 0, \

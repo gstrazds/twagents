@@ -24,6 +24,8 @@ class TwOracleAgent(Agent):
         return [TWoWrapper]
 
     def get_initial_state(self):
+        if self._game_state and (not hasattr(self._game_state, "feedback") or self._game_state.feedback is None):
+            self._game_state['feedback'] = '[NO INITIAL FEEDBACK]'
         return self._game_state
 
     def reset(self, env: Environment):
@@ -33,7 +35,7 @@ class TwOracleAgent(Agent):
 
         print(env, env.reset)
         game_state = env.reset()
-        if game_state.feedback is None:
+        if not hasattr(game_state, 'feedback') or game_state.feedback is None:
             game_state.feedback = "(NO INITIAL FEEDBACK)"  # prevent crash due to calling (None).rstrip()
  
         self._game_state = game_state
@@ -45,7 +47,8 @@ class TwOracleAgent(Agent):
         if self.commands is not None:
             self._commands = iter(self.commands)
             return  # Command sequence was given to constructor
-        # Load command from the generated game.
+
+        #Load command from the generated game.
         if not hasattr(game_state, "extra.walkthrough"):
             msg = "TwOracleAgent only works with games that have an extra.walkthrough property"
             print(game_state)
@@ -55,8 +58,7 @@ class TwOracleAgent(Agent):
 
     def act(self, game_state, reward, done):
         command = game_state.get("next_command", None)
-        if command:
-            print("next_command =", command)
+        print("next_command =", command)
         if not command:
             if self._commands:   # fallback strategy - use pre-specified GT command sequence
                 try:
@@ -70,6 +72,7 @@ class TwOracleAgent(Agent):
                 raise WalkthroughDone()
         command = command.strip()  # Remove trailing \n, if any.
         return command  # will be followed by a call to env.step(command)
+
 
 class TwAnswerSetAgent(TwOracleAgent):
     """ Agent that uses Answer Set Programming (via clingo) to play a TextWorld game. """
