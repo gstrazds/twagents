@@ -642,6 +642,7 @@ solved_all(t) :- goal2_achieved(t).
 %------------------------------------------
 
 can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
+can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
 
 %:- can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
 :- can_acquire(t), new_room(t), query(t). % prefer greedy/1-step acquire over exploring a aew roon

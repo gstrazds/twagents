@@ -209,7 +209,7 @@ if __name__ == "__main__":
 
         if args.build_tokenizer:
             if args.tokenizer_input_dirs:
-                dir_list = args.tokenizer_input_dirs
+                glob_list = args.tokenizer_input_dirs
             else:
                 PTHRU_DIR = '/work2/gstrazds/twdata/ftwc/playthru_data/'
                 GATA_PTHRU_DIR = '/work2/gstrazds/twdata/gata/playthru_data/'
