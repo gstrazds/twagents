@@ -599,8 +599,12 @@ need_to_find(A,t) :-
 %--------------------
 #program check(t).
 %--------------------
+% explicitly preserve actually chosen actions from previous solving steps
+X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).
 
-X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).   % explicitly preserve actually chosen actions from previous solving steps
+
+can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
+can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
 
 new_acquire(t) :- {first_acquired(O,t):need_to_acquire(O,t-1)}>0.
 new_room(t) :- {first_visited(R,t):r(R)}>0.
@@ -613,41 +617,48 @@ goal1_has_been_achieved(t) :- goal1_has_been_achieved(t-1).
 goal2_achieved(t) :- consumed(meal_0,t).
 
 solved_all(t) :- goal2_achieved(t).
-:- goal2_achieved(t), not goal1_has_been_achieved(t), query(t).  % impose strict sequential ordering: need to read the recipe first
 
+% ------------------------------------------------------------------------------
+% Constraints (implement prioritization of subgoals relative to each other)
 
-%% Prioritize search (exploring unseen locations) UNTIL WE FIND THE RECIPE
-%:- not goal1_has_been_achieved(t), need_to_search(t), not first_visited(_,t), not first_opened(_,t), query(t).
+% prefer greedy/1-step acquire over exploring a aew room
+:- can_acquire(t), new_room(t), query(t).
+
+% prefer greedy/1-step acquire over opening a new container
+:- can_acquire(t), newly_opened(t), query(t).
+
+% prefer opening a container over exploring a aew room
+:- need_to_search(t), can_open(t), new_room(t), query(t).
+
+% enforce strict sequential ordering: need to read the recipe before preparing the meal
+:- goal2_achieved(t), not goal1_has_been_achieved(t), query(t).
+
+% if we know where the recipe is, FAIL UNTIL WE READ the Recipe
+:- not need_to_search(t), not goal1_has_been_achieved(t), t>0, query(t).
+
+%% UNTIL WE FIND THE RECIPE: allow solver success for search (exploring unseen locations)
 :- not goal1_has_been_achieved(t), need_to_search(t), not new_room(t), not newly_opened(t), query(t).
-:- not goal1_has_been_achieved(t), not need_to_search(t), t>0, query(t).  % FAIL UNTIL WE FIND the Recipe
 
-% After finding the recipe, if incremental searching or gathering is not required, fail unless we achieve our main goal
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), not need_to_gather(t), query(t).
+% ****** After finding the recipe: ******
+
+% if searching or gathering is not required, fail until we achieve our main goal
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
+     not need_to_search(t), not need_to_gather(t), query(t).
 
 % Fail unless/until we gather a required item
-%:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), need_to_gather(t), not first_acquired(_,t), query(t).
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t), not need_to_search(t), need_to_gather(t), not new_acquire(t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
+     not need_to_search(t), need_to_gather(t),
+          not new_acquire(t), query(t).
 % Fail unless/until we explore a new room or container
-%:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not need_to_gather(t),
-%   not first_visited(_,t), not first_opened(_,t), query(t).
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), not need_to_gather(t),
-    not new_room(t), not newly_opened(t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
+     need_to_search(t), not need_to_gather(t),
+           not new_room(t), not newly_opened(t), query(t).
  
 % Allow success upon exploring or gathering, if appropriate
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), need_to_gather(t),
          not new_room(t), not newly_opened(t), not new_acquire(t), query(t).
 % NOTE (GVS ?unknown why the following don't work vs. new_xxx(t) which do) ----
 %      not first_visited(_,t), not first_opened(_,t), not first_acquired(_,t), query(t).
-
-%------------------------------------------
-
-can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
-can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
-
-%:- can_acquire(t), {first_visited(R,t):r(R)}>0, query(t). % prefer greedy/1-step acquire over exploring a aew roon
-:- can_acquire(t), new_room(t), query(t). % prefer greedy/1-step acquire over exploring a aew roon
-:- can_acquire(t), newly_opened(t), query(t).  % prefer greedy/1-step acquire over opening a new container
-:- need_to_search(t), can_open(t), new_room(t), query(t).    % prefer opening a container over exploring a aew roon
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
