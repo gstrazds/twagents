@@ -22,6 +22,8 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
         min_print_step = imax + 10000   # don't print step times
 
     _actions_list = []
+    _actions_set = set()
+    _new_actions = []
     _actions_facts = []
     _newly_discovered_facts = []  # rooms or opened containers
     _recipe_read = False
@@ -29,11 +31,13 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
         #for act in prg.symbolic_atoms.by_signature("act",2):
         #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
         nonlocal _actions_list
+        nonlocal _new_actions
         nonlocal _actions_facts
         nonlocal _newly_discovered_facts
         print(f"_get_chosen_actions(model,{step})......")
         _actions_list.clear()
         _actions_facts.clear()
+        _new_actions.clear()
         _newly_discovered_facts.clear()
         _solved_all = False
         for atom in model.symbols(atoms=True):
@@ -43,8 +47,13 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
                 assert action.arguments[0].number == t, f"!ACTION timestep mismatch: [{t}] {action}"
                 str_atom = f"{atom}."
                 _actions_facts.append(str_atom)
-                print(f"  {'++' if step == t else '--'} [{t}] : {str_atom}")
+                # print(f"  {'++' if step == t else '--'} [{t}] : {str_atom}")
                 _actions_list.append((t, action))
+                if action not in _actions_set:
+                    print(f"\t ++++ new_act: [{t}] : {str(action)} ++++")
+                    _actions_set.add(action)
+                    _new_actions.append(action)
+
             elif atom.name == 'recipe_read' \
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
@@ -65,6 +74,12 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
                 else:
                     print(f"  -- {atom}")
         _actions_list = sorted(_actions_list, key=itemgetter(0))
+        for t, action in _actions_list:
+            # if action not in _actions_set:
+            #     print(f"\t ++++ new_act: [{t}] : {str(action)} ++++")
+            #     _actions_set.add(action)
+            #     _new_actions.append(action)
+            print(f"  {'++' if step == t else '--'} [{t}] : {action}")
         if _solved_all:
             return False
         return True  # False -> stop after first model
@@ -116,13 +131,17 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
             parts.append(("check", [Number(step)]))     #step==0
         else:  #if step > 0:
 
-            if len(_actions_facts):
-                actions_facts_str = "\n".join(_actions_facts)
-                actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
-                print(f"\n+++++ ADDING prev_actions: +++\n{actions_facts_str}\n----", flush=True)
-                #print("t", "\n\t".join(_actions_facts), flush=True)
-                prg.add("prev_actions", [], actions_facts_str)
-                parts.append(("prev_actions", []))
+            for action in _new_actions:
+                print("ENSURE PAST ACTION:", str(action))
+                parts.append(("prev_action", [action, action.arguments[0]]))
+                # prg.assign_external(Function("did_act", [action, action.arguments[0]]), True)
+            # if len(_actions_facts):
+            #     actions_facts_str = "\n".join(_actions_facts)
+            #     actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
+            #     print(f"\n+++++ ADDING prev_actions: +++\n{actions_facts_str}\n----", flush=True)
+            #     print("\t" + "\n\t".join(_actions_facts), flush=True)
+            #     prg.add("prev_actions", [], actions_facts_str)
+            #     parts.append(("prev_actions", []))
 
             #parts.append(("obs_step", [Number(step)]))
             parts.append(("predict_step", [Number(step)]))
@@ -138,11 +157,13 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
         prg.ground(parts)
 
         prg.assign_external(Function("query", [Number(step)]), True)
- 
+
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
         finish_time = datetime.now()
         elapsed_time = finish_time-start_time
         print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
+        assert len(_actions_set) == len(_actions_list), f"@@ _actions_set {len(_actions_set)}: {_actions_set} \n@@ _actions_list {len(_actions_list)}: {_actions_list}"
+
         if step >= min_print_step:
             print(f"--- [{step}] elapsed: {elapsed_time}")
         if elapsed_time > step_max_time:

@@ -2,7 +2,6 @@
 % --------------------------------------------------------------------------------
 #program check(t).   % redundant declaration (logic is defined below)
 #external query(t).
-
 % --------------------------------------------------------------------------------
 #program base.
 % grounded exactly once, at step 0.
@@ -311,6 +310,14 @@ need_to_gather(t) :- {need_to_acquire(X,t):need_to_acquire(X,t)}>0.
 
 
 % ------------------------------------------------------------------------------
+% ----------------            PREVIOUS ACTIONS            ----------------------
+% ------------------------------------------------------------------------------
+#program prev_action(a,t).
+%#external did_act(a,t).
+% did_act(a,t).
+:- act(X,t), X != a.   % past actions cannot be changed
+
+% ------------------------------------------------------------------------------
 % ----------------            ACTION_STEP_RULES           ----------------------
 % ------------------------------------------------------------------------------
 
@@ -600,8 +607,7 @@ need_to_find(A,t) :-
 #program check(t).
 %--------------------
 % explicitly preserve actually chosen actions from previous solving steps
-X1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).
-
+%SX1=X2 :- act(X1,T), did_act(X2,T), T<t,  query(t).
 
 can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
@@ -663,8 +669,9 @@ solved_all(t) :- goal2_achieved(t).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-%#show atP/2.
+#show did_act/2.
+#show atP/2.
+#show A: act(A,T),timestep(T).
 %#show goal1_achieved/1.
 %#show recipe_read/1.
 %#show goal1_has_been_achieved/1.
