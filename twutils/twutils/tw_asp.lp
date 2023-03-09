@@ -207,12 +207,15 @@ edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
 edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
 
 % ---- inertia: objects don't move unless moved by the player
-at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not act(do_take(t,X,_),t).
-on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not act(do_take(t,X,_),t).
-in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not act(do_take(t,X,_),t).
+did_take(X,Y,t) :- act(do_take(t,X,Y), t).
+
+at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not did_take(X,R,t).
+on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not did_take(X,S,t).
+in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not did_take(X,C,t).
+
 in(X,inventory,t) :- in(X,inventory,t-1), not act(do_put(t,X,_),t), not consumed(X,t).
 
-in(O,inventory,t) :- act(do_take(t,O,X),t).  % if player takes an object, it moves to the inventory
+in(O,inventory,t) :- did_take(O,_,t).  % if player takes an object, it moves to the inventory
 
 on(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,s).  % player puts an object onto a supporting object
 in(O,X,t) :- act(do_put(t,O,X),t), instance_of(X,c).  % player puts an object into a container
