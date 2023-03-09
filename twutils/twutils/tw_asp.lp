@@ -42,9 +42,6 @@ timestep(0). % incremental solving will define timestep(t) for t >= 1...
 direction(east;west;north;south).
 unknown(unknown).
 
-%inventory_max(7) :- not class(slot).  % default value for inventory size for games with no explicit inventory logic (old FTWC games)
-inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
-
 cutting_verb(chop;slice;dice).
 
 cooked_state(needs_cooking;raw;grilled;roasted;fried;burned).
@@ -90,6 +87,10 @@ _connected(R1,R2,east) :- _connected(R2,R1,west), r(R1).
 _connected(R1,R2,west) :- _connected(R2,R1,east), r(R1).
 _connected(R1,R2,south) :- _connected(R2,R1,north), r(R1).
 _connected(R1,R2,north) :- _connected(R2,R1,south), r(R1).
+
+
+% privileged (fully observable ground truth) knownledge about inventory capacity limit
+_inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
 
 
 % ------------------------------------------------------------------------------
@@ -206,8 +207,24 @@ edible(X,t) :- edible(X,t-1), not act(do_cook(t,X,_),t).
 %edible(X,t) :- cooked_state(X,needs_cooking,t-1), inedible(X,t-1), not cooked(X,t-1), cooked(X,t). % cooking => transition from inedible to edible
 edible(X,t) :- cooked(X,t), cooked_state(X,V,t), V!=burned. % cooking => transition from inedible to edible
 
+
+%count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
+inventory_count(t,N) :- N = #count{in(O,inventory,t):in(O,inventory,t)}.
+
+% (unobserved) ground truth information about whether the inventory is already full
+%inventory_is_full(t) :- _inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} >= N.
+_inventory_is_full(t) :- _inventory_max(M), inventory_count(t,N), N >= M.
+
+% or based on the agent's belief state (if have observed an event that reveals inventory capacity)
+inventory_is_full(t) :- inventory_capacity(M,t), inventory_count(t,N), N >= M.
+
+
 % ---- inertia: objects don't move unless moved by the player
-did_take(X,Y,t) :- act(do_take(t,X,Y), t).
+did_take(X,Y,t) :- act(do_take(t,X,Y), t), not _inventory_is_full(t-1).
+% by attempting and failing to take something, we learn inventory capacity limit
+inventory_capacity(N,t) :- act(do_take(t,X,Y), t), _inventory_is_full(t-1), inventory_count(t-1,N).
+inventory_capacity(N,t) :- inventory_capacity(N,t-1).
+
 
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not did_take(X,R,t).
 on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not did_take(X,S,t).
@@ -488,11 +505,9 @@ is_action(do_cut(t,V,F,O), t) :- do_cut(t,V,F,O).
 % -- take :: can take an object (a portable thing) if player is in the same room and it is on the floor
 0 {do_take(t,O,R):at(O,R,t-1),at(player,R,t-1)} 1 :- at(player,R,t-1), r(R), instance_of(O,o), at(O,R,t-1), timestep(t).
 
-%count_inventory(N,t) :- timestep(t), N=#sum{1,in(O,inventory,t):in(O,inventory,t)}.  % #sum of 1, = same as #count{}
-%#show count_inventory/2.
 
-% can't pick up anything if already carrying inventory_max items
-:- do_take(t,_,_), timestep(t), inventory_max(N), #count{in(O,inventory,t):in(O,inventory,t)} > N.
+% don't try to pick up anything if already carrying inventory_max items (if inventory_max is known)
+:- do_take(t,_,_), timestep(t), inventory_is_full(t-1).
 
 is_action(do_take(t,O,X),t) :- do_take(t,O,X).
 
@@ -615,6 +630,7 @@ need_to_find(A,t) :-
 can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
 
+inventory_max_found(t) :- inventory_capacity(M,t), not inventory_capacity(M,t-1), query(t).
 new_acquire(t) :- {first_acquired(O,t):need_to_acquire(O,t-1)}>0.
 new_room(t) :- {first_visited(R,t):r(R)}>0.
 newly_opened(t) :- {first_opened(C,t):instance_of(C,c)}>0.
@@ -629,6 +645,9 @@ solved_all(t) :- goal2_achieved(t).
 
 % ------------------------------------------------------------------------------
 % Constraints (implement prioritization of subgoals relative to each other)
+
+% if we don't need to gather stuff, inventory capacity is irrelevant
+:- not need_to_gather(t), inventory_max_found(t), query(t).
 
 % prefer greedy/1-step acquire over exploring a aew room
 :- can_acquire(t), new_room(t), query(t).
@@ -646,7 +665,9 @@ solved_all(t) :- goal2_achieved(t).
 :- not need_to_search(t), not goal1_has_been_achieved(t), t>0, query(t).
 
 %% UNTIL WE FIND THE RECIPE: allow solver success for search (exploring unseen locations)
-:- not goal1_has_been_achieved(t), need_to_search(t), not new_room(t), not newly_opened(t), query(t).
+:- not goal1_has_been_achieved(t),
+      need_to_search(t),
+          not new_room(t), not newly_opened(t), not inventory_max_found(t), query(t).
 
 % ****** After finding the recipe: ******
 
@@ -657,15 +678,17 @@ solved_all(t) :- goal2_achieved(t).
 % Fail unless/until we gather a required item
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
      not need_to_search(t), need_to_gather(t),
-          not new_acquire(t), query(t).
+          not new_acquire(t), not inventory_max_found(t), query(t).
 % Fail unless/until we explore a new room or container
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
      need_to_search(t), not need_to_gather(t),
            not new_room(t), not newly_opened(t), query(t).
  
 % Allow success upon exploring or gathering, if appropriate
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t), need_to_search(t), need_to_gather(t),
-         not new_room(t), not newly_opened(t), not new_acquire(t), query(t).
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
+      need_to_search(t), need_to_gather(t),
+         not new_room(t), not newly_opened(t),
+         not new_acquire(t), not inventory_max_found(t), query(t).
 % NOTE (GVS ?unknown why the following don't work vs. new_xxx(t) which do) ----
 %      not first_visited(_,t), not first_opened(_,t), not first_acquired(_,t), query(t).
 
@@ -675,6 +698,11 @@ solved_all(t) :- goal2_achieved(t).
 #show did_act/2.
 #show atP/2.
 #show A: act(A,T),timestep(T).
+#show inventory_capacity/2.
+#show inventory_max_found/1.
+#show inventory_is_full/1.
+#show _inventory_is_full/1.
+
 %#show goal1_achieved/1.
 %#show recipe_read/1.
 %#show goal1_has_been_achieved/1.
