@@ -135,6 +135,7 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
                 print("ENSURE PAST ACTION:", str(action))
                 parts.append(("prev_action", [action, action.arguments[0]]))
                 # prg.assign_external(Function("did_act", [action, action.arguments[0]]), True)
+            _new_actions.clear()  # only need to add these actions once
             # if len(_actions_facts):
             #     actions_facts_str = "\n".join(_actions_facts)
             #     actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
