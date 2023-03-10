@@ -218,14 +218,12 @@ _inventory_is_full(t) :- _inventory_max(M), inventory_count(t,N), N >= M.
 % or based on the agent's belief state (if have observed an event that reveals inventory capacity)
 inventory_is_full(t) :- inventory_capacity(M,t), inventory_count(t,N), N >= M.
 
-
-% ---- inertia: objects don't move unless moved by the player
 did_take(X,Y,t) :- act(do_take(t,X,Y), t), not _inventory_is_full(t-1).
 % by attempting and failing to take something, we learn inventory capacity limit
 inventory_capacity(N,t) :- act(do_take(t,X,Y), t), _inventory_is_full(t-1), inventory_count(t-1,N).
 inventory_capacity(N,t) :- inventory_capacity(N,t-1).
 
-
+% ---- inertia: objects don't move unless moved by the player
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not did_take(X,R,t).
 on(X,S,t) :- on(X,S,t-1), instance_of(S,s), not did_take(X,S,t).
 in(X,C,t) :- in(X,C,t-1), instance_of(C,c), not did_take(X,C,t).
@@ -630,10 +628,14 @@ need_to_find(A,t) :-
 can_acquire(t) :- {need_to_acquire(O,t-1):can_take(O,t-1)} > 0, query(t).
 can_open(t) :- {contents_unknown(C,t-1):is_here(C,t-1),instance_of(C,c)} > 0, query(t).
 
-inventory_max_found(t) :- inventory_capacity(M,t), not inventory_capacity(M,t-1), query(t).
-new_acquire(t) :- {first_acquired(O,t):need_to_acquire(O,t-1)}>0.
 new_room(t) :- {first_visited(R,t):r(R)}>0.
 newly_opened(t) :- {first_opened(C,t):instance_of(C,c)}>0.
+new_acquire(t) :- {first_acquired(O,t):need_to_acquire(O,t-1)}>0.
+inventory_max_determined(t) :- inventory_capacity(M,t), not inventory_capacity(M,t-1), query(t).
+
+% block cheating based on GT knowledge of _inventory_max(M)
+:- query(t), inventory_max_determined(t),
+      act(do_take(t,X,_),t), not need_to_acquire(X,t).
 
 goal1_achieved(t) :- recipe_read(t), not recipe_read(t-1).
 goal1_has_been_achieved(t) :- goal1_achieved(t).
@@ -643,17 +645,24 @@ goal2_achieved(t) :- consumed(meal_0,t).
 
 solved_all(t) :- goal2_achieved(t).
 
+search_step(t) :- new_room(t), query(t).
+search_step(t) :- newly_opened(t), query(t).
+
+acquire_step(t) :- new_acquire(t), query(t).
+acquire_step(t) :- inventory_max_determined(t), query(t).
+
 % ------------------------------------------------------------------------------
 % Constraints (implement prioritization of subgoals relative to each other)
 
 % if we don't need to gather stuff, inventory capacity is irrelevant
-:- not need_to_gather(t), inventory_max_found(t), query(t).
+:- not need_to_gather(t), inventory_max_determined(t), query(t).
 
+:- can_acquire(t), search_step(t), queryt(t).
 % prefer greedy/1-step acquire over exploring a aew room
-:- can_acquire(t), new_room(t), query(t).
-
+%:- can_acquire(t), new_room(t), query(t).
 % prefer greedy/1-step acquire over opening a new container
-:- can_acquire(t), newly_opened(t), query(t).
+%:- can_acquire(t), newly_opened(t), query(t).
+
 
 % prefer opening a container over exploring a aew room
 :- need_to_search(t), can_open(t), new_room(t), query(t).
@@ -666,42 +675,50 @@ solved_all(t) :- goal2_achieved(t).
 
 %% UNTIL WE FIND THE RECIPE: allow solver success for search (exploring unseen locations)
 :- not goal1_has_been_achieved(t),
-      need_to_search(t),
-          not new_room(t), not newly_opened(t), not inventory_max_found(t), query(t).
+     need_to_search(t),
+         not search_step(t), % not new_room(t), not newly_opened(t),
+         not inventory_max_determined(t),
+ query(t).
 
 % ****** After finding the recipe: ******
 
 % if searching or gathering is not required, fail until we achieve our main goal
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
-     not need_to_search(t), not need_to_gather(t), query(t).
+     not need_to_search(t), not need_to_gather(t),
+ query(t).
 
 % Fail unless/until we gather a required item
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
      not need_to_search(t), need_to_gather(t),
-          not new_acquire(t), not inventory_max_found(t), query(t).
+          not acquire_step(t), % not new_acquire(t), not inventory_max_determined(t),
+ query(t).
+
 % Fail unless/until we explore a new room or container
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
      need_to_search(t), not need_to_gather(t),
-           not new_room(t), not newly_opened(t), query(t).
+           not search_step(t), % not new_room(t), not newly_opened(t),
+ query(t).
  
 % Allow success upon exploring or gathering, if appropriate
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
-      need_to_search(t), need_to_gather(t),
-         not new_room(t), not newly_opened(t),
-         not new_acquire(t), not inventory_max_found(t), query(t).
+     need_to_search(t), need_to_gather(t),
+         not search_step(t),  % not new_room(t), not newly_opened(t),
+         not acquire_step(t), % not new_acquire(t), not inventory_max_determined(t),
+ query(t).
 % NOTE (GVS ?unknown why the following don't work vs. new_xxx(t) which do) ----
 %      not first_visited(_,t), not first_opened(_,t), not first_acquired(_,t), query(t).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-#show did_act/2.
-#show atP/2.
-#show A: act(A,T),timestep(T).
+%#show did_act/2.
+%#show atP/2.
+%#show A: act(A,T),timestep(T).
 #show inventory_capacity/2.
-#show inventory_max_found/1.
-#show inventory_is_full/1.
-#show _inventory_is_full/1.
+%#show inventory_max_determined/1.
+%#show inventory_is_full/1.
+%#show _inventory_is_full/1.
+%#show can_take/2.
 
 %#show goal1_achieved/1.
 %#show recipe_read/1.
