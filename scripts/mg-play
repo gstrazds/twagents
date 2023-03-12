@@ -1,0 +1,302 @@
+#!/usr/bin/env python
+
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT license.
+
+from __future__ import annotations
+
+import argparse
+import itertools
+import sys
+import pathlib
+
+import gymnasium as gym
+
+from minigrid.minigrid_env import MiniGridEnv
+from minigrid.utils.window import Window
+from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper
+from minigrid.manual_control import ManualControl
+
+class ManualControlWithScore(ManualControl):
+    def __init__(
+        self,
+        env: MiniGridEnv,
+        agent_view=False,
+        seed=None,
+        **kwargs
+    ):
+        super().__init__(env, agent_view=agent_view, seed=seed, **kwargs)
+
+    def step(self, action: MiniGridEnv.Actions):
+        _, reward, terminated, truncated, _ = self.env.step(action)
+        if hasattr(self.env, "score"):
+            score = f"{self.env.score:.2f}"
+        else:
+            score = "N/A"
+        print(f"step={self.env.step_count}, reward={reward:.2f} score={score}")
+
+        if terminated:
+            print("Terminated!")
+            self.window.close()
+            # self.reset(self.seed)
+        elif truncated:
+            print("truncated!")
+            self.reset(self.seed)
+        else:
+            self.redraw()
+
+class ManualControlAscii():
+    def __init__(
+        self,
+        env: MiniGridEnv,
+        agent_view: bool = False,
+        seed=None,
+    ) -> None:
+        self.env = env
+        self.agent_view = agent_view
+        self.seed = seed
+
+
+    def start(self):
+        """Start the game"""
+        self.reset(self.seed)
+        while True:
+            if self.act():
+                print("USER REQUESTED EXIT")
+                break
+
+
+    def get_next_action(self):
+        action = None
+        while action is None:
+            action_cmd = input('> ')
+            print("input:", action_cmd)
+            if action_cmd == 'q':
+                action = MiniGridEnv.Actions.done
+            elif action_cmd == 'l':
+                action = MiniGridEnv.Actions.left
+            elif action_cmd == 'r':
+                action = MiniGridEnv.Actions.right
+            elif action_cmd == 'f':
+                action = MiniGridEnv.Actions.forward
+            elif action_cmd == 't':
+                action = MiniGridEnv.Actions.pickup
+            elif action_cmd == 'd':
+                action = MiniGridEnv.Actions.drop
+            elif action_cmd == ' ':
+                action = MiniGridEnv.Actions.toggle
+            elif action_cmd == 'o':
+                action = MiniGridEnv.Actions.toggle
+            else:
+                action = None
+                print("Please choose one of [l=left,r=right,f=forward,t=take,o=toggle,d=drop,q=quit]")
+        return action
+
+    def act(self):
+        action = self.get_next_action()
+        if action == MiniGridEnv.Actions.done:
+            print("Done!")
+            self.redraw()
+            return True
+        terminated, truncated = self.step(action)
+        return False
+
+    def step(self, action: MiniGridEnv.Actions):
+        _, reward, terminated, truncated, _ = self.env.step(action)
+
+        print(f"step={self.env.step_count}, reward={reward:.2f}")
+
+        if terminated:
+            print("terminated!")
+            self.reset()
+        elif truncated:
+            print("truncated!")
+            self.reset()
+        else:
+            self.redraw()
+        return terminated, truncated
+
+    def redraw(self):
+        if hasattr(self.env, "mission"):
+            print(f"\n   [[ Mission: %s ]]" % self.env.mission)
+        print(f"{str(self.env.unwrapped)}\n", flush=True)  # ascii rendering of the minigrid
+
+    def reset(self, seed=None):
+        self.env.reset(seed=seed)
+        self.redraw()
+
+    def cmd_handler(self, event):
+        key: str = event.key
+        print("pressed", key)
+
+        if key == "escape":
+            self.window.close()
+            return
+        if key == "backspace":
+            self.reset()
+            return
+
+        key_to_action = {
+            "left": MiniGridEnv.Actions.left,
+            "right": MiniGridEnv.Actions.right,
+            "up": MiniGridEnv.Actions.forward,
+            " ": MiniGridEnv.Actions.toggle,
+            "pageup": MiniGridEnv.Actions.pickup,
+            "pagedown": MiniGridEnv.Actions.drop,
+            "enter": MiniGridEnv.Actions.done,
+        }
+
+        action = key_to_action[key]
+        self.step(action)
+
+
+
+def build_parser():
+    description = "Play a Minigrid game."
+    parser = argparse.ArgumentParser(description=description)
+    #parser.add_argument("game")
+    parser.add_argument("--mode", default="human", metavar="MODE",
+                        choices=["text", "human", "random-cmd", "oracle"],
+                        help="Select an agent to play the game: %(choices)s."
+                             " Default: %(default)s.")
+    parser.add_argument("--max-steps", type=int, default=0, metavar="STEPS",
+                        help="Limit maximum number of steps.")
+    # parser.add_argument("--viewer", metavar="PORT", type=int, nargs="?", const=6070,
+    #                     help="Start web viewer.")
+    parser.add_argument("-x", "--xplore-bonus", action="store_true",
+                        help="Use ActionBonus to boost score when exploring new territory")
+    parser.add_argument("--hint", action="store_true",
+                        help="Display the oracle trajectory leading to winning the game.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Verbose mode.")
+    parser.add_argument("-vv", "--very-verbose", action="store_true",
+                        help="Print debug information.")
+    parser.add_argument(
+        "--env", help="gym environment to load", default="MiniGrid-MultiRoom-N6-v0"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="random seed to generate the environment with",
+        default=None,
+    )
+    parser.add_argument(
+        "--tile-size", type=int, help="size at which to render tiles", default=32
+    )
+    parser.add_argument(
+        "--agent-view",
+        default=False,
+        help="draw the agent sees (partially observable view)",
+        action="store_true",
+    )
+
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
+    if args.very_verbose:
+        args.verbose = args.very_verbose
+
+    from mgutils import AccumScore
+    from minigrid.wrappers import ActionBonus
+
+    # env = textworld.start(args.game)
+
+    # if args.mode == "random":
+    #     agent = textworld.agents.NaiveAgent()
+    # elif args.mode == "random-cmd":
+    #     agent = textworld.agents.RandomCommandAgent()
+    # elif args.mode == "human":
+    #     agent = ManualControl(env, agent_view=args.agent_view, seed=args.seed)
+    # elif args.mode == 'walkthrough':
+    #     agent = textworld.agents.WalkthroughAgent()
+
+    # agent.reset(env)
+    # if args.viewer is not None:
+    #     from textworld.envs.wrappers import HtmlViewer
+    #     env = HtmlViewer(env, port=args.viewer)
+
+    # if args.mode == "human" or args.very_verbose:
+    #     print("Using {}.\n".format(env.__class__.__name__))
+
+    # game_state = env.reset()
+    # if args.mode == "human" or args.verbose:
+    #     env.render()
+
+    # reward = 0
+    # done = False
+
+    # for _ in range(args.max_steps) if args.max_steps > 0 else itertools.count():
+    #     command = agent.act(game_state, reward, done)
+    #     game_state, reward, done = env.step(command)
+
+    #     if args.mode == "human" or args.verbose:
+    #         env.render()
+
+    #     if done:
+    #         break
+
+    # env.close()
+    # print("Done after {} steps. Score {}/{}.".format(game_state.moves, game_state.score, game_state.max_score))
+
+    env: MiniGridEnv = gym.make(args.env, tile_size=args.tile_size, max_steps=args.max_steps)
+    if args.xplore_bonus:
+        env = ActionBonus(env)
+    env = AccumScore(env)
+    print(f"{env.unwrapped.spec}")
+    min_reward, max_reward = map(float, env.reward_range)
+
+    if args.agent_view:
+        print("Using agent view")
+        env = RGBImgPartialObsWrapper(env, env.tile_size)
+        env = ImgObsWrapper(env)
+
+    if args.mode == "human":
+        manual_control = ManualControlWithScore(env, agent_view=args.agent_view, seed=args.seed)
+        manual_control.start()
+    elif args.mode == "text":
+        prompt_toolkit_available = False
+        try:
+            # For command line history and autocompletion.
+            from prompt_toolkit import prompt
+            from prompt_toolkit.completion import WordCompleter
+            from prompt_toolkit.history import InMemoryHistory
+            prompt_toolkit_available = sys.stdout.isatty()
+        except ImportError:
+            pass
+        try:
+            # For command line history when prompt_toolkit is not available.
+            import readline  # noqa: F401
+        except ImportError:
+            pass
+        print("<text mode>")
+        manual_control = ManualControlAscii(env, agent_view=args.agent_view, seed=args.seed)
+        manual_control.start()
+    else:
+        warn_msg = f"UNIMPLEMENTED: mode {args.mode}"
+        print(warn_msg)
+        assert False, warn_msg
+
+    if hasattr(env, "score"):
+        score = env.score
+    elif hasattr(manual_control, "score"):
+        score = manual_control.score
+    else:
+        score = 0.0
+        print(f"<{type(env.unwrapped).__name__}> {env.unwrapped.spec.id} has no .score attribute")
+    step_count = env.step_count if hasattr(env, "step_count") else None
+    print(f"Done after {step_count}(/{env.max_steps}) steps."+
+             f" Score {score:.2f} /[{min_reward},{max_reward}]")
+
+    if args.mode != "text":
+        print(f"\n\n{str(env.unwrapped)}")  # ascii rendering of the minigrid
+
+
+if __name__ == "__main__":
+    parent_dir = pathlib.Path(__file__).resolve().parents[1]
+    sys.path.append(str(parent_dir))
+
+    main()
+
+
