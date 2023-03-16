@@ -97,6 +97,9 @@ _inventory_max(N) :- class(slot), N=#count {slot(X):slot(X)}.
 % -------------------        OBSERVATION_STEP          -------------------------
 % ------------------------------------------------------------------------------
 
+% NOTE: obs_step(t) is only called after adding new facts
+%    as a result of visiting a new room or opening a container for the first time
+
 % ------------------ obs_step(t) t=[0...] ----------------------
 #program obs_step(t).  % fluents that are independent of history (don't reference step-1, apply also for step 0)
 
