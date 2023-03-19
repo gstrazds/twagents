@@ -8,6 +8,7 @@ import argparse
 import inspect
 import json
 import re
+import sys
 from pathlib import Path, PurePath
 from typing import Optional, Any, Tuple
 
@@ -25,6 +26,7 @@ if __name__ == "__main__":
     parent_dir = pathlib.Path(__file__).resolve().parents[1]
     sys.path.append(str(parent_dir))
 
+    from mgutils.mg_wrappers import SymbolicFactsInfoWrapper
     from mgutils.mg_asp import generate_ASP_for_minigrid
 
     for spec in gym.registry.values():
@@ -34,12 +36,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Convert minigrid games to ASP")
     parser.add_argument("-s", "--spec", default='MiniGrid-FourRooms-v0',  #choices=MG_SPECS, 
-                                help="minigrid or babyAI spec")
+                                help="minigrid or babyAI spec (default='MiniGrid-FourRooms-v0')")
     parser.add_argument("--seed", default=None,  #choices=MG_SPECS, 
                                 help="RNG seed for initial game config")
-    parser.add_argument("-o", "--output", default="./mg_games/", metavar="PATH",
+    parser.add_argument("-o", "--output", default='./mg_games/', metavar="PATH",
                                 help="Path for the converted games. It should point to a folder,"
-                                    " output filename will be derived from the input spec.")
+                                    " default='./mg_games/'")
 
     parser.add_argument("--no-python", action="store_true", help="Don't embed the python solver loop")
     parser.add_argument("--standalone", action="store_true", help="Include shared ASP rules for TW game dynamics")
@@ -72,18 +74,12 @@ if __name__ == "__main__":
     else:
         emb_python = False
     
-    env = gym.make(args.env)  #, tile_size=args.tile_size, max_steps=args.max_steps)
-    # if args.xplore_bonus:
-    #     env = ActionBonus(env)
-    # env = AccumScore(env)
-    # print(f"{env.unwrapped.spec}")
-    # min_reward, max_reward = map(float, env.reward_range)
-    # if args.agent_view:
-    #     print("Using agent view")
-    #     env = RGBImgPartialObsWrapper(env, env.tile_size)
-    #     env = ImgObsWrapper(env)
+    env = gym.make(args.spec)  #, tile_size=args.tile_size, max_steps=args.max_steps)
+    env = SymbolicFactsInfoWrapper(env)
+    _, info = env.reset(seed=args.seed)
+    # print(info.keys())
 
-    asp_str = generate_ASP_for_minigrid(env,
+    asp_str = generate_ASP_for_minigrid(env, env.obj_index,
         seed=args.seed,
         standalone=args.standalone,
         emb_python=emb_python)

@@ -1,14 +1,14 @@
 import re
 from pathlib import Path
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, List
 from operator import itemgetter
 
 from minigrid.minigrid_env import MiniGridEnv
 
-from minigrid.constants import IDX_TO_COLOR, COLOR_TO_IDX
-from minigrid.constants import IDX_TO_OBJECT, OBJECT_TO_IDX, STATE_TO_IDX, DIR_TO_VEC
+from minigrid.core.constants import IDX_TO_COLOR, COLOR_TO_IDX
+from minigrid.core.constants import IDX_TO_OBJECT, OBJECT_TO_IDX, STATE_TO_IDX, DIR_TO_VEC
 from minigrid.core import Grid
-from minigrid.core.world_object import WorldOb
+from minigrid.core.world_object import WorldObj
 
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
@@ -41,7 +41,7 @@ def main(prg):
 """
 
 # NOTE: this is how to get the object currently in front of the agent:
-def get_focus_obj(minigrid_env) -> Optional[WorldOb]:
+def get_focus_obj(minigrid_env) -> Optional[WorldObj]:
     # Get the position in front of the agent
     fwd_pos = minigrid_env.front_pos
 
@@ -117,9 +117,19 @@ OBJ_ID_FORMAT = {
     "agent": 'a_{N:d}',
 }
 
+STATIC_OBJ_TYPES = {
+    "wall",
+    "floor",  # not actually used in most minigrid envs
+    "door",   # doors can be unlocked/opened/closed, but cannot be moved
+    "goal",  # ? can goals ever move around?
+    "lava",
+}
+def is_static_obj(obj:WorldObj):
+    return obj.type in STATIC_OBJ_TYPES
 
 
-STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location', 'link', 'north_of', 'east_of', 'south_of', 'west_of']
+STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location',
+                'link', 'north_of', 'east_of', 'south_of', 'west_of']
 
 OPEN_STATE = ['open', 'closed', 'locked'] #anything other than open -> -open
 LOCATION_REL = ['at', 'on', 'in']
@@ -133,120 +143,180 @@ def is_fluent_fact(fact_name: str, args_str: Optional[str] = None):
     return True
 
 
-def assign_obj_ids_for_ASP(env:MiniGridEnv):
-    def _assign_id_to_worldobj(obj, obj_index, id_str:str=None):
-        if id_str:
-            obj_id = id_str
-        else:
-            obj.type
-            idx = len(obj_index[obj.type])
-            obj_index[obj.type].append(obj)
-            id_format = OBJ_ID_FORMAT.get(obj.type, None)
-            if id_format:
-                if "N:d" in id_format:
-                    id_str = id_format.format(N=idx)
-                else:
-                    assert hasattr(obj, "init_pos"), f"{obj}"
-                    x,y = obj.init_pos
-                    id_str = id_format.format(X=x, Y=y)
-            else:
-                id_str = f"{obj.type}_{idx}"
-            obj.id = id_str
-        obj_index['_obj_infos'][id_str] = obj
-        return obj_id
+_OBJ_INFOS = '_obj_infos'
+def get_obj_infos(obj_index):
+    obj_infos = obj_index.get(_OBJ_INFOS, None)
+    assert obj_infos is not None
+    return obj_infos
 
+def _assign_id_to_worldobj(obj, obj_index,
+         x:int=-1,
+         y:int=-1,
+         id_str:str=None,
+         has_been_seen=None):
+    if id_str:
+        obj_id = id_str
+    else:
+        assert not hasattr(obj, "id"), f"{str(obj)} already has id={obj.id}"
+        idx = len(obj_index[obj.type])
+        assert obj not in obj_index[obj.type], str(obj)
+        obj_index[obj.type].append(obj)
+        id_format = OBJ_ID_FORMAT.get(obj.type, None)
+        if id_format:
+            if "N:d" in id_format:
+                id_str = id_format.format(N=idx)
+            else:
+                if x < 0 and y< 0:
+                    assert hasattr(obj, "init_pos"), f"{obj}"
+                    assert obj.init_pos is not None, f"{obj} {obj.cur_pos} {obj.init_pos}"
+                    x,y = obj.init_pos
+                id_str = id_format.format(X=x, Y=y)
+        else:
+            id_str = f"{obj.type}_{idx}"
+        obj.id = id_str
+    obj_infos = get_obj_infos(obj_index)
+    assert id_str not in obj_infos, id_str
+    obj_infos[id_str] = obj
+    if has_been_seen is not None:
+        obj.has_been_seen = has_been_seen
+    return id_str
+
+def assign_obj_ids_for_ASP(env:MiniGridEnv, reset_all_unseen=True):
     obj_index = {
         key:[] for key in OBJ_ID_FORMAT.keys()
     }
-    obj_index['_infos'] = {}  # map of obj.id -> info about the object (an instance of WorldObj)
+    obj_index[_OBJ_INFOS] = {}  # map of obj.id -> info about the object (an instance of WorldObj)
     agent_obj = agent_obj = Agent()
+    agent_obj.has_been_seen = True
     agent_obj.init_pos = env.agent_pos
     agent_obj.cur_pos = env.agent_pos
-    _assign_id_to_worldobj(agent_obj, obj_index, id_str='player')
- 
+    _assign_id_to_worldobj(agent_obj, obj_index, id_str='player', has_been_seen=True)
+
     if env.carrying:
         carried_obj = env.carrying
         agent_obj.contains = carried_obj
-        obj_id = _assign_id_to_worldobj(carried_obj, obj_index)
+        obj_id = _assign_id_to_worldobj(carried_obj, obj_index, has_been_seen=True)
+
+    if reset_all_unseen:
+        has_been_seen = False
+    elif reset_all_unseen is None:
+        has_been_seen = None
+    else:
+        has_been_seen = True
+
+    for y in range(env.grid.height):
+        for x in range(env.grid.width):
+            o = env.grid.get(x,y)
+            if o is not None:
+                _assign_id_to_worldobj(o, obj_index, x=x, y=y, has_been_seen=has_been_seen)
+
     return obj_index
 
-def get_facts_from_minigrid(env:MiniGridEnv, timestep:int) -> List[str]:
+
+def update_player_obj(obj_index, env:MiniGridEnv):
+    # because minigrdd does not treat the aggent like a WorldDbj
+    # we implement this more OO approach here
+    # ASSUMES: have previously initialized a 'player' object in assign_obj_ids_for_ASP()
+    agent_pos = env.agent_pos
+    player_obj = get_obj_infos(obj_index).get('player', None)
+    assert player_obj is not None, "EXPECTING _infos['player'] initialized in assign_obj_ids_for_ASP()"
+    player_obj.cur_pos = agent_pos
+    if env.carrying:
+        player_obj.contains = env.carrying
+    else:
+        player_obj.contains = None
+    return agent_pos
+
+
+def get_obj_id(obj, obj_index):
+    if hasattr(obj, "id"):
+        return obj.id
+    else:
+        assert False, f"OBJ {obj} has no id!"
+
+
+def get_facts_from_minigrid(env:MiniGridEnv, obj_index, timestep:int=0):
     w = env.grid.width
     h = env.grid.height
     static_facts_list = []
     fluent_facts_list = []
-    agent_pos = env.agent_pos
-    obj_index['_infos']['player'].cur_pos = agent_pos
-    
+    agent_pos = update_player_obj(obj_index, env)
+    timestep = env.step_count
+
     fluent_facts_list.append( f"at(player,{agent_pos[0]}, {agent_pos[1]}, {timestep})." )
     if env.carrying:
         obj = env.carrying
-        fluent_facts_list.append( f"in({get_obj_id(obj)},inventory,{timestep})." )
+        fluent_facts_list.append( f"in({get_obj_id(obj, obj_index)},inventory,{timestep})." )
 
     for x in range(w):
         for y in range(h):
             gpos_fact = f"gpos({x},{y})."
             static_facts_list.append( gpos_fact )
-            obj = env.grid.grid.get(x,y)
+            obj = env.grid.get(x,y)
             if obj is not None:
-                if obj.type in STATIC_OBJS:
-                    static_facts_list.append()
-                elif obj.type in MOVEABLE_OBJS:
-                    fluent_facts_list.append( f"at({get_obj_id(obj)},gpos({x},{y}),{timestep})." )
-    print("static_facts:", static_facts_list)
-    print("fluent_facts", fluent_facts_list)
-    return static_facts_list, fluent_facts_list
+                if is_static_obj(obj):
+                    fact_str = f"grid_is(gpos({x},{y}),{obj.type})."
+                    static_facts_list.append(fact_str)
+                    # fact_str = f"grid_obj(gpos({x},{y}),{get_obj_id(obj, obj_index)})."
+                    # static_facts_list.append(fact_str)
+                else:
+                    fact_str = f"at({get_obj_id(obj, obj_index)},gpos({x},{y}),{timestep})."
+                    fluent_facts_list.append( fact_str )
+    # print("static_facts:", static_facts_list)
+    # print("fluent_facts", fluent_facts_list)
+    static_facts_dict = {fact_str:fact_str for fact_str in static_facts_list}
+    fluent_facts_dict = {fact_str:fact_str for fact_str in fluent_facts_list}
+    # for TextWorld, analogous method produces str:Proposition mappings
+    return static_facts_dict, fluent_facts_dict
 
 
 
-def convert_minigrid_to_asp(env):
+def convert_minigrid_to_asp(env, obj_index):
+
+    static_facts, initial_fluents = get_facts_from_minigrid(env, obj_index, timestep=0)
  
-    type_infos = types_to_asp(game.kb.types)
-    recipe_facts = {}
     room_facts = {}
-    initial_fluents = {}
-    static_facts = {}
-    directions_map = {}
-    for fact in game.world.facts:
-        if fact.name in CONNECTION_REL: # east_of(R1,R2), north_of, etc...
-            r1 = fact.arguments[0].name
-            r2 = fact.arguments[1].name
-            assert _is_a_room(r1), str(fact)
-            assert _is_a_room(r2), str(fact)
-            direction = fact.name[0].upper()
-            if r2 in directions_map:
-                directions_map[r2][r1] = direction
-            else:
-                directions_map[r2] = {r1: direction}
-    print(directions_map)
-    for fact, hfact in zip(game.world.facts, hfacts):
-        fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
-        if is_part_of_recipe:
-            recipe_facts[fact_str] = fact
-        elif is_static_fact and not fact.name in CONNECTION_REL and not fact.name in LINK_REL:
-            static_facts[fact_str] = fact
-        else:
-            if fact.name in CONNECTION_REL:
-                _transition = "_"+fact_str
-                static_facts[_transition] = fact  # privileged knowledge for transitions in partially observable world
-                regex_direction_of = re.compile(r'\(r_(\d)+')      # dir_of(r_1, r_2) => dir_of(unkown, r_2)
-                unknownStr = '(unknown'+fact.name[0].upper()
-                fact_str = regex_direction_of.sub(unknownStr, fact_str)
-                print(fact_str)
-            elif fact.name == 'link':
-                regex_link = re.compile(r', r_(\d)+\)')             # link(r_1, d_N, r_2)
-                r1 = fact.arguments[0].name
-                r2 = fact.arguments[2].name
-                unknownStr = f", unknown{directions_map[r1][r2]})"
-                fact_str = regex_link.sub(unknownStr, fact_str)  #  => link(r_1, d_N, unknown)
-                print(fact_str)
-            elif fact.name == 'free':
-                #regex_free = re.compile(r', r_(\d)+, ') #.sub(', unknown, ')
-                regex_free = re.compile(r'^free')             # free(r_1, r_2, t)
-                fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
-                print(fact_str)
-            initial_fluents[fact_str] = fact
-    _initial_room = group_facts_by_room(initial_fluents, room_facts)
+    # directions_map = {}
+    # for fact in game.world.facts:
+    #     if fact.name in CONNECTION_REL: # east_of(R1,R2), north_of, etc...
+    #         r1 = fact.arguments[0].name
+    #         r2 = fact.arguments[1].name
+    #         assert _is_a_room(r1), str(fact)
+    #         assert _is_a_room(r2), str(fact)
+    #         direction = fact.name[0].upper()
+    #         if r2 in directions_map:
+    #             directions_map[r2][r1] = direction
+    #         else:
+    #             directions_map[r2] = {r1: direction}
+    # print(directions_map)
+    # for fact, hfact in zip(game.world.facts, hfacts):
+    #     fact_str, is_part_of_recipe, is_static_fact = fact_to_asp(fact, hfact, step='t')
+    #     # if is_part_of_recipe:
+    #     #     recipe_facts[fact_str] = fact
+    #     if is_static_fact and not fact.name in CONNECTION_REL and not fact.name in LINK_REL:
+    #         static_facts[fact_str] = fact
+    #     else:
+    #         if fact.name in CONNECTION_REL:
+    #             _transition = "_"+fact_str
+    #             static_facts[_transition] = fact  # privileged knowledge for transitions in partially observable world
+    #             regex_direction_of = re.compile(r'\(r_(\d)+')      # dir_of(r_1, r_2) => dir_of(unkown, r_2)
+    #             unknownStr = '(unknown'+fact.name[0].upper()
+    #             fact_str = regex_direction_of.sub(unknownStr, fact_str)
+    #             print(fact_str)
+    #         elif fact.name == 'link':
+    #             regex_link = re.compile(r', r_(\d)+\)')             # link(r_1, d_N, r_2)
+    #             r1 = fact.arguments[0].name
+    #             r2 = fact.arguments[2].name
+    #             unknownStr = f", unknown{directions_map[r1][r2]})"
+    #             fact_str = regex_link.sub(unknownStr, fact_str)  #  => link(r_1, d_N, unknown)
+    #             print(fact_str)
+    #         elif fact.name == 'free':
+    #             #regex_free = re.compile(r', r_(\d)+, ') #.sub(', unknown, ')
+    #             regex_free = re.compile(r'^free')             # free(r_1, r_2, t)
+    #             fact_str = regex_free.sub('%free', fact_str)  #  => %free(r_1, r_2, t)
+    #             print(fact_str)
+    #         initial_fluents[fact_str] = fact
+    _initial_room = 'r_0'  #group_facts_by_room(initial_fluents, room_facts)
 
 
     asp_lines = [
@@ -254,21 +324,13 @@ def convert_minigrid_to_asp(env):
         # '% ------- IS_A -------',
     ]
 
-    # for typename, _ in type_infos:
-    #     # asp_str.write(f"class({typename}). ") . # can derive this automatically from instance_of() or subclass_of()
-    #     asp_lines.append(f"instance_of(X,{typename}) :- {typename}(X).")
-    # for typename, parent_type in type_infos:
-    #     if parent_type:  
-    #         # and parent_type != 'thing':  # currently have no practical use for 'thing' base class (dsintinugishes objects from rooms)
-    #         asp_lines.append(f"subclass_of({typename},{parent_type}).")
-
     asp_lines += [
         '', # single empty line
         '% ------- Things -------'
     ]
 
-    for info in game._infos.values():
-        asp_lines.append(info_to_asp(info))
+    # for info in game._infos.values():
+    #     asp_lines.append(info_to_asp(info))
 
     asp_lines += [
         '',  # emtpy line
@@ -278,13 +340,14 @@ def convert_minigrid_to_asp(env):
         "% ------- initial fluents (initialized with t=0) -------",
         "#program initial_state(t).",
         '',
+        #'\n'.join(initial_fluents.keys()),
         '\n'.join(initial_fluents.keys()),
         '\n',
         "% ------- ROOM fluents -------",
         '',
         f"#program initial_room(t).",
-        '\n'.join([r_fact for r_fact in room_facts[_initial_room] if r_fact.startswith("at(player,")]),
-        f"room_changed(nowhere,{_initial_room},t).",
+        # '\n'.join([r_fact for r_fact in room_facts[_initial_room] if r_fact.startswith("at(player,")]),
+        # f"room_changed(nowhere,{_initial_room},t).",
         '',
     ]
     for room in sorted(room_facts.keys()):
@@ -298,7 +361,7 @@ def convert_minigrid_to_asp(env):
     return asp_str
 
 
-def generate_ASP_for_minigrid(env,
+def generate_ASP_for_minigrid(env, obj_index,
         seed=None,
         standalone=False,
         emb_python=None,
@@ -306,7 +369,7 @@ def generate_ASP_for_minigrid(env,
 
     env.reset(seed=seed) # ensure initial state (if seed is None, will be different each time)
 
-    game_definition = convert_minigrid_to_asp(env, seed=seed)
+    game_definition = convert_minigrid_to_asp(env, obj_index)
 
     if standalone and emb_python is None:
         emb_python = True
