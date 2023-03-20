@@ -199,7 +199,8 @@ link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
 #program predict_step(t).
 
-traversible(O,t) :- traversible(O,t-1).  % TODO: this is not always the case!
+traversible(O,t) :- is_openable(O), open(O,t).
+traversible(O,t) :- traversible(O,t-1), not is_openable(O).
 
 % is the thing X close enough to the player to interact with
 % in_room(O,R,t) :- at(O,P,t), instance_of(P,gridpos), pos_in_room(P,R).
@@ -208,6 +209,12 @@ traversible(O,t) :- traversible(O,t-1).  % TODO: this is not always the case!
 
 %is_here(X,t) :- at(player,R,t), in_room(X,R,t), r(R).
 %is_here(R,t) :- at(player,R,t), r(R).
+
+is_here(O,t) :- pos(player,gpos(X,Y),t),
+                facing(player,D0,t),
+                dvec(D0,DELTA_X,DELTA_Y),
+                pos(O,gpos(X+DELTA_X,Y+DELTA_Y),t).
+
 can_take(O,t) :- instance_of(O,o), is_here(O,t). 
 
 need_to_find(X,t) :- need_to_find(X,t-1), not have_found(X,t-1), timestep(t).
@@ -319,10 +326,10 @@ at(player,R,t) :- room_changed(R0,R,t).
 
 pos(player,P,t) :- pos(player,P,t-1), instance_of(P,gridpos), not pos_changed(P,_,t).
 pos(player,P2,t) :- pos(player,P0,t-1), instance_of(P,gridpos), pos_changed(P0,P2,t).
+pos(O,P,t) :- pos(O,P,t-1), instance_of(P,gridpos), O!=player.
 
 facing(player,D,t) :- facing(player,D,t-1), not direction_changed(D,_,t).
 facing(player,D2,t) :- facing(player,D0,t-1), direction_changed(D0,D2,t).
-
 
 atP(P,t) :- pos(player,P,t), instance_of(P,gridpos).   % Alias for player's initial position
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
@@ -445,13 +452,14 @@ is_action(do_stepP(t,M), t) :- do_stepP(t,M), stepmove(M). %, r(R1), r(R2), dire
 has_door(R,D) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 door_direction(R,D,NSEW) :- r(R), d(D), direction(NSEW), link(R,D,R2), connected(R,R2,NSEW).
 
-% can open a closed but unlocked door
-0 {do_open(t,D):d(D),closed(D,t-1),at(player,R0,t),has_door(R0,D)} 1 :- at(player,R0,t), has_door(R0,D), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
+% can open a closed but unlocked door or container
+% 0 {do_open(t,D):d(D),closed(D,t-1),at(player,R0,t),has_door(R0,D)} 1 :- at(player,R0,t), has_door(R0,D), d(D), closed(D,t-1), not locked(D,t-1). % R1 -- might be unknown: = not a room
+0 {do_open(t,CD):is_openable(CD),closed(CD,t-1),is_here(CD,t-1)} 1 :- is_here(CD,t-1), is_openable(CD), closed(CD,t-1), not locked(CD,t-1).
 % can open a closed but unlocked container
-0 {do_open(t,C):instance_of(C,c),closed(C,t-1),is_here(C,t)} 1 :- is_here(C,t), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
+% 0 {do_open(t,C):instance_of(C,c),closed(C,t-1),is_here(C,t)} 1 :- is_here(C,t), instance_of(C,c), closed(C,t-1), not locked(C,t-1).
 % Test constraints
 :- do_open(t,CD), d(CD), not closed(CD,t-1). % can't open a door or container that isn't currently closed
-:- do_open(t,D), d(D), r(R), at(player,R,t), not has_door(R,D).  % can only open a door if player is in appropriate room
+%:- do_open(t,D), d(D), r(R), at(player,R,t), not has_door(R,D).  % can only open a door if player is in appropriate room
 % have to be next to and facing a container or door to open it
 :- do_open(t,C), instance_of(C,c), not is_here(C,t-1).
 :- do_open(t,D), instance_of(D,d), not is_here(D,t-1).

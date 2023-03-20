@@ -120,10 +120,22 @@ OBJ_ID_FORMAT = {
 STATIC_OBJ_TYPES = {
     "wall",
     "floor",  # not actually used in most minigrid envs
-    "door",   # doors can be unlocked/opened/closed, but cannot be moved
     "goal",  # ? can goals ever move around?
     "lava",
+    "tile",
 }
+
+DYNAMIC_OBJ_TYPES = {
+    "door": 'd',
+    "key": 'k',
+    "ball": 'ball',  # alignment w/TextWorld: balls are just generic objects [b_{N:d}]
+    "box": 'box',
+    "goal": 'goal',
+    "lava": 'lava',
+    "agent": 'player',
+}
+
+#    "door",   # doors can be unlocked/opened/closed, but cannot be moved
 def is_static_obj(obj:WorldObj):
     return obj.type in STATIC_OBJ_TYPES
 
@@ -169,39 +181,49 @@ def _assign_id_to_worldobj(obj, obj_index,
          y:int=-1,
          id_str:str=None,
          has_been_seen=None):
+    # print(f"_assign_id_to_worldobj({obj}x={x}, y={y}, has_been_seen={has_been_seen})")
     if id_str:
         obj_id = id_str
     else:
-        assert not hasattr(obj, "id"), f"{str(obj)} already has id={obj.id}"
-        idx = len(obj_index[obj.type])
-        assert obj not in obj_index[obj.type], str(obj)
-        obj_index[obj.type].append(obj)
-        id_format = OBJ_ID_FORMAT.get(obj.type, None)
-        if id_format:
-            if "N:d" in id_format:
-                id_str = id_format.format(N=idx)
+        if hasattr(obj, "id"):
+            if hasattr(obj, "cur_pos"):
+                init_pos = obj.init_pos if hasattr(obj, "init_pos") else None
+                # print(f"{str(obj)} {obj.cur_pos} init_pos={init_pos} already has id={obj.id}")
             else:
-                if x < 0 and y< 0:
-                    assert hasattr(obj, "init_pos"), f"{obj}"
-                    assert obj.init_pos is not None, f"{obj} {obj.cur_pos} {obj.init_pos}"
-                    x,y = obj.init_pos
-                id_str = id_format.format(X=x, Y=y)
+                print(f"{str(obj)} init_pos={init_pos} already has id={obj.id}")
+            obj_id = None
         else:
-            id_str = f"{obj.type}_{idx}"
-        obj.id = id_str
-    obj_infos = get_obj_infos(obj_index)
-    assert id_str not in obj_infos, id_str
-    obj_infos[id_str] = obj
+            idx = len(obj_index[obj.type])
+            assert obj not in obj_index[obj.type], str(obj)
+            obj_index[obj.type].append(obj)
+            id_format = OBJ_ID_FORMAT.get(obj.type, None)
+            if id_format:
+                if "N:d" in id_format:
+                    obj_id = id_format.format(N=idx)
+                else:
+                    if x < 0 and y< 0:
+                        assert hasattr(obj, "init_pos"), f"{obj}"
+                        assert obj.init_pos is not None, f"{obj} {obj.cur_pos} {obj.init_pos}"
+                        x,y = obj.init_pos
+                    obj_id = id_format.format(X=x, Y=y)
+            else:
+                obj_id = f"{obj.type}_{idx}"
+    if obj_id is not None:
+        obj.id = obj_id
+        obj_infos = get_obj_infos(obj_index)
+        assert obj_id not in obj_infos, obj_id
+        obj_infos[obj_id] = obj
     if has_been_seen is not None:
         obj.has_been_seen = has_been_seen
-    return id_str
+    return obj_id
 
 def assign_obj_ids_for_ASP(env:MiniGridEnv, reset_all_unseen=True):
+    print("assign_obj_ids_for_ASP")
     obj_index = {
         key:[] for key in OBJ_ID_FORMAT.keys()
     }
     obj_index[_OBJ_INFOS] = {}  # map of obj.id -> info about the object (an instance of WorldObj)
-    agent_obj = agent_obj = Agent()
+    agent_obj = Agent()
     agent_obj.has_been_seen = True
     agent_obj.init_pos = env.agent_pos
     agent_obj.cur_pos = env.agent_pos
@@ -274,11 +296,27 @@ def get_facts_from_minigrid(env:MiniGridEnv, obj_index, timestep:int=0):
                 if is_static_obj(obj):
                     fact_str = f"grid_is(gpos({x},{y}),{obj.type})."
                     static_facts_list.append(fact_str)
-                    # fact_str = f"grid_obj(gpos({x},{y}),{get_obj_id(obj, obj_index)})."
-                    # static_facts_list.append(fact_str)
                 else:
+                    objtype = DYNAMIC_OBJ_TYPES[obj.type]
+                    fact_str = f"{objtype}({get_obj_id(obj, obj_index)})."
+                    static_facts_list.append( fact_str )
+
                     fact_str = f"pos({get_obj_id(obj, obj_index)},gpos({x},{y}),{timestep})."
                     fluent_facts_list.append( fact_str )
+                    if objtype == 'box':
+                        fact_str = f"closed({get_obj_id(obj,obj_index)},{timestep})."
+                        fluent_facts_list.append( fact_str )
+                    elif hasattr(obj, 'is_open'):  # objtype == 'door'
+                        is_open = obj.is_open
+                        is_locked = obj.is_locked if hasattr(obj, 'is_locked') else False
+                        if is_locked:
+                            open_state = 'locked'
+                        elif is_open:
+                            open_state = 'open'
+                        else:
+                            open_state = 'closed'
+                        fact_str = f"{open_state}({get_obj_id(obj,obj_index)},{timestep})."
+                        fluent_facts_list.append( fact_str )
     # print("static_facts:", static_facts_list)
     # print("fluent_facts", fluent_facts_list)
     static_facts_dict = {fact_str:fact_str for fact_str in static_facts_list}
