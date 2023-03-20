@@ -15,7 +15,7 @@ _STEP_MAX_SECS = 30
 
 _STEP_MAX_ELAPSED_TIME = timedelta(minutes=_STEP_MAX_MINUTES, seconds=_STEP_MAX_SECS)
 
-def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_STEPS,
+def mg_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_STEPS,
                           step_max_time=_STEP_MAX_ELAPSED_TIME, min_print_step=_MIN_PRINT_STEP):
 
     if min_print_step == -1:
@@ -26,7 +26,6 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
     _new_actions = []
     _actions_facts = []
     _newly_discovered_facts = []  # rooms or opened containers
-    _recipe_read = False
     def _get_chosen_actions(model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
         #     print(f"[t={act.symbol.arguments[1].number}] action:{act.symbol.arguments[0]}")
@@ -58,7 +57,7 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
                     print(f"  ++ {atom}")
-                _newly_discovered_facts.append("cookbook")
+                _newly_discovered_facts.append("goal1")
             elif atom.name == 'solved_all' \
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 print(f"  ++! {atom}")
@@ -94,7 +93,6 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
               )
            ))):
         start_time = datetime.now()
-        _recipe_newly_seen = False  # becomes True during the step that finds the recipe
         parts = []
         if step >= min_print_step:
             print(f"solving:[{step}] ", end='', flush=True)
@@ -102,13 +100,6 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
             for _name in _newly_discovered_facts:
                 if _name == "solved_all":
                     solved_all = True
-                elif _name == "cookbook":
-                    if not _recipe_read:
-                        _recipe_newly_seen = True
-                        print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step-1})")
-                        parts.append(("recipe", [Number(step-1)]))
-                        parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
-                    _recipe_read = True
                 elif _name.startswith("r_"):    # have entered a previously unseen room
                     print(f"ADDING #program room_{_name} ({step-1}).")
                     parts.append((f"room_{_name}", [Number(step-1)]))
@@ -118,12 +109,11 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
                     #parts.append((f"c_{_name}", [Number(step-1)]))
                     parts.append(("obs_step", [Number(step-1)]))
                 else:
-                    print("%%%%% IGNORING FIRST ACQUIRED:", _name)
+                    print("%%%%% IGNORING NEWLY DISCOVERED:", _name)
             if solved_all:
                 break      # stop solving immediately
         if step == 0:
             parts.append(("base", []))
-            #parts.append(("recipe", [Number(step)]))
             parts.append(("initial_state", [Number(0)]))
             parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
             #parts.append(("obs_step", [Number(0)]))  #step==0
@@ -136,20 +126,10 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
                 parts.append(("prev_action", [action, action.arguments[0]]))
                 # prg.assign_external(Function("did_act", [action, action.arguments[0]]), True)
             _new_actions.clear()  # only need to add these actions once
-            # if len(_actions_facts):
-            #     actions_facts_str = "\n".join(_actions_facts)
-            #     actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
-            #     print(f"\n+++++ ADDING prev_actions: +++\n{actions_facts_str}\n----", flush=True)
-            #     print("\t" + "\n\t".join(_actions_facts), flush=True)
-            #     prg.add("prev_actions", [], actions_facts_str)
-            #     parts.append(("prev_actions", []))
 
             #parts.append(("obs_step", [Number(step)]))
             parts.append(("predict_step", [Number(step)]))
             parts.append(("step", [Number(step)]))
-            if _recipe_read:
-                print(f"+ ADDING #program cooking_step({step})")
-                parts.append(("cooking_step", [Number(step)]))
             parts.append(("check", [Number(step)]))
 
             #  query(t-1) becomes permanently = False (removed from set of Externals)

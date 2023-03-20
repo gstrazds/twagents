@@ -35,9 +35,9 @@ if __name__ == "__main__":
             MG_SPECS.append(spec.id)
 
     parser = argparse.ArgumentParser(description="Convert minigrid games to ASP")
-    parser.add_argument("-s", "--spec", default='MiniGrid-FourRooms-v0',  #choices=MG_SPECS, 
+    parser.add_argument("-s", "--spec", default='MiniGrid-FourRooms-v0',  #choices=MG_SPECS,
                                 help="minigrid or babyAI spec (default='MiniGrid-FourRooms-v0')")
-    parser.add_argument("--seed", default=None,  #choices=MG_SPECS, 
+    parser.add_argument("--seed", default=None,  type=int,
                                 help="RNG seed for initial game config")
     parser.add_argument("-o", "--output", default='./mg_games/', metavar="PATH",
                                 help="Path for the converted games. It should point to a folder,"

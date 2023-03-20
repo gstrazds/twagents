@@ -2,7 +2,7 @@ from typing import Optional, Any, Tuple, List
 
 import gymnasium as gym
 #from gymnasium.core import Wrapper
-from .mg_asp import get_facts_from_minigrid
+from .mg_asp import get_facts_from_minigrid, assign_obj_ids_for_ASP
 
 class AccumScore(gym.Wrapper):
     """
@@ -50,7 +50,7 @@ class AccumScore(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
-class SymbolicFactsWrapper(gym.Wrapper):
+class SymbolicFactsInfoWrapper(gym.Wrapper):
     """
     Wrapper which returns a list of symbolic facts representing agent observations
 
@@ -58,7 +58,7 @@ class SymbolicFactsWrapper(gym.Wrapper):
         >>> import minigrid
         >>> import gymnasium as gym
         >>> env = gym.make("MiniGrid-Empty-5x5-v0")
-        >>> env = FactsWrapper(env)
+        >>> env = SymoblicFactsWrapper(env)
         >>> _, _ = env.reset(seed=0)
         >>> _, reward, _, _, infos = env_bonus.step(1)
         >>> print(infos['facts'])
@@ -71,33 +71,29 @@ class SymbolicFactsWrapper(gym.Wrapper):
             env: The environment to apply the wrapper
         """
         super().__init__(env)
+        self.obj_index = None  # set during reset()
 
     def _add_facts_to_info(self, info):
         if not 'facts' in info:
             info['facts'] = []
-        static_facts_list, fluent_facts_list = get_facts_from_minigrid(self.env)
-        facts_list = static_facts_list + fluent_facts_list
-        info['facts'].append(facts_list)
-        return info
-
-    def _map_object_ids(self, info, facts_list, t:int):
-        if not 'facts' in info:
-            info['facts'] = []
-        obj_infos = assign_obj_ids_for_ASP(self.env)
-
+        static_facts_dict, fluent_facts_dict = get_facts_from_minigrid(self.env, self.obj_index)
+        # print("STATIC_FACTS:", static_facts_dict)
+        # print("FLUENT_FACTS:", fluent_facts_dict)
+        facts_list = list(static_facts_dict.keys()) + list(fluent_facts_dict.keys())
         info['facts'].append(facts_list)
         return info
 
     def step(self, action):
         """Steps through the environment with `action`."""
         obs, reward, terminated, truncated, info = self.env.step(action)
+
         self._add_facts_to_info(info)
         return obs, reward, terminated, truncated, info
 
     def reset(self, **kwargs):
         """Resets the environment with `kwargs`."""
         obs, info = self.env.reset(**kwargs)
-        self._map_obj_ids()
+        self.obj_index = assign_obj_ids_for_ASP(self.env)
         self._add_facts_to_info(info)
         return obs, info
 

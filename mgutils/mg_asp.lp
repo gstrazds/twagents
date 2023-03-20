@@ -13,6 +13,7 @@
 % ------- IS_A -------
 instance_of(X,inventory) :- inventory(X).
 instance_of(X,player) :- player(X).
+instance_of(X,direction) :- direction(X).
 instance_of(X,thing) :- thing(X).   % base class for things that aren't rooms/locations/directions
 instance_of(X,c) :- c(X).  % container:  in(o, c)
 instance_of(X,d) :- d(X).  % door
@@ -112,8 +113,12 @@ dvec(west,-1, 0).  % minus one to X
 player(player).        % always included
 inventory(inventory).  % always included
 
+goal(goal).
 wall(wall).   % generic, all wall tiles are the same
 lava(lava).   % generic, all lava tiles are the same
+
+traversible(goal,0).
+traversible(lava,0).
 
 % --------------------------------------------------------------------------------
 % ---- initialize step 0 values (some fluents that require inertia from step-1)
@@ -194,8 +199,10 @@ link(R1,D,R2) :- r(R1), r(R2), d(D), link(R1,D,unknownS), link(R2,D,unknownN).
 
 #program predict_step(t).
 
+traversible(O,t) :- traversible(O,t-1).  % TODO: this is not always the case!
+
 % is the thing X close enough to the player to interact with
-% in_room(O,R,t) :- at(O,G,t), instance_of(G,gridpos), pos_in_room(G).
+% in_room(O,R,t) :- at(O,P,t), instance_of(P,gridpos), pos_in_room(P,R).
 % in_room(X,R,t) :- on(X,S,t), in_room(S,R,t), instance_of(S,s), r(R).
 % in_room(X,R,t) :- in(X,C,t), in_room(C,R,t), instance_of(C,c), open(C,t), r(R).
 
@@ -244,11 +251,11 @@ did_take(O,t) :- act(do_take(t,O), t), not _inventory_is_full(t-1).
 % by attempting and failing to take something, we learn inventory capacity limit
 % inventory_capacity(N,t) :- act(do_take(t,X,Y), t), _inventory_is_full(t-1), inventory_count(t-1,N).
 % inventory_capacity(N,t) :- inventory_capacity(N,t-1).
-inventory_capacity(M,t) :- _inventory_max(M), t>0.  % minigrid inventory capacity is known a priori
+inventory_capacity(M,t) :- _inventory_max(M), t>=0.  % minigrid inventory capacity is known a priori
 
 % ---- inertia: objects don't move unless moved by the player
 at(X,R,t) :- at(X,R,t-1), r(R), instance_of(X,thing), not did_take(X,t).
-at(O,G,t) :- at(O,G,t-1), instance_of(G,gridpos), instance_of(O,o), not did_take(O,t). 
+at(O,P,t) :- at(O,P,t-1), instance_of(P,gridpos), instance_of(O,o), not did_take(O,t).
 on(O,S,t) :- on(O,S,t-1), instance_of(S,s), not did_take(O,t).
 in(O,C,t) :- in(O,C,t-1), instance_of(C,c), not did_take(O,t).
 
@@ -258,7 +265,7 @@ in(O,inventory,t) :- did_take(O,t).  % if player takes an object, it moves to th
 
 on(O,S,t) :- act(do_put(t,O,S),t), instance_of(S,s).  % player puts an object onto a supporting object
 in(O,C,t) :- act(do_put(t,O,C),t), instance_of(C,c).  % player puts an object into a container
-at(O,G,t) :- act(do_put(t,O,G),t), instance_of(G,gridpos).  % player drops an object to the floor of a room
+at(O,P,t) :- act(do_put(t,O,P),t), instance_of(P,gridpos).  % player drops an object to the floor of a room
 
 
 % in gridworld, opening a box destroys it (removes it from the grid)
@@ -272,7 +279,7 @@ consumed(O,t) :- consumed(O,t-1), timestep(t).
 
 % define fluents that determine whether player can move from room R0 to R1
 %%%%%%%% TODO: ? add NSEW to free(R0,R1,NSEW,t)
-{at(player,G,t):instance_of(G,gridpos)} = 1 :- timestep(t).   % player is at exactly one grid postion at any given time
+{at(player,P,t):instance_of(P,gridpos)} = 1 :- timestep(t).   % player is at exactly one grid postion at any given time
 {facing(player,NSEW,t):instance_of(NSEW,direction)} = 1 :- timestep(t).   % player is facing exactly one direction at any given time
 
 free(R0,R1,t) :- r(R0), d(D), link(R0,D,R1), open(D,t). %, r(R1)
@@ -304,19 +311,20 @@ connected(R1,R2,NSEW,t) :- connected(R1,R2,NSEW,t-1),r(R1),r(R2),direction(NSEW)
   % stay in the current room unless current action is do_moveP
 %at(player,R0,t) :- at(player,R0,t-1), r(R0), {act(do_moveP(t,R0,R,NSEW),t):r(R),direction(NSEW)}=0. %, T<=maxT.
 %at(player,R0,t) :- at(player,R0,t-1), r(R0), not act(do_moveP(t,R0,_,NSEW),t):direction(NSEW). %, T<=maxT.
-at(player,R,t) :- at(player,R,t-1), not room_changed(R,_,t).
-
-at(player,P,t) :- at(player,P,t-1), not pos_changed(P,_,t).
-at(player,P2,t) :- at(player,P0,t-1), pos_changed(P0,P2,t).
-
-facing(player,D,t) :- facing(player,D,t-1), not direction_changed(D,_,t).
+at(player,R,t) :- at(player,R,t-1), r(R), not room_changed(R,_,t).
 
   % player moved at time t, from previous room R0 to new room R
 %room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), _connected(R0,R,NSEW), direction(NSEW). %, R!=R0.
 at(player,R,t) :- room_changed(R0,R,t).
 
+pos(player,P,t) :- pos(player,P,t-1), instance_of(P,gridpos), not pos_changed(P,_,t).
+pos(player,P2,t) :- pos(player,P0,t-1), instance_of(P,gridpos), pos_changed(P0,P2,t).
 
-atP(R,t) :- at(player,R,t), r(R).   % Alias for player's initial position"
+facing(player,D,t) :- facing(player,D,t-1), not direction_changed(D,_,t).
+facing(player,D2,t) :- facing(player,D0,t-1), direction_changed(D0,D2,t).
+
+
+atP(P,t) :- pos(player,P,t), instance_of(P,gridpos).   % Alias for player's initial position
 in_inventory(O,t) :- in(O,inventory,t).      % alias for object is in inventory at time t
 
 
@@ -366,7 +374,7 @@ timestep(t).
 
 {act(X,t):is_action(X,t)} = 1 :- timestep(t). % player must choose exactly one action at each time step.
 
-{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
+%{at(player,R,t):r(R)} = 1 :- timestep(t).   % player is in exactly one room at any given time
 
 
 % ------------------------------------------------------------------------------
@@ -396,13 +404,18 @@ room_changed(R0,R,t) :- act(do_moveP(t,R0,_,NSEW),t), at(player,R0,t-1), r(R0), 
 
 direction_changed(NSEW,NSEW2,t) :- act(do_stepP(t,M),t), facing(player,NSEW,t-1), stepmove(M), turn_result(NSEW,M,NSEW2).
 pos_changed(gpos(X0,Y0),gpos(X0+DELTA_X, Y0+DELTA_Y),t) :- act(do_stepP(t,forward),t),
-      at(player,gpos(X0,Y0),t-1), facing(player,NSEW,t-1), dvec(NSEW,DELTA_X,DELTA_Y).
+      pos(player,gpos(X0,Y0),t-1), facing(player,NSEW,t-1), dvec(NSEW,DELTA_X,DELTA_Y).
 
 
 % Test constraints
   % can't step forward if there is an obstacle in the way
-:- do_step(t,forward), at(player,gpos(X,Y),t-1), facing(player,D0,t-1),
-   dvec(D0,DELTA_X,DELTA_Y), at(O,gpos(X+DELTA_X,Y+DELTA_Y), t), not traversible(O,t).
+:- do_stepP(t,forward), pos(player,gpos(X,Y),t-1), facing(player,D0,t-1),
+   dvec(D0,DELTA_X,DELTA_Y), grid_is(gpos(X+DELTA_X,Y+DELTA_Y), O), not traversible(O,t-1).
+
+:- do_stepP(t,forward), pos(player,gpos(X,Y),t-1), facing(player,D0,t-1),
+   dvec(D0,DELTA_X,DELTA_Y), pos(O,gpos(X+DELTA_X,Y+DELTA_Y), t), O!=player, not traversible(O,t-1).
+
+is_action(do_stepP(t,M), t) :- do_stepP(t,M), stepmove(M). %, r(R1), r(R2), direction(NSEW).
 
 % :- do_moveP(t,R0,U,NSEW),unknown(U),direction(NSEW),r(R0),timestep(t),not free(R0,U,t).  % can't go that way: not a valid action
 % :- do_moveP(t,R0,R,NSEW),direction(NSEW),r(R0),r(R),timestep(t),not free(R0,R,t).  % can't go that way: not a valid action
@@ -539,13 +552,13 @@ inventory_max_determined(t) :- inventory_capacity(M,t), not inventory_capacity(M
 % :- query(t), inventory_max_determined(t),
 %       act(do_take(t,X,_),t), not need_to_acquire(X,t).
 
-goal1_achieved(t) :- at(player,P,t), grid_is(P,goal), query(t). %recipe_read(t), not recipe_read(t-1).
+goal1_achieved(t) :- pos(player,P,t), grid_is(P,goal), query(t). %recipe_read(t), not recipe_read(t-1).
 goal1_has_been_achieved(t) :- goal1_achieved(t).
 goal1_has_been_achieved(t) :- goal1_has_been_achieved(t-1).
 
 goal2_achieved(t) :- goal1_has_been_achieved(t). %consumed(meal_0,t).
 
-solved_all(t) :- goal2_achieved(t).
+solved_all(t) :- goal2_achieved(t), query(t).
 
 search_step(t) :- new_room(t), query(t).
 search_step(t) :- newly_opened(t), query(t).
@@ -573,7 +586,12 @@ acquire_step(t) :- inventory_max_determined(t), query(t).
 :- goal2_achieved(t), not goal1_has_been_achieved(t), query(t).
 
 % if we know where the recipe is, FAIL UNTIL WE READ the Recipe
-:- not need_to_search(t), not goal1_has_been_achieved(t), t>0, query(t).
+:- not goal1_has_been_achieved(t), not need_to_search(t), t>0, query(t).
+
+% if searching or gathering is not required, fail until we achieve our main goal
+:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
+     not need_to_search(t), not need_to_gather(t),
+ query(t).
 
 %% UNTIL WE FIND THE RECIPE: allow solver success for search (exploring unseen locations)
 :- not goal1_has_been_achieved(t),
@@ -583,11 +601,6 @@ acquire_step(t) :- inventory_max_determined(t), query(t).
  query(t).
 
 % ****** After finding the recipe: ******
-
-% if searching or gathering is not required, fail until we achieve our main goal
-:- goal1_has_been_achieved(t-1), not goal2_achieved(t),
-     not need_to_search(t), not need_to_gather(t),
- query(t).
 
 % Fail unless/until we gather a required item
 :- goal1_has_been_achieved(t-1), not goal2_achieved(t),
@@ -612,6 +625,11 @@ acquire_step(t) :- inventory_max_determined(t), query(t).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+#show atP/2.
+#show act/2.
+#show facing/3.
+%#show traversible/2.
 
 %#show did_act/2.
 %#show atP/2.

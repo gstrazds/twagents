@@ -128,6 +128,21 @@ def is_static_obj(obj:WorldObj):
     return obj.type in STATIC_OBJ_TYPES
 
 
+# DIR_TO_VEC = [
+#     np.array((1, 0)),  # Pointing right (positive X)
+#     np.array((0, 1)),  # Down (positive Y)
+#     np.array((-1, 0)), # Pointing left (negative X)
+#     np.array((0, -1)), # Up (negative Y)
+# ]
+
+MG_to_TW_DIRECTION = [
+    'east',  # Pointing right (positive X)
+    'south', # Down (positive Y)
+    'west',  # Pointing left (negative X)
+    'north'  # Up (negative Y)
+]
+
+
 STATIC_FACTS = ['cuttable', 'cookable', 'sharp', 'cooking_location',
                 'link', 'north_of', 'east_of', 'south_of', 'west_of']
 
@@ -225,7 +240,8 @@ def update_player_obj(obj_index, env:MiniGridEnv):
         player_obj.contains = env.carrying
     else:
         player_obj.contains = None
-    return agent_pos
+    tw_facing = MG_to_TW_DIRECTION[env.agent_dir]
+    return agent_pos, tw_facing
 
 
 def get_obj_id(obj, obj_index):
@@ -240,10 +256,11 @@ def get_facts_from_minigrid(env:MiniGridEnv, obj_index, timestep:int=0):
     h = env.grid.height
     static_facts_list = []
     fluent_facts_list = []
-    agent_pos = update_player_obj(obj_index, env)
+    agent_pos, agent_facing = update_player_obj(obj_index, env)
     timestep = env.step_count
 
-    fluent_facts_list.append( f"at(player,{agent_pos[0]}, {agent_pos[1]}, {timestep})." )
+    fluent_facts_list.append( f"pos(player,gpos({agent_pos[0]},{agent_pos[1]}),{timestep})." )
+    fluent_facts_list.append( f"facing(player,{agent_facing},{timestep})." )
     if env.carrying:
         obj = env.carrying
         fluent_facts_list.append( f"in({get_obj_id(obj, obj_index)},inventory,{timestep})." )
@@ -260,7 +277,7 @@ def get_facts_from_minigrid(env:MiniGridEnv, obj_index, timestep:int=0):
                     # fact_str = f"grid_obj(gpos({x},{y}),{get_obj_id(obj, obj_index)})."
                     # static_facts_list.append(fact_str)
                 else:
-                    fact_str = f"at({get_obj_id(obj, obj_index)},gpos({x},{y}),{timestep})."
+                    fact_str = f"pos({get_obj_id(obj, obj_index)},gpos({x},{y}),{timestep})."
                     fluent_facts_list.append( fact_str )
     # print("static_facts:", static_facts_list)
     # print("fluent_facts", fluent_facts_list)
@@ -353,7 +370,7 @@ def convert_minigrid_to_asp(env, obj_index):
     for room in sorted(room_facts.keys()):
         asp_lines.append(f"#program room_{room}(t).")
         for r_fact in room_facts[room]:
-            if not r_fact.startswith("at(player,"):
+            if not r_fact.startswith("pos(player,"):
                 asp_lines.append(r_fact)
         asp_lines.append('')  #an empty line after each set of room facts
 
