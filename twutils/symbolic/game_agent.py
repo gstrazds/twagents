@@ -3,7 +3,7 @@ import logging
 import random
 from typing import Optional
 
-from symbolic.decision_modules import TaskExec
+from symbolic.task_exec import TaskExec
 # from symbolic.entity import Location
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.action import *

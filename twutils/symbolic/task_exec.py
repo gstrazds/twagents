@@ -1,8 +1,8 @@
 import random
 #from ..event import NeedToDo #, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
-from ..game import GameInstance
-from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
-from ..task_modules.navigation_task import PathTask, GoToTask
+from .game import GameInstance
+from .task import Task, Preconditions, ParallelTasks, SequentialTasks
+from .task_modules.navigation_task import PathTask, GoToTask
 
 def _get_kg_for_task(task: Task, gi: GameInstance):
     if not gi:
