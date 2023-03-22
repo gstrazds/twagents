@@ -4,7 +4,7 @@ from symbolic.task import *
 from symbolic.task_modules import SingleActionTask, SequentialActionsTask
 from symbolic.task_modules.navigation_task import ExploreHereTask
 from symbolic.action import StandaloneAction
-from symbolic.decision_modules import TaskExec
+from symbolic.task_exec import TaskExec
 from symbolic.game import GameInstance
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.entity import Location
@@ -21,7 +21,7 @@ def create_simple_tasks(start_num=1, count=4):
 
 def _reactivate_task_executor(task_exec, gi):
     """ Selects the most eager module to take control. """
-    print("_reactivate_task_executor:", "[UNITTEST](elect): {} Eagerness: {}".format(type(task_exec).__name__, task_exec.get_eagerness(gi)))
+    print("_reactivate_task_executor:", "[UNITTEST](elect): {}".format(type(task_exec).__name__))
     action_generator = task_exec.take_control(gi)
     action_generator.send(None)  # handshake with initial argless yield
     return action_generator
