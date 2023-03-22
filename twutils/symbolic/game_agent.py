@@ -33,7 +33,6 @@ class TextGameAgent:
         self.action_generator = None
         self.first_step = True
         self.step_num = 0
-        self._valid_detector  = None  #LearnedValidDetector()
         self._last_action = None
         self.use_internal_names = use_internal_names
         if self.use_internal_names:
@@ -41,7 +40,7 @@ class TextGameAgent:
         if env_name:
             self.env_name = env_name
             # self.rom_name = rom_name
-        self._init_modules()
+        self._reinitialize_action_generator()
 
     @property
     def last_action(self) -> str:
@@ -61,14 +60,13 @@ class TextGameAgent:
             observed_knowledge_graph = self.gi.kg   # reuse existing knowledge
             observed_knowledge_graph.reset()        # bet restore to initial state (start of episode)
         self.gi = GameInstance(kg=observed_knowledge_graph, gt=groundtruth_graph, logger=self.get_logger())
-        self._init_modules()
+        self._reinitialize_action_generator()
         self.first_step = True
         self.step_num = 0
 
-    def _init_modules(self):
+    def _reinitialize_action_generator(self):
         self.task_exec = TaskExec(True)
         self.action_generator = None
-        self._valid_detector  = None  #LearnedValidDetector()
         self.first_step       = True
         self._last_action = None
 
@@ -129,9 +127,9 @@ class TextGameAgent:
     def warn(self, msg, *args, **kwargs):
         self.get_logger().warning(msg, *args, **kwargs)
 
-    def elect_new_active_module(self):
+    def restart_task_exec(self):
         """ Reinitializes the stack/queue of tasks. """
-        print("reset_task_executor")
+        print("restart_task_exec")
         self.action_generator = self.task_exec.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
 
@@ -153,11 +151,11 @@ class TextGameAgent:
                 try:
                     next_action = self.action_generator.send(observation)
                     if next_action:
-                        msg = f"[game_agent] Step:{self.step_num} (generate_next_action): ({type(self.active_module).__name__}) -> |{next_action}|"
+                        msg = f"[game_agent] Step:{self.step_num} (generate_next_action): -> |{next_action}|"
                         self.dbg(msg)
                 except StopIteration:
                     # self.consume_event_stream()
-                    self.elect_new_active_module()
+                    self.restart_task_exec()
         return next_action
 
     # def choose_next_action(self, observation, observable_facts=None, prev_action=None):
@@ -208,7 +206,7 @@ class TextGameAgent:
             next_action = StandaloneAction(external_next_action)
         else:
             if not self.action_generator:
-                self.elect_new_active_module()
+                self.restart_task_exec()
             next_action = self.generate_next_action(observation)
         self._last_action = next_action
         cmdstr = next_action.text()
