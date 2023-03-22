@@ -30,7 +30,6 @@ class TextGameAgent:
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.task_exec = None
-        self.active_module    = None
         self.action_generator = None
         self.first_step = True
         self.step_num = 0
@@ -68,7 +67,6 @@ class TextGameAgent:
 
     def _init_modules(self):
         self.task_exec = TaskExec(True)
-        self.active_module    = None
         self.action_generator = None
         self._valid_detector  = None  #LearnedValidDetector()
         self.first_step       = True
@@ -132,11 +130,8 @@ class TextGameAgent:
         self.get_logger().warning(msg, *args, **kwargs)
 
     def elect_new_active_module(self):
-        """ Selects the most eager module to take control. """
-        most_eager = 0.
-        self.active_module = self.task_exec
-        print("elect_new_active_module:", "[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
-        self.dbg("[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
+        """ Reinitializes the stack/queue of tasks. """
+        print("reset_task_executor")
         self.action_generator = self.task_exec.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
 
@@ -212,7 +207,7 @@ class TextGameAgent:
         if external_next_action:
             next_action = StandaloneAction(external_next_action)
         else:
-            if not self.active_module:
+            if not self.action_generator:
                 self.elect_new_active_module()
             next_action = self.generate_next_action(observation)
         self._last_action = next_action
