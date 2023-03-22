@@ -12,14 +12,6 @@ from twutils.twlogic import get_name2idmap
 
 
 class TextGameAgent:
-    """
-    NAIL Agent: Navigate, Acquire, Interact, Learn
-
-    NAIL has a set of decision modules which compete for control over low-level
-    actions. Changes in world-state and knowledge_graph stream events to the
-    decision modules. The modules then update how eager they are to take control.
-
-    """
     def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.', use_internal_names=False):
         self._idx = idx
         self.setup_logging(env_name, idx, output_subdir)
@@ -38,7 +30,6 @@ class TextGameAgent:
         # self.knowledge_graph.__init__() # Re-initialize KnowledgeGraph
         # gv.event_stream.clear()
         self.task_exec = None
-        self.modules = []
         self.active_module    = None
         self.action_generator = None
         self.first_step = True
@@ -77,19 +68,6 @@ class TextGameAgent:
 
     def _init_modules(self):
         self.task_exec = TaskExec(True)
-        self.modules = [
-                        self.task_exec,
-                        # GTNavigator(False, use_groundtruth=False),
-                        # GTAcquire(True, use_groundtruth=False),
-                        # GTRecipeReader(use_groundtruth=False),
-                        # Explorer(True),
-                        # Navigator(True),
-                        # Idler(True),
-                        # Examiner(True),
-                        # Hoarder(True),
-                        # Interactor(True),
-                        # YesNo(True), YouHaveTo(True), Darkness(True)
-                        ]
         self.active_module    = None
         self.action_generator = None
         self._valid_detector  = None  #LearnedValidDetector()
@@ -156,22 +134,11 @@ class TextGameAgent:
     def elect_new_active_module(self):
         """ Selects the most eager module to take control. """
         most_eager = 0.
-        for module in self.modules:
-            eagerness = module.get_eagerness(self.gi)
-            if eagerness >= most_eager:
-                self.active_module = module
-                most_eager = eagerness
+        self.active_module = self.task_exec
         print("elect_new_active_module:", "[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
         self.dbg("[NAIL](elect): {} Eagerness: {}".format(type(self.active_module).__name__, most_eager))
-        self.action_generator = self.active_module.take_control(self.gi)
+        self.action_generator = self.task_exec.take_control(self.gi)
         self.action_generator.send(None)  # handshake with initial argless yield
-
-    # def consume_event_stream(self):
-    #     """ Each module processes stored events then the stream is cleared. """
-    #     pass
-    #     # for module in self.modules:
-    #     #     module.process_event_stream(self.gi)
-    #     # self.gi.event_stream.clear()
 
     def generate_next_action(self, observation):
         """Returns the action selected by the current active module and

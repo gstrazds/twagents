@@ -1,5 +1,4 @@
 import random
-from ..decision_module import DecisionModule
 #from ..event import NeedToDo #, NeedToAcquire, NeedToFind, NeedToGoTo, NoLongerNeed
 from ..game import GameInstance
 from ..task import Task, Preconditions, ParallelTasks, SequentialTasks
@@ -26,7 +25,7 @@ def _check_preconditions(task: Task, gi: GameInstance) -> bool:
 
 FAILSAFE_LIMIT = 100
 
-class TaskExec(DecisionModule):
+class TaskExec:
     """
     The TaskExec module sequences and executes Tasks.
     """
@@ -34,7 +33,6 @@ class TaskExec(DecisionModule):
         super().__init__()
         self._gi = None     # keep a pointer to caller (GameInstance) while active
         self._active = active
-        self._eagerness = 0.0
         self.found_objs = set()
         self.task_stack = []  # stack of currently active tasks (of which the top most is currently in control)
         self.task_queue = []  # tasks waiting to begin
@@ -135,18 +133,15 @@ class TaskExec(DecisionModule):
                 if self._active:
                     if self._debug_print:
                         print("already active.")
-                    self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
                 else:
                     self.print_state()
                     if self._debug_print:
                         print("ACTIVATING!")
                     self._active = True
-                    self._eagerness = 0.75  # lower than GTNavigator -- higher than GTAcquire -- #XXXhigher than GTEnder
             else:
                 if self._debug_print:
                     print("No runnable task, canceling TaskExecutor activation")
                 self.print_state()
-                self._eagerness = 0
                 self._active = False
 
     def deactivate(self, gi: GameInstance):
@@ -154,7 +149,6 @@ class TaskExec(DecisionModule):
             print("TaskExec: DEACTIVATING.")
             self.print_state()
         self._active = False
-        self._eagerness = 0.0
         # self._gi = None
         # self._action_generator = None
 
@@ -312,16 +306,9 @@ class TaskExec(DecisionModule):
                 # print(f"handle precondition: {task}")
                 self.start_prereq_task(task, parent_task)
 
-    # def process_event(self, event, gi: GameInstance):
-    #     """ Process an event from the event stream. """
-    #     pass   # need to implement because this is an abstractmethod of DecisionModule
-
-    def get_eagerness(self, gi: GameInstance):
-        """ Returns a float in [0,1] indicating how eager this module is to take control. """
-        if self._debug_print:
-            print("TaskExecutor.get_eagerness => ", end='')
+    def take_control(self, gi: GameInstance):
         if self.task_stack or self.task_queue:  # if we have some tasks
-            if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
+            if not self._active or not self.task_stack or not self.task_stack[-1].is_active:
                 # if nothing currently active, move a task from pending to active
                 self.activate(gi)
             else:
@@ -329,11 +316,7 @@ class TaskExec(DecisionModule):
                     print(f"(already active: task={self.task_stack[-1]})", end='')
         else:
             self.deactivate(gi)
-        if self._debug_print:
-            print(self._eagerness)
-        return self._eagerness
 
-    def take_control(self, gi: GameInstance):
         observation = yield #NoAction
         print("++++TaskExecutor.take_control")
         if self._gi:
@@ -342,9 +325,8 @@ class TaskExec(DecisionModule):
         # print(f"TaskExec.take_control() got initial observation={observation}")
         # assert self._active, \
         if not self._active:
-            f"WARNING!: TaskExec.take_control() shouldn't be happening: _active={self._active}, _eagerness={self._eagerness}"
+            f"WARNING!: TaskExec.take_control() shouldn't be happening: _active={self._active}"
         if not self._active:
-            self._eagerness = 0.0
             return None  #ends the generator
         self._activate_next_task(restart_failsafe=True)
         # assert self.task_stack, "TaskExec shouldn't be active if no Task is active"
