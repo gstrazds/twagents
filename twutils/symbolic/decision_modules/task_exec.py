@@ -173,23 +173,6 @@ class TaskExec(DecisionModule):
                     something_changed = True
                     break   # exit inner for-loop, continue outer while-loop
 
-    def get_eagerness(self, gi: GameInstance):
-        """ Returns a float in [0,1] indicating how eager this module is to take control. """
-        if self._debug_print:
-            print("TaskExecutor.get_eagerness => ", end='')
-        if self.task_stack or self.task_queue:  # if we have some tasks
-            if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
-                # if nothing currently active, move a task from pending to active
-                self.activate(gi)
-            else:
-                if self._debug_print:
-                    print(f"(already active: task={self.task_stack[-1]})", end='')
-        else:
-            self.deactivate(gi)
-        if self._debug_print:
-            print(self._eagerness)
-        return self._eagerness
-
     def queue_task(self, task: Task):
         print(f"TaskExec.queue_task({task})")
         self.task_queue.append(task)
@@ -332,6 +315,23 @@ class TaskExec(DecisionModule):
     # def process_event(self, event, gi: GameInstance):
     #     """ Process an event from the event stream. """
     #     pass   # need to implement because this is an abstractmethod of DecisionModule
+
+    def get_eagerness(self, gi: GameInstance):
+        """ Returns a float in [0,1] indicating how eager this module is to take control. """
+        if self._debug_print:
+            print("TaskExecutor.get_eagerness => ", end='')
+        if self.task_stack or self.task_queue:  # if we have some tasks
+            if not self._active or not self.task_stack or not self.task_stack[-1].is_active or self._eagerness == 0:
+                # if nothing currently active, move a task from pending to active
+                self.activate(gi)
+            else:
+                if self._debug_print:
+                    print(f"(already active: task={self.task_stack[-1]})", end='')
+        else:
+            self.deactivate(gi)
+        if self._debug_print:
+            print(self._eagerness)
+        return self._eagerness
 
     def take_control(self, gi: GameInstance):
         observation = yield #NoAction
