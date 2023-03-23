@@ -79,7 +79,7 @@ if __name__ == "__main__":
                 'miniset': 'train',
                 'train': 'train', 'valid': 'valid', 'test': 'test',
                 'gata_100': 'train_100', 'gata_20': 'train_20', 'gata_1': 'train_1',
-                'gata_valid': 'valid', 'gata_test': 'test',
+                'gata_train': 'train', 'gata_valid': 'valid', 'gata_test': 'test',
                 }
 
     def main(args):
