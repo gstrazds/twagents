@@ -12,8 +12,8 @@ from textworld.generator.inform7 import Inform7Game
 INCREMENTAL_SOLVING = \
 """% #include <incmode>.
 #const imax=500.  % (default value for) give up after this many iterations
-#const step_max_mins=3.  % (default value)
-#const step_max_secs=30. % (default value)  Give up if a solving step takes > step_max_mins:step_max_secs
+#const step_max_mins=10.  % (default value)
+#const step_max_secs=1. % (default value)  Give up if a solving step takes > step_max_mins:step_max_secs
 
 #script (python)
 #from twutils.tw_asp_incremental import tw_solve_incremental

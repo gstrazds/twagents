@@ -10,7 +10,7 @@ _MIN_STEPS = 1
 _MAX_STEPS = 200
 
 _MIN_PRINT_STEP = 0  # print elapsed time for each solving step >= this value
-_STEP_MAX_MINUTES = 2
+_STEP_MAX_MINUTES = 9
 _STEP_MAX_SECS = 30
 
 _STEP_MAX_ELAPSED_TIME = timedelta(minutes=_STEP_MAX_MINUTES, seconds=_STEP_MAX_SECS)

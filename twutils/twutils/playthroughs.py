@@ -380,6 +380,9 @@ def start_twenv_for_playthrough(gamefiles,
 
 def step_twenv_for_playthrough(twenv, step_cmds:List[str], use_internal_names=False):
     assert len(step_cmds) == 1, f"Currently, only support batch_size=1 {step_cmds}"
+    if not step_cmds[0]:
+        print("WARNING - step_twenv_for_playthrough: EMPTY command! substituting 'do nothing'")
+        step_cmds[0] = 'do nothing'
     game_state, reward, done = twenv.step(step_cmds[0])
     game_states = [game_state]
     rewards = [reward]
