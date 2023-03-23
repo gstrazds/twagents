@@ -15,7 +15,7 @@ python generate_playthroughs.py  gata_train --flat-gata --input-dir ${TWDATA_DIR
 
 python generate_playthroughs.py  valid --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
 python generate_playthroughs.py  test --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  train --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/--output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  train --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
 
 
 cp -a ${TWDATA_DIR}/gata/playthru_data/*.textds ${TWDATA_DIR}/
