@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate or export playthrough data")
     parser.add_argument("which",
                         choices=('extra', 'none', 'train', 'valid', 'test', 'miniset',
-                                 'gata_100', 'gata_20', 'gata_1', 'gata_valid', 'gata_test'))
+                                 'gata_100', 'gata_20', 'gata_1', 'gata_valid', 'gata_test', 'gata_train'))
     parser.add_argument("--flat-gata", action='store_true',
                         help="Use flattened games_gata/ input-dirs rather than rl.0.2/*/difficulty_level_*/")
     parser.add_argument("--input-dir", default=None, metavar="PATH",

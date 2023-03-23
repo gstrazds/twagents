@@ -25,7 +25,7 @@ def merge_datasets(twdata_dir='/ssd2tb/twdata', output_dir='/ssd2tb/twdata/combi
     ftwc_ds = load_textds(twdata_dir, splits_list=['train', 'valid', 'test'])
     print("FTWC[train][0]:\n", ftwc_ds['train'][0]['source'])
     gata_ds = load_textds(twdata_dir, splits_list=['gata_train', 'gata_valid', 'gata_test'])
-    print("ĢATA[train][0]:\n", gata_ds['train'][0]['source'])
+    print("GATA[train][0]:\n", gata_ds['train'][0]['source'])
     for splitname in ftwc_ds:
         ftwc_ds[splitname] = concatenate_datasets([ftwc_ds[splitname], gata_ds[splitname]])
     for splitname in ftwc_ds:
