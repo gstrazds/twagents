@@ -79,7 +79,7 @@ if __name__ == "__main__":
                 'miniset': 'train',
                 'train': 'train', 'valid': 'valid', 'test': 'test',
                 'gata_100': 'train_100', 'gata_20': 'train_20', 'gata_1': 'train_1',
-                'gata_valid': 'valid', 'gata_test': 'test',
+                'gata_train': 'train', 'gata_valid': 'valid', 'gata_test': 'test',
                 }
 
     def main(args):
@@ -92,7 +92,7 @@ if __name__ == "__main__":
             print("++ Resaving generated playthough data to files ++")
 
         if not args.which:
-            assert False, "Expected which= one of [extra, train, valid, test, miniset, gata_100, gata_20, gata_1, gata_valid, gata_test]"
+            assert False, "Expected which= one of [extra, train, valid, test, miniset, gata_train, gata_100, gata_20, gata_1, gata_valid, gata_test]"
             exit(1)
         subset = gamesets[args.which]   # == None if args.which == 'extra'
         if args.which == 'none':
@@ -109,7 +109,7 @@ if __name__ == "__main__":
         else:
             difficulty_prefix = ''
             levels = [0]  # FTWC doesn't segregate games by difficulty levels
-            if (args.which).startswith("gata_"):
+            if (args.which).startswith("gata_") and not args.flat_gata:
                 if not args.reexport_pthrus:
                     difficulty_prefix = 'difficulty_level_{level:d}'
                     levels = list(range(1,11))   # 10 difficulty levels, numbered from 1 to 10
@@ -218,8 +218,8 @@ if __name__ == "__main__":
                     PTHRU_DIR + "test/*.pthru",
                     PTHRU_DIR + "train/*.pthru",
                     GATA_PTHRU_DIR + "gata_valid/*.pthru",
-                    GATA_PTHRU_DIR + "gata_test/*.pthru",
-                    GATA_PTHRU_DIR + "gata_100/*.pthru",
+                    GATA_PTHRU_DIR + ("gata_test/*.pthru" if args.flat_gata else "gata_100/*.pthru"),
+                    GATA_PTHRU_DIR + "gata_train/*.pthru",
                 ]
 
             tokenizer = build_tokenizer(glob_list)
@@ -230,6 +230,8 @@ if __name__ == "__main__":
     parser.add_argument("which",
                         choices=('extra', 'none', 'train', 'valid', 'test', 'miniset',
                                  'gata_100', 'gata_20', 'gata_1', 'gata_valid', 'gata_test'))
+    parser.add_argument("--flat-gata", action='store_true',
+                        help="Use flattened games_gata/ input-dirs rather than rl.0.2/*/difficulty_level_*/")
     parser.add_argument("--input-dir", default=None, metavar="PATH",
                         help="(Optional) Path to directory of .z8 games or _PT.json files from which to generate pthru data")
     parser.add_argument("--output-dir", default="./playthrus", metavar="PATH",
