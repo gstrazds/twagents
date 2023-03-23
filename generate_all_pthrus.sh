@@ -10,13 +10,13 @@ mkdir -p ${TWDATA_DIR}/combined/
 
 #python generate_playthroughs.py  gata_20 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
 #python generate_playthroughs.py  gata_100 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  gata_valid --input_dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  gata_test --input_dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  gata_train --input_dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  gata_valid --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  gata_test --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  gata_train --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
 
-python generate_playthroughs.py  valid --input_dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  test --input_dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  train --input_dir ${TWDATA_DIR}/ftwc/games_ftwc/--output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  valid --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  test --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  train --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/--output-dir ${TWDATA_DIR}/ftwc/playthru_data/ --do-write --overwrite
 
 
 cp -a ${TWDATA_DIR}/gata/playthru_data/*.textds ${TWDATA_DIR}/
