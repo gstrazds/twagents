@@ -24,7 +24,7 @@ cp -a ${TWDATA_DIR}/ftwc/playthru_data/*.textds ${TWDATA_DIR}/
 #mv ${TWDATA_DIR}/gata_100.textds ${TWDATA_DIR}/gata_train.textds
 #mv ${TWDATA_DIR}/gata_train.textds ${TWDATA_DIR}/gata_train.textds
 
-python generate_playthroughs.py none --build-tokenizer --tokenizer-filepath ${TWDATA_DIR}/combined/combined_tokenizer.json
+python generate_playthroughs.py none --flat-gata --build-tokenizer --tokenizer-filepath ${TWDATA_DIR}/combined/combined_tokenizer.json
 
 python merge_datasets.py --twdata-dir ${TWDATA_DIR}/ --output-dir ${TWDATA_DIR}/combined/
 

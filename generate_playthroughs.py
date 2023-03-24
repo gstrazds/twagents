@@ -207,12 +207,17 @@ if __name__ == "__main__":
         else:
             print("Total playthroughs generated:", total_files)
 
-        if args.build_tokenizer:
+        if args.build_tokenizer or args.build_alt_tokenizer:
+            TWDATA_DIR = os.getenv('TWDATA_DIR', '/work2/gstrazds/twdata')
             if args.tokenizer_input_dirs:
                 glob_list = args.tokenizer_input_dirs
             else:
-                PTHRU_DIR = '/work2/gstrazds/twdata/ftwc/playthru_data/'
-                GATA_PTHRU_DIR = '/work2/gstrazds/twdata/gata/playthru_data/'
+                if args.build_alt_tokenizer:
+                    PTHRU_DIR = TWDATA_DIR+'/ftwc/alt.playthru_data/'
+                    GATA_PTHRU_DIR = TWDATA_DIR+'/gata/alt.playthru_data/'
+                else:
+                    PTHRU_DIR = TWDATA_DIR+'/ftwc/playthru_data/'
+                    GATA_PTHRU_DIR = TWDATA_DIR+'/gata/playthru_data/'
                 glob_list = [
                     PTHRU_DIR + "valid/*.pthru",
                     PTHRU_DIR + "test/*.pthru",
@@ -245,6 +250,8 @@ if __name__ == "__main__":
                         help="If not specified, dry run (without writing anything to disk)")
     parser.add_argument("--build-tokenizer", action='store_true',
                         help="Train a tokenizer from the generated playthrough files")
+    parser.add_argument("--build-alt-tokenizer", action='store_true',
+                        help="Train a tokenizer from the generated playthrough files in alt.playthru_data/ ")
     parser.add_argument("--tokenizer-input-dirs", type=list, nargs="+",
                         help="One or more paths to playthrough output-dirs")
     parser.add_argument("--tokenizer-filepath", default="tokenizer_new.json",
