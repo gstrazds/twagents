@@ -705,7 +705,8 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
         num_files += 1
         if not dry_run:
             with open(xdir + f'/step_{i:02d}.pthru', 'w') as outfile:
-                outfile.write(taskstack+pthru)
+                outfile.write(pthru)
+                #outfile.write(taskstack+pthru)
         num_files += 1
         if not dry_run:
             with open(xdir + f'/step_{i:02d}.othru', 'w') as outfile:
