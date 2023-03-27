@@ -717,7 +717,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
         accum_pthru = ''
         for i, (pthru, taskstack) in enumerate(zip(pthru_all, tstacks_all)):
             is_last_step = (i >= len(pthru_all) - 1)
-            if True:
+            if False:   # here is where we can add taskstack to pthru records (but it's wrong for new ASP oracle, and benefits aren't well established even otherwise)
                 pthru_step_ = (taskstack + pthru)
             else:
                 pthru_step_ = pthru  # temporarily don't output taskstack (for comparison)
