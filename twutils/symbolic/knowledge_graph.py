@@ -225,7 +225,7 @@ class KnowledgeGraph:
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
         self._player             = Person(name="You", description="The Protagonist")
         self._locations          = set()   # a set of top-level locations (rooms)
-        self._connections        = ConnectionGraph()  # navigation links connecting self._locations
+        self._connections        = ConnectionGraph(logger=logger)  # navigation links connecting self._locations
         # self.event_stream        = event_stream
         self.rng                 = rng   # random number generator
         self.is_groundtruth         = groundtruth   # bool: True if this is the Ground Truth knowledge graph
@@ -241,6 +241,8 @@ class KnowledgeGraph:
 
     def set_logger(self, logger):
         self._logger = logger
+        if self._connections:
+            self._connections.set_logger(logger)
 
     def dbg(self, msg):
         if self._logger:

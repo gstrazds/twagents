@@ -29,9 +29,27 @@ class ConnectionGraph:
     Graph of connections between locations.
 
     """
-    def __init__(self):
+    def __init__(self, logger=None):
         self._out_graph = {}  # {from_Location : {direction: Connection(outgoing)} }
         self._in_graph  = {}  # {to_Location : { tuple(from_Location, direction): Connection(incoming)} }
+        self._logger = logger
+
+    def set_logger(self, logger):
+        self._logger = logger
+
+    def dbg(self, msg):
+        if self._logger:
+            logger = self._logger
+            logger.debug(msg)
+        else:
+            print("### DEBUG:", msg)
+
+    def warn(self, msg):
+        if self._logger:
+            logger = self._logger
+            logger.warning(msg)
+        else:
+            print("### WARNING:", msg)
 
     def add_connection(self, from_location, direction_rel, to_location=None, door=None, assume_inverse=False):
         if direction_rel not in DIRECTION_ACTIONS:
