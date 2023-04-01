@@ -739,7 +739,9 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
                 gid, skills = split_gamename(gn)
                 if skills:   # if successfully parsed the game name
                     dsfile.write(f',"gid":"{gid}"')
-                    dsfile.write(f',"skills":["{",".join(skills)}"]')
+                    quoted_skills = [f'"{s}"' for s in skills]
+                    dsfile.write(f',"skills":[{",".join(quoted_skills)}]')
+                    #dsfile.write(f',"skills":{skills}') #similar to prev 2 lines, but outputs single, not double quotes
                 rtg_json_str = format_rtg_for_json(playthru, rtg=True)
                 if rtg_json_str:
                     dsfile.write(',"rtg":' + rtg_json_str)
