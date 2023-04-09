@@ -12,7 +12,7 @@ from twutils.twlogic import get_name2idmap
 
 
 class TextGameAgent:
-    def __init__(self, seed, rom_name, env_name, idx=0, game=None, output_subdir='.', use_internal_names=False):
+    def __init__(self, seed, env_name, idx=0, game=None, output_subdir='.', use_internal_names=False):
         self._idx = idx
         self.setup_logging(env_name, idx, output_subdir)
         self._game = game  # if provided, can do nicer logging
@@ -39,7 +39,6 @@ class TextGameAgent:
             assert self._game is not None
         if env_name:
             self.env_name = env_name
-            # self.rom_name = rom_name
         self._reinitialize_action_generator()
 
     @property

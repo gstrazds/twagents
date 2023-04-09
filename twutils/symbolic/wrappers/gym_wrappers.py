@@ -296,7 +296,6 @@ class TWoWrapper(textworld.core.Wrapper):
         if not self.tw_oracle or is_different_game or is_first_episode:   # or forget_everything
             self.tw_oracle = TextGameAgent(
                 self.random_seed + self.idx,  # seed
-                "TW",  # rom_name
                 self.game_id,  # env_name
                 idx=self.idx,  # for logging
                 game=game,      # for more detailed logging
@@ -588,7 +587,6 @@ class QaitEnvWrapper(gym.Wrapper):
         if idx == len(self.tw_oracles):
             tw_game_oracle = TextGameAgent(
                 self.random_seed + idx,  # seed
-                "TW",  # rom_name
                 game_id,  # env_name
                 idx=idx,
                 game=None  # TODO: infos['game'][idx]  # for better logging

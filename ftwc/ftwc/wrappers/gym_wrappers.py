@@ -366,7 +366,7 @@ class QaitEnvWrapper(gym.Wrapper):
         if idx == len(self.tw_oracles):
             tw_game_oracle = TextGameAgent(
                 self.random_seed + idx,  # seed
-                "TW",  # rom_name
+                # "TW",  # rom_name
                 game_id,  # env_name
                 idx=idx,
                 game=None  # TODO: infos['game'][idx]  # for better logging
