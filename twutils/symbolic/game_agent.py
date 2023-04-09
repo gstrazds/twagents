@@ -3,10 +3,13 @@ import logging
 import random
 from typing import Optional
 
-from symbolic.task_exec import TaskExec
+from .knowledge_graph import KnowledgeGraph
+from .task_exec import TaskExec
 # from symbolic.entity import Location
-from symbolic.knowledge_graph import KnowledgeGraph
-from symbolic.action import *
+from .task_modules import RecipeReaderTask
+from .task_modules.navigation_task import ExploreHereTask
+from .entity import MEAL
+from .action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
 from twutils.twlogic import get_name2idmap
 
@@ -62,6 +65,23 @@ class TextGameAgent:
         self._reinitialize_action_generator()
         self.first_step = True
         self.step_num = 0
+
+    def set_objective(self, objective : str):
+        if objective == 'eat meal':
+            assert self.step_num == 0
+            # FIXME: initialization HACK for MEAL
+            _gi = self.gi
+            if not _gi.kg.get_entity('meal'):
+                meal = _gi.kg.create_new_object('meal', MEAL)
+                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
+            if self.task_exec:
+                _use_groundtruth = False
+                task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
+                             RecipeReaderTask(use_groundtruth=_use_groundtruth)]
+                for task in task_list:
+                    self.task_exec.queue_task(task)
+        else:
+            assert False, f"UNIMPLEMENTED objective: {objective}"
 
     def _reinitialize_action_generator(self):
         self.task_exec = TaskExec(True)

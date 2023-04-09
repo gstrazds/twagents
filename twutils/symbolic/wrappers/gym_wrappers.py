@@ -11,9 +11,6 @@ from textworld.core import GameState  #, Environment, Wrapper
 from textworld.envs.tw import DEFAULT_OBSERVATION
 
 from ..game_agent import TextGameAgent
-from ..task_modules import RecipeReaderTask
-from ..task_modules.navigation_task import ExploreHereTask
-from ..entity import MEAL
 # from symbolic.event import NeedToAcquire, NeedToGoTo, NeedToDo
 from twutils.file_helpers import parse_gameid
 from twutils.twlogic import filter_observables, get_recipe
@@ -303,19 +300,10 @@ class TWoWrapper(textworld.core.Wrapper):
             )
         else:      # not is_first_episode
             self.tw_oracle.reset(forget_everything=forget_everything)
-        if objective == 'eat meal':
+        if objective:
             tw_o = self.tw_oracle
             assert tw_o.step_num == 0
-            _gi = tw_o.gi
-            # FIXME: initialization HACK for MEAL
-            if not _gi.kg.get_entity('meal'):
-                meal = _gi.kg.create_new_object('meal', MEAL)
-                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
-            _use_groundtruth = False
-            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
-                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
-            for task in task_list:
-                tw_o.task_exec.queue_task(task)
+            tw_o.set_objective(objective)
 
     def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
         _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
@@ -601,16 +589,10 @@ class QaitEnvWrapper(gym.Wrapper):
         if objective == 'eat meal':
             tw_o = self.tw_oracles[idx]
             assert tw_o.step_num == 0
-            _gi = tw_o.gi
-            # FIXME: initialization HACK for MEAL
-            if not _gi.kg.get_entity('meal'):
-                meal = _gi.kg.create_new_object('meal', MEAL)
-                _gi.kg._nowhere.add_entity(meal)  # the meal doesn't yet exist in the world
-            _use_groundtruth = False
-            task_list = [ExploreHereTask(use_groundtruth=_use_groundtruth),
-                         RecipeReaderTask(use_groundtruth=_use_groundtruth)]
-            for task in task_list:
-                tw_o.task_exec.queue_task(task)
+            if objective:
+                tw_o = self.tw_oracle
+                assert tw_o.step_num == 0
+                tw_o.set_objective(objective)
 
     def _on_episode_start(self, obs: List[str], infos: Dict[str, List[Any]], episode_counter=0):
         # _game_ids = [get_game_id_from_infos(infos, idx) for idx in range(len(obs))]
