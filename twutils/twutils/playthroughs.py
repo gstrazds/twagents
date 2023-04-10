@@ -355,6 +355,7 @@ def step_gym_for_playthrough(gymenv, step_cmds:List[str]):
 def start_twenv_for_playthrough(gamefiles,
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
+                                pthru_cmds=None,
                                 use_internal_names=False
                                 ):
     env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
@@ -362,6 +363,7 @@ def start_twenv_for_playthrough(gamefiles,
     batch_size = len(gamefiles)
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
     twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], infos=env_infos)
+    twenv.pthru_cmds = pthru_cmds
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names

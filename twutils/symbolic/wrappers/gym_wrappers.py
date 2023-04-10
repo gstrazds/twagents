@@ -381,11 +381,15 @@ class TWoWrapper(textworld.core.Wrapper):
         return env
 
 
+from twutils.tw_asp_runner import plan_commands_for_game
+
 
 class TwAspWrapper(TWoWrapper):
 
     def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = True, idx: int = 0, **kwargs):
         super().__init__(*args, random_seed=random_seed, passive_oracle_mode=passive_oracle_mode, **kwargs)
+        self._gamepath = None
+        self.pthru_cmds = None
         print(f"###### TwAspWrapper.__init__(random_seed={random_seed}, passive_mode={passive_oracle_mode})")
 
     def load(self, path: str) -> None:
@@ -394,13 +398,18 @@ class TwAspWrapper(TWoWrapper):
             path: Path to the game file to load.
         """
         print(f"========= TwAspWrapper.load({path})")
-        from twutils.tw_asp_runner import plan_commands_for_game
-        self._commands_from_asp = plan_commands_for_game(path)
+        self._gamepath = path
         #MOVED TO reset():  self._next_cmd_from_asp = iter(self._commands_from_asp)
         return super().load(path)
 
     def reset(self):
         print(f"@@@@@@@@@@@ TwAspWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
+
+        if not self._next_cmds_from_asp:
+            if not self.pthru_cmds:
+                self._commands_from_asp = plan_commands_for_game(self._gamepath)
+            else:
+                self._commands_from_asp = self.pthru_cmds.copy()
         self._next_cmd_from_asp = iter(self._commands_from_asp)
         game_state = super().reset()
 
