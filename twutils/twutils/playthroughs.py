@@ -353,8 +353,6 @@ def step_gym_for_playthrough(gymenv, step_cmds:List[str]):
 
 
 def start_twenv_for_playthrough(gamefiles,
-                                raw_obs_feedback=False,  # don't apply ConsistentFeedbackWrapper
-                                passive_oracle_mode=False,  # if True, don't predict next action
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
                                 use_internal_names=False
@@ -365,7 +363,7 @@ def start_twenv_for_playthrough(gamefiles,
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
     twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], infos=env_infos)
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
-    # (names get remapped to internal ids in gather_infos_for_playthroughs( remap_names=names2ids )
+    # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
     game_state = twenv.reset()
     # game_state = twenv.get_initial_state()
@@ -388,7 +386,7 @@ def step_twenv_for_playthrough(twenv, step_cmds:List[str], use_internal_names=Fa
     rewards = [reward]
     dones = [done]
     # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
-    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)
+    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)  #,names2ids
     return obs, rewards, dones, infos
 
 
@@ -565,7 +563,7 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
                                                              stepdata['feedback'],
                                                              stepdata['description'])
         if new_feedback:
-            print(f"export_playthru MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
+            print(f"format_playthrough_step MODIFYING ['feedback'] : '{new_feedback}' <-- orig:", stepdata['feedback'])
             feedback = new_feedback
 
    # print(f"[{i}] {gn} .....")
