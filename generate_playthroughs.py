@@ -16,7 +16,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               do_export=True,
                               dry_run=False,  # do everything according to other args, but don't write to disk
                               dataset_name=None,
-                              use_internal_names=False):
+                              export_internal_names=False):
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:
@@ -40,7 +40,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if do_generate:
-        step_array_list, games_list = generate_playthrus([_gamefile], randseed=randseed, use_internal_names=use_internal_names)
+        step_array_list, games_list = generate_playthrus([_gamefile], randseed=randseed)
         # for step_array in step_array_list:
         step_array = step_array_list[0]
         game = games_list[0]
@@ -62,11 +62,11 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
         else:
             warn_prefix = None
         if not warn_prefix or not skip_existing:  # file doesn't exist, or write even if it does
-            if use_internal_names:
+            if export_internal_names:
                 if not do_generate:
                     game = None    #TODO: get the game data from somewhere
                 assert do_generate, "Reexport with --internal-names is NOT YET supported"
-            names2ids = get_name2idmap(game) if use_internal_names else None # we got the game data from generate_playthrus()
+            names2ids = get_name2idmap(game) if export_internal_names else None # we got the game data from generate_playthrus()
             export_playthru(gamename, step_array, destdir=outdir, dry_run=dry_run, dataset_name=dataset_name, map_names2ids=names2ids)
     return num_steps, step_array
 
@@ -196,7 +196,7 @@ if __name__ == "__main__":
                                                   do_export=args.do_write,
                                                   dry_run=dry_run,
                                                   dataset_name=args.which,
-                                                  use_internal_names=args.internal_names,
+                                                  export_internal_names=args.internal_names,
                                             )
                     total_files += 1
 

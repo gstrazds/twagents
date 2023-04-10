@@ -356,7 +356,6 @@ def start_twenv_for_playthrough(gamefiles,
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
                                 pthru_cmds=None,
-                                use_internal_names=False
                                 ):
     env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
                                    last_action=True, last_command=True, intermediate_reward=True)
@@ -378,7 +377,7 @@ def start_twenv_for_playthrough(gamefiles,
     return twenv, obs, infos
 
 
-def step_twenv_for_playthrough(twenv, step_cmds:List[str], use_internal_names=False):
+def step_twenv_for_playthrough(twenv, step_cmds:List[str]):
     assert len(step_cmds) == 1, f"Currently, only support batch_size=1 {step_cmds}"
     if not step_cmds[0]:
         print("WARNING - step_twenv_for_playthrough: EMPTY command! substituting 'do nothing'")
@@ -387,7 +386,7 @@ def step_twenv_for_playthrough(twenv, step_cmds:List[str], use_internal_names=Fa
     game_states = [game_state]
     rewards = [reward]
     dones = [done]
-    # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
+    # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
     obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)  #,names2ids
     return obs, rewards, dones, infos
 
@@ -449,7 +448,7 @@ def playthrough_step_to_json(cmds: List[str],
                              obs: List[Optional[str]],
                              rewards: List[float],
                              step_num: int,
-                             use_internal_names: bool = False) -> List[Any]:
+                             ) -> List[Any]:
     step_json_list = []
     for idx in range(len(dones)):
         world_facts = infos['facts'][idx]
@@ -485,7 +484,7 @@ def playthrough_step_to_json(cmds: List[str],
     return step_json_list
 
 
-def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, use_internal_names=False):
+def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
     def append_step_data(array_list: List[List[Any]], step_list: List[Any]):
         assert len(array_list) == len(step_list), f"Batch size should match {len(array_list)} {len(step_list)}"
         for idx, step_data in enumerate(step_list):   # an entry for each game in the batch (can be None if game is_done)
@@ -497,8 +496,8 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, use_in
     _dones = [0] * batch_size
     _rewards = [0] * batch_size
     next_cmds = ['start'] * batch_size
-    env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed, use_internal_names=use_internal_names)
-    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, use_internal_names=use_internal_names)
+    env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
     step_array_list = [playthru_step_data]  # Expecting that every game will always have at least one initial step
@@ -509,8 +508,8 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, use_in
         num_steps += 1
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
-        _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds, use_internal_names=use_internal_names)
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, use_internal_names=use_internal_names)
+        _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
         append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
     env.close()
@@ -651,9 +650,10 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
     raw_all = []
     tstacks_all = []
 
-    use_internal_names = True if map_names2ids else False
-    kg_accum = KnowledgeGraph(names2ids=map_names2ids, use_internal_names=use_internal_names,
-                              debug=True)   # debug=False suppresses excessive print() outs
+    export_internal_names = True if map_names2ids else False
+    kg_accum = KnowledgeGraph(names2ids=map_names2ids,
+                              use_internal_names=export_internal_names,
+                              debug=True)   # debug=False suppresses excessive print()
     num_files = 0
     max_score = max([stepdata['score'] for stepdata in playthru])
     end_score = playthru[-1]['score']
