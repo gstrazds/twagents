@@ -76,7 +76,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--which",
                         help="Which set of games? (subdir of env.TWDATA_DIR): ftwc or gata [by default will use both]")
-    parser.add_argument("--phtru-dirname",
+    parser.add_argument("--pthru-dirname",
                         help="Subdirectory name where the playthrough files can be found, defaults to 'playthru_data'")
     parser.add_argument("--tokenizer-input-globs", type=list, nargs="+",
                         help="(Advanced/optional) One or more patterns for playthrough data files")
