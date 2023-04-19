@@ -68,7 +68,7 @@ def describe_visible_objects(loc, inventory_items, exits_descr=None, mention_tra
     #     non_door_entities = sort_entity_list_by_parent(loc, non_door_entities)
     #     on_floor_entities = sort_entity_list_by_parent(loc, on_floor_entities)
 
-    include_entity_type = (INCLUDE_ENTITY_TYPES and options != 'parsed-obs')
+    include_entity_type = INCLUDE_ENTITY_TYPES and not (options and (options == 'parsed-obs' or 'no-types' in options))
     idx = 0
     obs_descr = ""   #"You see:"+LINE_SEPARATOR
     while idx < len(non_door_entities):
@@ -112,7 +112,8 @@ def _format_entity_name(entity, include_entity_type):
 def format_entities_descr(entity_list, idx, groundtruth=False, options=None):
     entity = entity_list[idx]
     idx += 1
-    include_entity_type = (INCLUDE_ENTITY_TYPES and options != 'parsed-obs')
+    include_entity_type = INCLUDE_ENTITY_TYPES and not (options and (options == 'parsed-obs' or 'no-types' in options))
+    # include_entity_type = (INCLUDE_ENTITY_TYPES and options != 'parsed-obs')
     if entity.is_container:
         descr_str = f"IN {_format_entity_name(entity, include_entity_type)} {START_OF_LIST} "
         held_entities = entity.entities

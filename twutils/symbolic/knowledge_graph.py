@@ -220,7 +220,7 @@ class KnowledgeGraph:
                  logger=None, debug=False, rng=None, use_internal_names=False):
         self._logger = logger
         self._debug = debug
-        self._formatting_options = 'kg-descr'   # or = 'parsed-obs':
+        self._formatting_options = 'kg-descr' if not names2ids else 'kg-descr-no-types'  # or = 'parsed-obs':
         self._unknown_location   = UnknownLocation()
         self._nowhere            = Location(name="NOWHERE", entitytype=NONEXISTENCE_LOC)
         self._player             = Person(name="You", description="The Protagonist")
@@ -296,7 +296,7 @@ class KnowledgeGraph:
 
     def set_formatting_options(self, formatting_options:str):
         """ options that control some nuances of the output from describe_room(), describe_exits(), etc """
-        assert formatting_options == 'parsed-obs' or formatting_options == 'kg-descr', formatting_options
+        assert formatting_options == 'parsed-obs' or formatting_options == 'kg-descr' or formatting_options == 'kg-descr-no-types', formatting_options
         prev_options = self._formatting_options
         self._formatting_options = formatting_options
         return prev_options

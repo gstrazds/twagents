@@ -5,7 +5,6 @@ from pathlib import Path
 from twutils.playthroughs import generate_playthrus, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
 from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
 from twutils.twlogic import get_name2idmap
-from train_tokenizer import build_tokenizer, save_tokenizer_to_json
 
 def generate_and_export_pthru(gamename, gamedir, outdir,
                               ptdir=None,   # directory for PT.json files (read if not do_generate, else write)
@@ -207,30 +206,6 @@ if __name__ == "__main__":
         else:
             print("Total playthroughs generated:", total_files)
 
-        if args.build_tokenizer or args.build_alt_tokenizer:
-            TWDATA_DIR = os.getenv('TWDATA_DIR', '/work2/gstrazds/twdata')
-            if args.tokenizer_input_dirs:
-                glob_list = args.tokenizer_input_dirs
-            else:
-                if args.build_alt_tokenizer:
-                    PTHRU_DIR = TWDATA_DIR+'/ftwc/alt.playthru_data/'
-                    GATA_PTHRU_DIR = TWDATA_DIR+'/gata/alt.playthru_data/'
-                else:
-                    PTHRU_DIR = TWDATA_DIR+'/ftwc/playthru_data/'
-                    GATA_PTHRU_DIR = TWDATA_DIR+'/gata/playthru_data/'
-                glob_list = [
-                    PTHRU_DIR + "valid/*.pthru",
-                    PTHRU_DIR + "test/*.pthru",
-                    PTHRU_DIR + "train/*.pthru",
-                    GATA_PTHRU_DIR + "gata_valid/*.pthru",
-                    GATA_PTHRU_DIR + ("gata_test/*.pthru" if args.flat_gata else "gata_100/*.pthru"),
-                    GATA_PTHRU_DIR + "gata_train/*.pthru",
-                ]
-
-            tokenizer = build_tokenizer(glob_list)
-            save_tokenizer_to_json(tokenizer, args.tokenizer_filepath)
-
-
     parser = argparse.ArgumentParser(description="Generate or export playthrough data")
     parser.add_argument("which",
                         choices=('extra', 'none', 'train', 'valid', 'test', 'miniset',
@@ -248,14 +223,6 @@ if __name__ == "__main__":
     parser.add_argument("--reexport-pthrus", action='store_true', help="rewrite .pthru files from _PT.json")
     parser.add_argument("--do-write", action='store_true',
                         help="If not specified, dry run (without writing anything to disk)")
-    parser.add_argument("--build-tokenizer", action='store_true',
-                        help="Train a tokenizer from the generated playthrough files")
-    parser.add_argument("--build-alt-tokenizer", action='store_true',
-                        help="Train a tokenizer from the generated playthrough files in alt.playthru_data/ ")
-    parser.add_argument("--tokenizer-input-dirs", type=list, nargs="+",
-                        help="One or more paths to playthrough output-dirs")
-    parser.add_argument("--tokenizer-filepath", default="tokenizer_new.json",
-                        help="File path to use when saving newly trained tokenizer")
     parser.add_argument("--internal-names", action='store_true',
                         help="Use TextWorld internal ids instead of entity and room names")
     args = parser.parse_args()

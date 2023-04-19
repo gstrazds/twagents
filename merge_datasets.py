@@ -21,23 +21,24 @@ def load_textds(dirpath, splits_list = None):
     return _dataset
 
 
-def merge_datasets(twdata_dir='/ssd2tb/twdata', output_dir='/ssd2tb/twdata/combined'):
-    ftwc_ds = load_textds(twdata_dir, splits_list=['train', 'valid', 'test'])
-    print("FTWC[train][0]:\n", ftwc_ds['train'][0]['source'])
-    gata_ds = load_textds(twdata_dir, splits_list=['gata_train', 'gata_valid', 'gata_test'])
+def merge_datasets(input_dir='/ssd2tb/twdata/data_textds', output_dir='/ssd2tb/twdata/data_combined'):
+    merge_ds = load_textds(input_dir, splits_list=['train', 'valid', 'test'])
+    print("FTWC[train][0]:\n", merge_ds['train'][0]['source'])
+    gata_ds = load_textds(input_dir, splits_list=['gata_train', 'gata_valid', 'gata_test'])
     print("GATA[train][0]:\n", gata_ds['train'][0]['source'])
-    for splitname in ftwc_ds:
-        ftwc_ds[splitname] = concatenate_datasets([ftwc_ds[splitname], gata_ds[splitname]])
-    for splitname in ftwc_ds:
-        ftwc_ds[splitname].to_json(f'{output_dir}/{splitname}.textds')
+    for splitname in merge_ds:
+        merge_ds[splitname] = concatenate_datasets([merge_ds[splitname], gata_ds[splitname]])
+    # save the dataset to disk, list of json dicts format
+    for splitname in merge_ds:
+        merge_ds[splitname].to_json(f'{output_dir}/{splitname}.textds')
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Merge FTWC and GATA playthrough datasets")
-    parser.add_argument("--twdata-dir", default='/ssd2tb/twdata', metavar="PATH",
+    parser.add_argument("--input-dir", default='/ssd2tb/twdata/data_textds', metavar="PATH",
                         help="Path to directory containing .textds files to merge")
-    parser.add_argument("--output-dir", default="/ssd2tb/twdata/combined", metavar="PATH",
+    parser.add_argument("--output-dir", default="/ssd2tb/twdata/data_combined", metavar="PATH",
                         help="Path to directory for merged .textds files")
     args = parser.parse_args()
-    merge_datasets(twdata_dir=args.twdata_dir, output_dir=args.output_dir)
+    merge_datasets(input_dir=args.input_dir, output_dir=args.output_dir)

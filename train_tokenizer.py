@@ -68,3 +68,44 @@ def save_tokenizer_to_json(tokenizer, filepath):
     # tokenizer.save('ftwc_tokenizer_new.json', pretty=True)
     tokenizer.save(filepath, pretty=True)
 
+
+if __name__ == "__main__":
+    import argparse
+    import os
+    parser = argparse.ArgumentParser(description="Train and save a tokenizer from a set of playthrough data files")
+
+    parser.add_argument("--which",
+                        help="Which set of games? (subdir of env.TWDATA_DIR): ftwc or gata [by default will use both]")
+    parser.add_argument("--phtru-dirname",
+                        help="Subdirectory name where the playthrough files can be found, defaults to 'playthru_data'")
+    parser.add_argument("--tokenizer-input-globs", type=list, nargs="+",
+                        help="(Advanced/optional) One or more patterns for playthrough data files")
+    parser.add_argument("--tokenizer-filepath", default="tokenizer_new.json",
+                        help="Output file path to use when saving the trained tokenizer")
+
+    args = parser.parse_args()
+
+    TWDATA_DIR = os.getenv('TWDATA_DIR', '/work2/gstrazds/twdata')
+    if args.tokenizer_input_globs:
+        glob_list = args.tokenizer_input_globs
+    else:
+        subdir_name = args.pthru_dirname if args.pthru_dirname else 'playthru_data'
+        glob_list = []
+        if args.which == 'ftwc' or args.which == 'both' or not args.which:
+            PTHRU_DIR = f"{TWDATA_DIR}/ftwc/{subdir_name}/"
+            glob_list += [
+                PTHRU_DIR + "valid/*.pthru",
+                PTHRU_DIR + "test/*.pthru",
+                PTHRU_DIR + "train/*.pthru"
+                ]
+        if args.which == 'gata' or args.which == 'both' or not args.which:
+            GATA_PTHRU_DIR = f"{TWDATA_DIR}/gata/{subdir_name}/"
+            glob_list += [
+                GATA_PTHRU_DIR + "gata_valid/*.pthru",
+                GATA_PTHRU_DIR + "gata_test/*.pthru",
+                GATA_PTHRU_DIR + "gata_train/*.pthru",
+            ]
+
+    tokenizer = build_tokenizer(glob_list)
+    save_tokenizer_to_json(tokenizer, args.tokenizer_filepath)
+
