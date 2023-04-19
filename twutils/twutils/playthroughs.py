@@ -674,7 +674,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
 
         kg_descr = get_kg_descr(kg_accum, stepdata)
         prev_options = kg_accum.set_formatting_options('parsed-obs')
-        assert prev_options == 'kg-descr', prev_options
+        assert prev_options.startswith('kg-descr'), prev_options
         kg_descr_without_oracle = get_kg_descr(kg_accum, stepdata)
         kg_accum.set_formatting_options(prev_options)
 

@@ -6,7 +6,7 @@ export TWDATA_DIR
 
 TEXTDS_DIR=${TWDATA_DIR}/alt_textds
 MERGED_DIR=${TWDATA_DIR}/alt_combined
-PTHRU_SUBDIR=atl.playthru_data
+PTHRU_SUBDIR=alt.playthru_data
 #mkdir -p ${TWDATA_DIR}
 mkdir -p ${MERGED_DIR}/
 mkdir -p ${TEXTDS_DIR}/
