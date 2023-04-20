@@ -218,7 +218,7 @@ class ConnectionGraph:
 def _format_doorinfo(doorentity, options=None):
     if doorentity is None:
         return ''
-    if options == 'kg-descr' or options == 'parsed-obs':
+    if options and options.startswith('kg-descr') or options == 'parsed-obs':
         if doorentity.state.openable and not doorentity.state.is_open:
             return f" +closed {doorentity.name}"
         return f" +open {doorentity.name}"
@@ -231,7 +231,7 @@ def _format_doorinfo(doorentity, options=None):
 def _format_location(location, options=None):
     if not location:
         return ''
-    if options == 'kg-descr' or options == 'parsed-obs':
+    if options and options.startswith('kg-descr') or options == 'parsed-obs':
         return "unknown" if Location.is_unknown(location) else location.name
 
     return ":{}[{}]".format('', location.name)
@@ -292,14 +292,15 @@ class Connection:
         return self
 
     def to_string(self, prefix='', options=None):
-        if options == 'kg-descr':       # info known by current (non-GT) knowledge graph
+        if options and options.startswith('kg-descr'):       # info known by current (non-GT) knowledge graph
             return prefix + "{}{} to {}".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options),
                     _format_location(self.to_location, options=options))
         elif options == 'parsed-obs':   # info directly discernible from 'look' command
             return prefix + "{}{}".format(self.action.verb,
                     _format_doorinfo(self.doorway, options=options))
-        # else:
+        elif options:
+            assert False, f"Unknown formatting options: {options}"
         return prefix + "{} --({}:{})--> {}".format(_format_location(self.from_location),
                                                    self.action.verb,
                                                    _format_doorinfo(self.doorway),
