@@ -30,18 +30,18 @@ def run(files: Sequence[str], initprg=None, idstr=None):
         ctl.load(file_)
     if initprg:
         ctl.add(initprg)
-    actions, iters = tw_solve_incremental(ctl)  #, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT")
+    actions, num_iters, step_times = tw_solve_incremental(ctl)  #, imin=MIN_STEPS, imax=MAX_STEPS, istop="SAT")
     if actions is not None:
         print(f"SOLVED! {idstr} ACTIONS =")
         #assert iters == len(actions)+1, f"{iters} {len(actions)}"
         commands = []
         for t, action in actions:
-            print(f"[{t}] {str(action)}")
+            print(f"[{t}] {str(action)} {str(timedelta(microseconds=step_times[t][0]))} SAT={str(step_times[t][1])}")
             commands.append(action)
-        return commands
+        return commands, step_times
     else:
-        print(f"FAILED TO SOLVE: steps={iters}, {files}")
-        return []
+        print(f"FAILED TO SOLVE: steps={num_iters}, {files}, {step_times}")
+        return [], step_times
 
 
 def plan_commands_for_game(filepath: str):
@@ -73,13 +73,13 @@ def plan_commands_for_game(filepath: str):
         asp_for_game = generate_ASP_for_game(game,
             asp_file_path=None, standalone=True, emb_python=False)
 
-    actions = run(files, initprg=asp_for_game, idstr=str(filepath))
+    actions, step_times = run(files, initprg=asp_for_game, idstr=str(filepath))
     tw_commands = []
     for action in actions:
         tw_commands.append(tw_command_from_asp_action(action, game_infos))
     if filepath.endswith(".lp"):
         print(tw_commands)
-    return tw_commands
+    return tw_commands, step_times
 
 # print("-------------")
 # print('Examaple 1:')

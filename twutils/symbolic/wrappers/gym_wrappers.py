@@ -1,4 +1,5 @@
 from typing import List, Dict, Optional, Tuple, Mapping, Any
+from datetime import timedelta
 import numpy as np
 import torch
 import gym
@@ -332,7 +333,8 @@ class TWoWrapper(textworld.core.Wrapper):
             obstxt = self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
         if self.passive_oracle_mode:
-            print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode")
+            msg = f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode"
+            print(msg)
             # return None, _tasks
             actiontxt = None
         elif is_done:
@@ -408,7 +410,7 @@ class TwAspWrapper(TWoWrapper):
         print(f"@@@@@@@@@@@ TwAspWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
 
         if not self.pthru_cmds:
-            self._commands_from_asp = plan_commands_for_game(self._gamepath)
+            self._commands_from_asp, self._planner_step_times = plan_commands_for_game(self._gamepath)
         else:
             self._commands_from_asp = self.pthru_cmds.copy()
         self._next_cmd_from_asp = iter(self._commands_from_asp)
@@ -427,10 +429,30 @@ class TwAspWrapper(TWoWrapper):
         assert self.passive_oracle_mode
         if self.passive_oracle_mode:
             actiontxt = next(self._next_cmd_from_asp, None)
-            print("TwAspWrapper: using _next_cmd_from_asp:", actiontxt)
+            step_num = self.tw_oracle.step_num
+            step_time = self.get_twenv_step_time_info(step_num)
+            if step_time:
+                print(step_time)
+                elapsed_time = str(timedelta(microseconds=step_time[0]))
+                step_sat = step_time[1]
+            else:
+                elapsed_time = None
+                step_sat = True
+            print(f"TwAspWrapper: [{step_num}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}")
+
         self.next_command = actiontxt
         return actiontxt, _tasks
 
+    def get_twenv_step_time_info(self, step_num=None):
+        if step_num is None:
+            step_num = self.tw_oracle.step_num
+        step_time = None
+        if hasattr(self, "_planner_step_times") and self._planner_step_times is not None:
+            if step_num <= len(self._planner_step_times):
+                step_time = self._planner_step_times[step_num - 1]
+            else:
+                print(f"ERROR: index out of range: {step_num} {self._planner_step_times}")
+        return step_time
 
     def copy(self) -> "TwAspWrapper":
         env = TwAspWrapper()
@@ -682,8 +704,8 @@ class QaitEnvWrapper(gym.Wrapper):
         return actiontxt
 
 
-def _update_infos(infos, idx, actiontxt, taskstack, batch_size):
-    print("_UPDATE_INFOS", idx, actiontxt)
+def _update_infos(infos, idx, actiontxt, taskstack, batch_size, step_time=None):
+    print("_UPDATE_INFOS", idx, actiontxt, step_time)
     if actiontxt:
         if 'tw_o_step' not in infos:
             assert idx == 0, \
@@ -696,6 +718,17 @@ def _update_infos(infos, idx, actiontxt, taskstack, batch_size):
             f"if tw_o_stack is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{batch_size}]"
         infos['tw_o_stack'] = ['(( )) [[ task ]]'] * batch_size  # will be replaced before anyone sees these
     infos['tw_o_stack'][idx] = taskstack
+
+    if step_time is not None:
+        assert len(step_time) == 2, str(step_time)  # expecting a tuple: (timedelta, bool)
+        if 'solver_step_time' not in infos:
+            assert idx == 0, \
+                f"if solver_step_time is missing, we assume idx [{idx}] is enumerating range(len(self.tw_oracles)) [{batch_size}]"
+            assert 'solver_sat' not in infos
+            infos['solver_step_time'] = [timedelta(0)] * batch_size  # will be replaced before anyone sees these
+            infos['solver_sat'] = [False] * batch_size  # will be replaced before anyone sees these
+        infos['solver_step_time'][idx] = step_time[0]
+        infos['solver_sat'][idx] = step_time[1]
 
 
 class QaitGym:

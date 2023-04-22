@@ -132,7 +132,7 @@ class TextGameAgent:
                 print(f"setup_logging({env_name}) CONFIGURED NEW handler:", h)
         self.info("SETUP LOGGING -- env_name: "+env_name)
         self.dbg("TEST DBG LOGGING -- env_name: "+env_name)
-        # self.warn("LOGGING: THIS SHOULD GET LOGGED!")
+        #self.warn("TEST WARN LOGGING: THIS SHOULD GET LOGGED!")
 
     def get_logger(self):
         return logging.getLogger(self._logger_name)
@@ -141,9 +141,11 @@ class TextGameAgent:
         self.get_logger().debug(msg, *args, **kwargs)
 
     def info(self, msg, *args, **kwargs):
+        print(msg, *args)
         self.get_logger().info(msg, *args, **kwargs)
 
     def warn(self, msg, *args, **kwargs):
+        print("WARNING!", msg, *args)
         self.get_logger().warning(msg, *args, **kwargs)
 
     def restart_task_exec(self):
@@ -163,7 +165,7 @@ class TextGameAgent:
             if failed_counter > 9:
                 msg = f"[game_agent] Step:{self.step_num} generate_next_action FAILED {failed_counter} times! BREAKING LOOP => |Look|"
                 print(msg)
-                self.dbg(msg)
+                self.warn(msg)
                 # return "Look"
                 next_action = Look
             else:
@@ -171,7 +173,7 @@ class TextGameAgent:
                     next_action = self.action_generator.send(observation)
                     if next_action:
                         msg = f"[game_agent] Step:{self.step_num} (generate_next_action): -> |{next_action}|"
-                        self.dbg(msg)
+                        self.info(msg)
                 except StopIteration:
                     # self.consume_event_stream()
                     self.restart_task_exec()

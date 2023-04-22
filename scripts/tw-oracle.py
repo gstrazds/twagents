@@ -50,7 +50,7 @@ def main():
     elif args.mode == 'walkthrough':
         if args.asp:
             from twutils.tw_asp_runner import plan_commands_for_game
-            commands = plan_commands_for_game(args.game)
+            commands, step_times = plan_commands_for_game(args.game)
             #commands = ["examine cookbook", "prepare meal", "eat meal"]
         else:
             commands = None

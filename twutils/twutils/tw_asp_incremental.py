@@ -84,6 +84,7 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
             return False
         return True  # False -> stop after first model
 
+    _step_times = []  # a list of tuples: (microseconds:int, step_sat:bool)
     step, ret = 0, None
     solved_all = False
     while ((imax is None or step < imax) and
@@ -160,8 +161,11 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
         prg.assign_external(Function("query", [Number(step)]), True)
 
         ret = prg.solve(on_model=lambda model: _get_chosen_actions(model,step))
+        step_sat = bool(ret.satisfiable)
         finish_time = datetime.now()
         elapsed_time = finish_time-start_time
+        _step_times.append((int(elapsed_time.total_seconds()*1000000), step_sat))
+
         print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
         assert len(_actions_set) == len(_actions_list), f"@@ _actions_set {len(_actions_set)}: {_actions_set} \n@@ _actions_list {len(_actions_list)}: {_actions_list}"
 
@@ -172,6 +176,6 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
             break
         step = step+1
     if ret.satisfiable:
-        return _actions_list, step
+        return _actions_list, step, _step_times
     else:
-        return None, step
+        return None, step, _step_times

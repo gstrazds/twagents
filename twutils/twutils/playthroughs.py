@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict, OrderedDict
+from datetime import timedelta
 import os
 import os.path
 import glob
@@ -356,6 +357,7 @@ def start_twenv_for_playthrough(gamefiles,
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
                                 pthru_cmds=None,
+                                step_infos=None,
                                 ):
     env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
                                    last_action=True, last_command=True, intermediate_reward=True)
@@ -363,6 +365,7 @@ def start_twenv_for_playthrough(gamefiles,
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
     twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
+    twenv._planner_step_times = step_infos
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
@@ -372,8 +375,9 @@ def start_twenv_for_playthrough(gamefiles,
     rewards = [game_state.reward]
     dones = [False] * batch_size
     start_cmds = ['start'] * batch_size
+    step_times = [(0,True) for _ in range(batch_size)]
     # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
-    obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds)
+    obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
     return twenv, obs, infos
 
 
@@ -387,7 +391,10 @@ def step_twenv_for_playthrough(twenv, step_cmds:List[str]):
     rewards = [reward]
     dones = [done]
     # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
-    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds)  #,names2ids
+    step_time = twenv.get_twenv_step_time_info()
+    if step_time is None:
+        step_time = (0,True)
+    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds, [step_time])  #,names2ids
     return obs, rewards, dones, infos
 
 
@@ -395,6 +402,7 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
                                   rewards: List[float],
                                   dones: List[bool],
                                   step_cmds: List[str],
+                                  step_times,  #:List(Tuple)
                                   ):
     infos = {
         # ------- standard TextWorld
@@ -414,6 +422,9 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
     }
     if game_states and hasattr(game_states[0], '_tasks'):
         infos['tw_o_stack'] = []
+    if step_times is not None:
+        infos['solver_step_time'] = []
+        infos['solver_sat'] = []
     obs = []
     for idx, gs in enumerate(game_states):
         if dones[idx] and gs.last_command == 'do nothing':   # stop appending to infos for finished games
@@ -434,7 +445,9 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
             infos['tw_o_step'].append(gs.next_command)
             if hasattr(gs, '_tasks'):
                 infos['tw_o_stack'].append(gs._tasks)
-
+            if step_times is not None:
+                infos['solver_step_time'].append(step_times[0][0])
+                infos['solver_sat'].append(step_times[0][1])
             obs.append(gs.feedback if gs.feedback else '')
             # rewards.append(gs.reward)
     # if oracle_stack:
@@ -458,6 +471,8 @@ def playthrough_step_to_json(cmds: List[str],
         # step_key = format_stepkey(step_num)
         oracle_action = infos['tw_o_step'][idx] if 'tw_o_step' in infos else None
         oracle_stack = infos['tw_o_stack'][idx] if 'tw_o_stack' in infos else "(( )) [[ ]]"
+        solver_step_time = infos['solver_step_time'][idx] if 'solver_step_time' in infos else None
+        solver_sat = infos['solver_sat'][idx] if 'solver_sat' in infos else None
         step_json = {
             # step_key: {
                 'reward': rewards[idx],
@@ -478,6 +493,10 @@ def playthrough_step_to_json(cmds: List[str],
         if oracle_stack:
             # step_json[step_key]['tw_o_stack'] = oracle_stack
             step_json['tw_o_stack'] = oracle_stack
+        if solver_step_time is not None:
+            step_json['solver_step_time'] = solver_step_time
+        if solver_sat is not None:
+            step_json['solver_sat'] = solver_sat
         # if step_num == 0 or dones[0]:  # at start of game or game over
         #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
         step_json_list.append(step_json)
@@ -550,9 +569,6 @@ def get_kg_descr(kg_accum, stepdata):
     return kg_descr
 
 
-def format_taskstack(stackstr):
-    return stackstr
-
 def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
@@ -572,7 +588,7 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
     # if 'rtg' in stepdata:
     #     pthru += f"[[[ {stepdata['rtg']} ]]]\n"
     # if 'tw_o_stack' in stepdata:
-    #     pthru += format_taskstack(stepdata['tw_o_stack'])
+    #     pthru += stepdata['tw_o_stack']
     outstr = cmdstr
     pthru = cmdstr  #_pthru_ + cmdstr
     # pthru_out += outstr
@@ -629,12 +645,21 @@ def format_rtg_for_json(playthru, rtg=True):
     return ''
 
 
-def format_taskstack_for_json(playthru):
+def format_taskstacks_for_json(playthru):
+    # def _format_taskstack(stackstr):
+    #     return stackstr
     if 'tw_o_stack' in playthru[0]:
-        tasks_list = [ format_taskstack(stepdata['tw_o_stack']) for stepdata in playthru ]
-
+        tasks_list = [stepdata['tw_o_stack'] for stepdata in playthru]
         return json.dumps(tasks_list)
     return ''
+
+
+def format_solver_info_json(playthru):
+    if 'solver_step_time' in playthru[0]:
+        assert 'solver_sat' in playthru[0]
+        solver_info_list = [{'solver_time': stepdata['solver_step_time'], 'solver_sat':stepdata['solver_sat']} for stepdata in playthru]
+        return json.dumps(solver_info_list)
+    return '[]'
 
 
 def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
@@ -682,7 +707,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
         _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
         if map_names2ids:
             pthru0 = subst_names(pthru0, map_names2ids)
-        taskstack = format_taskstack(stepdata['tw_o_stack']) if 'tw_o_stack' in stepdata else ''
+        taskstack = stepdata['tw_o_stack'] if 'tw_o_stack' in stepdata else ''
         if map_names2ids:
             taskstack = subst_names(taskstack, map_names2ids)
         tstacks_all.append(taskstack)
@@ -745,11 +770,14 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
                 rtg_json_str = format_rtg_for_json(playthru, rtg=True)
                 if rtg_json_str:
                     dsfile.write(',"rtg":' + rtg_json_str)
-                taskstackjson = format_taskstack_for_json(playthru)
+                taskstackjson = format_taskstacks_for_json(playthru)
                 if map_names2ids:
                     taskstackjson = subst_names(taskstackjson, map_names2ids)
                 if True:
                     dsfile.write(',"taskstack":' + taskstackjson)
+                solverinfo_json = format_solver_info_json(playthru)
+                dsfile.write(',"solver":' + solverinfo_json)
+
                 lines = []
                 for line in accum_pthru.split('\n'):
                     line = line.strip()
