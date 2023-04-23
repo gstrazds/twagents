@@ -21,7 +21,7 @@ def part_str(part: Tuple[str, List[Symbol]]):
     return f'{part[0]}'
 
 
-def run(files: Sequence[str], initprg=None, idstr=None):
+def run_asp_solver(files: Sequence[str], initprg=None, idstr=None):
     if idstr is None:
         idstr = str(files)
     ctl = Control()
@@ -40,7 +40,7 @@ def run(files: Sequence[str], initprg=None, idstr=None):
             commands.append(action)
         return commands, step_times
     else:
-        print(f"FAILED TO SOLVE: steps={num_iters}, {files}, {step_times}")
+        print(f"FAILED TO SOLVE {idstr} steps={num_iters}, {files}, {step_times}")
         return [], step_times
 
 
@@ -73,7 +73,7 @@ def plan_commands_for_game(filepath: str):
         asp_for_game = generate_ASP_for_game(game,
             asp_file_path=None, standalone=True, emb_python=False)
 
-    actions, step_times = run(files, initprg=asp_for_game, idstr=str(filepath))
+    actions, step_times = run_asp_solver(files, initprg=asp_for_game, idstr=str(filepath))
     tw_commands = []
     for action in actions:
         tw_commands.append(tw_command_from_asp_action(action, game_infos))

@@ -392,6 +392,7 @@ class TwAspWrapper(TWoWrapper):
         super().__init__(*args, random_seed=random_seed, passive_oracle_mode=passive_oracle_mode, **kwargs)
         self._gamepath = None
         self._commands_from_asp = None
+        self._next_cmd_from_asp = None  # an iterator, used only if .pthru_cmds have already been supplied (by caller)
         self.pthru_cmds = None
         print(f"###### TwAspWrapper.__init__(random_seed={random_seed}, passive_mode={passive_oracle_mode})")
 
@@ -411,26 +412,32 @@ class TwAspWrapper(TWoWrapper):
 
         if not self.pthru_cmds:
             self._commands_from_asp, self._planner_step_times = plan_commands_for_game(self._gamepath)
+            self.pthru_cmds = self._commands_from_asp.copy()
+            self._next_cmd_from_asp = iter(self._commands_from_asp)
         else:
             self._commands_from_asp = self.pthru_cmds.copy()
-        self._next_cmd_from_asp = iter(self._commands_from_asp)
-        game_state = super().reset()
+            self._next_cmd_from_asp = iter(self._commands_from_asp)
 
+        game_state = super().reset()
         original_walkthrough = game_state.get('extra.walkthrough', None)
         print("ORIGINAL WALKTHROUGH:", original_walkthrough)
         if original_walkthrough is not None:
             game_state['extra._walkthrough'] = original_walkthrough
         game_state['extra.walkthrough'] = self._commands_from_asp
         print("WALKTHROUGH from ASP:", game_state.get('extra.walkthrough'))
+
         return game_state
 
     def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
         actiontxt, _tasks = super().invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
         assert self.passive_oracle_mode
         if self.passive_oracle_mode:
-            actiontxt = next(self._next_cmd_from_asp, None)
-            step_num = self.tw_oracle.step_num
-            step_time = self.get_twenv_step_time_info(step_num)
+            if self.pthru_cmds:
+                actiontxt = next(self._next_cmd_from_asp, None)
+                step_num = self.tw_oracle.step_num
+                step_time = self.get_twenv_step_time_info(step_num)
+            else:
+                assert False, "NOT YET IMPLEMENTED"
             if step_time:
                 print(step_time)
                 elapsed_time = str(timedelta(microseconds=step_time[0]))

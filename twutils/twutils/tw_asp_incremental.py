@@ -107,11 +107,11 @@ class solver_results:
         return True  # False -> stop after first model
 
 
-def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, nmax=_MAX_STEPS,
+def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_STEPS,
                           step_max_time=_STEP_MAX_ELAPSED_TIME, min_print_step=_MIN_PRINT_STEP):
 
     if min_print_step == -1:
-        min_print_step = nmax + 10000   # don't print step times
+        min_print_step = imax + 10000   # don't print step times
 
     results = solver_results()
     _step_times = []  # a list of tuples: (microseconds:int, step_sat:bool)
@@ -119,14 +119,15 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, nmax=_MAX_
     ret = None
     solved_all = False
     was_sat = False   # previous iteration yielded at least one model
-    while ((nmax is None or step < nmax) and not solved_all and
-             (step == 0
-              or step <= imin
-              or (istop == "SAT" and not (ret.satisfiable and solved_all))
-              or (istop == "UNSAT" and not ret.unsatisfiable)
-              or (istop == "UNKNOWN" and not ret.unknown)
-             )
-           ):
+    while not solved_all \
+          and ( imax is None or step < imax ) \
+          and ( step <= imin or
+                (ret is None) or #step == 0 or
+                (istop == "SAT" and not (ret.satisfiable and solved_all)) or
+                (istop == "UNSAT" and not ret.unsatisfiable) or
+                (istop == "UNKNOWN" and not ret.unknown)
+              ):
+
         start_time = datetime.now()
         if step >= min_print_step:
             print(f"solving:[{step}] ", end='', flush=True)
