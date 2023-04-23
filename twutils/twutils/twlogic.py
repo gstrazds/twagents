@@ -203,22 +203,25 @@ def subst_names(obstxt:str, rename_map: Mapping[str,str], ids2names=False) -> st
     # replace longer names first
     _print_debug_info = True
     if _print_debug_info:
-        print(sorted_list)
+        print("subst_names:", "ids->names" if ids2names else "names->ids", sorted_list)
     for varname, varid in sorted_list:
         assert varname and varid, f"varname:{varname} varid:{varid} EXPECTED TO BE NONEMPTY!"
         # TODO: ?better handling of special objs [meal, rooms, etc]
         if varname != varid and not varid.startswith(varname+'_0'):    # don't substitute meal->meal_0, stove->stove_0, etc
             if ids2names:
-                print(f"Replacing {varid}<-{varname}")
-                edited_str = re.sub(varid, varname, edited_str, flags=re.IGNORECASE)  # TODO: could optimize by precompiling and remembering
+                if varid in edited_str:
+                    if _print_debug_info: print(f"Replacing {varid}<-{varname}")
+                    edited_str = re.sub(varid, varname, edited_str, flags=re.IGNORECASE)  # TODO: could optimize by precompiling and remembering
             else:
-                print(f"Replacing {varname}<-{varid}")
-                edited_str = re.sub(varname, varid, edited_str, flags=re.IGNORECASE)   #TODO: could optimize by precompiling and remembering
+                if varname in edited_str:
+                    if _print_debug_info: print(f"Replacing {varname}<-{varid}")
+                    edited_str = re.sub(varname, varid, edited_str, flags=re.IGNORECASE)   #TODO: could optimize by precompiling and remembering
         # print("\t-> ", edited_str)
     if _print_debug_info:
-        _dbg_descr = f"MODIFIED {'text' if ids2names else 'observation'}"
-        print(_dbg_descr, ">>>", edited_str)
-        print("<<<----------end of", _dbg_descr)
+        if edited_str != obstxt:
+            _dbg_descr = f"MODIFIED {'text' if ids2names else 'observation'}"
+            print(_dbg_descr, ">>>", edited_str)
+            print("<<<----------end of", _dbg_descr)
     return edited_str
 
 
