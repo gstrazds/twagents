@@ -16,19 +16,22 @@ _STEP_MAX_ELAPSED_TIME = timedelta(minutes=_STEP_MAX_MINUTES, seconds=_STEP_MAX_
 
 class solver_results:
     def __init__(self):
-        self.newly_discovered_facts = []  # rooms or opened containers
-        self._actions_list = []
         self._actions_set = set()
-        self._new_actions = []
+        self._goal1_achieved_step: int = -1
+        self._actions_list = []
         self._actions_facts = []
-        self._solved_all = False
+        self._new_actions = []
+        self.newly_discovered_facts = []  # rooms or opened containers
+        self._solved_all: bool = False
 
     def reset_history(self):
+        #self._actions_set   # is preserved
+        #self._goal1_achieved_step  # is preserved
+        #self._solved_all               # is preserved
         self._actions_list.clear()
         self._actions_facts.clear()
         self._new_actions.clear()
         self.newly_discovered_facts.clear()
-        self._solved_all = False
 
     def sanity_check(self):
         assert len(self._actions_set) == len(self._actions_list), \
@@ -45,8 +48,12 @@ class solver_results:
         self._new_actions.clear()
 
     @property
-    def solved_all(self):
+    def solved_all(self) -> bool:
         return self._solved_all
+
+    @property
+    def goal1_has_been_achieved(self) -> bool:
+        return self._goal1_achieved_step >= 0
 
     def extract_results_from_model(self, model, step):
         #for act in prg.symbolic_atoms.by_signature("act",2):
@@ -71,7 +78,9 @@ class solver_results:
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 if atom.arguments[0].number == step:
                     print(f"  ++ {atom}")
-                self.newly_discovered_facts.append("goal1_achieved")
+                if not self.goal1_has_been_achieved:
+                    self.newly_discovered_facts.append("goal1_achieved")
+                    self._goal1_achieved_step = step
             elif atom.name == 'solved_all' \
               and len(atom.arguments)==1 and atom.arguments[0].type is SymbolType.Number:
                 print(f"  ++! {atom}")
@@ -98,97 +107,35 @@ class solver_results:
         return True  # False -> stop after first model
 
 
-def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_STEPS,
+def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, nmax=_MAX_STEPS,
                           step_max_time=_STEP_MAX_ELAPSED_TIME, min_print_step=_MIN_PRINT_STEP):
 
     if min_print_step == -1:
-        min_print_step = imax + 10000   # don't print step times
+        min_print_step = nmax + 10000   # don't print step times
 
-    _recipe_read = False
     results = solver_results()
-    help(results)
     _step_times = []  # a list of tuples: (microseconds:int, step_sat:bool)
-    step, ret = 0, None
+    step = 0
+    ret = None
     solved_all = False
-    while ((imax is None or step < imax) and
-           (step == 0 or step <= imin or (
-              (istop == "SAT" and (not ret.satisfiable or not solved_all)
-               or (istop == "UNSAT" and not ret.unsatisfiable)
-               or (istop == "UNKNOWN" and not ret.unknown)
-              )
-           ))):
+    was_sat = False   # previous iteration yielded at least one model
+    while ((nmax is None or step < nmax) and not solved_all and
+             (step == 0
+              or step <= imin
+              or (istop == "SAT" and not (ret.satisfiable and solved_all))
+              or (istop == "UNSAT" and not ret.unsatisfiable)
+              or (istop == "UNKNOWN" and not ret.unknown)
+             )
+           ):
         start_time = datetime.now()
-        _recipe_newly_seen = False  # becomes True during the step that finds the recipe
-        parts = []
         if step >= min_print_step:
             print(f"solving:[{step}] ", end='', flush=True)
-        if ret and ret.satisfiable:
-            if results.solved_all:
-                solved_all = True
-                break      # stop solving immediately
-            for _name in results.newly_discovered_facts:
-                # if _name == "solved_all":
-                #     solved_all = True
-                if _name == "goal1_achieved":
-                    if not _recipe_read:
-                        _recipe_newly_seen = True
-                        print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step-1})")
-                        parts.append(("recipe", [Number(step-1)]))
-                        parts.append(("cooking_step", [Number(step-1)]))  # this once will have cooking_step(both step and step-1)
-                    _recipe_read = True
-                elif _name.startswith("r_"):    # have entered a previously unseen room
-                    print(f"ADDING #program room_{_name} ({step-1}).")
-                    parts.append((f"room_{_name}", [Number(step-1)]))
-                    parts.append(("obs_step", [Number(step-1)]))
-                elif _name.startswith("c_"):    # opened a container for the first time
-                    print(f"OBSERVING CONTENTS OF {_name} ({step-1}).")
-                    #parts.append((f"c_{_name}", [Number(step-1)]))
-                    parts.append(("obs_step", [Number(step-1)]))
-                else:
-                    print("%%%%% IGNORING FIRST ACQUIRED:", _name)
-        if step == 0:
-            parts.append(("base", []))
-            #parts.append(("recipe", [Number(step)]))
-            parts.append(("initial_state", [Number(0)]))
-            parts.append(("initial_room", [Number(0)]))     #(f"room_{first_room}", [Number(0)]))
-            #parts.append(("obs_step", [Number(0)]))  #step==0
-            parts.append(("predict_step", [Number(0)]))
-            parts.append(("check", [Number(step)]))     #step==0
-        else:  #if step > 0:
 
-            for action in results.list_new_actions():
-                print("ENSURE PAST ACTION:", str(action))
-                parts.append(("prev_action", [action, action.arguments[0]]))
-                # prg.assign_external(Function("did_act", [action, action.arguments[0]]), True)
-            results.clear_new_actions()  # only need to add these actions once (even if multiple unsat iterations)
-            # if len(_actions_facts):
-            #     actions_facts_str = "\n".join(_actions_facts)
-            #     actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
-            #     print(f"\n+++++ ADDING prev_actions: +++\n{actions_facts_str}\n----", flush=True)
-            #     print("\t" + "\n\t".join(_actions_facts), flush=True)
-            #     prg.add("prev_actions", [], actions_facts_str)
-            #     parts.append(("prev_actions", []))
-
-            #parts.append(("obs_step", [Number(step)]))
-            parts.append(("predict_step", [Number(step)]))
-            parts.append(("step", [Number(step)]))
-            if _recipe_read:
-                print(f"+ ADDING #program cooking_step({step})")
-                parts.append(("cooking_step", [Number(step)]))
-            parts.append(("check", [Number(step)]))
-
-            #  query(t-1) becomes permanently = False (removed from set of Externals)
-            prg.release_external(Function("query", [Number(step-1)]))
-            prg.cleanup()
-        prg.ground(parts)
-
-        prg.assign_external(Function("query", [Number(step)]), True)
-
-        ret = prg.solve(on_model=lambda model: results.extract_results_from_model(model,step))
-        step_sat = bool(ret.satisfiable)
+        ret = solver_step(prg, step, was_sat, results)
+        was_sat = bool(ret.satisfiable)
         finish_time = datetime.now()
         elapsed_time = finish_time-start_time
-        _step_times.append((int(elapsed_time.total_seconds()*1000000), step_sat))
+        _step_times.append((int(elapsed_time.total_seconds()*1000000), was_sat))
 
         print("<< SATISFIABLE >>" if ret.satisfiable else "<< NOT satisfiable >>", flush=True)
         results.sanity_check()
@@ -198,8 +145,72 @@ def tw_solve_incremental( prg: Control, istop="SAT", imin=_MIN_STEPS, imax=_MAX_
         if elapsed_time > step_max_time:
             print(f"--- [{step}] Step time {elapsed_time} > {step_max_time} ... Stop solving.")
             break
+        if results.solved_all:
+            solved_all = True  # stop solving immediately
         step = step+1
     if ret.satisfiable:
         return results.list_all_actions(), step, _step_times.copy()
     else:
         return None, step, _step_times.copy()
+
+
+def solver_step(prg, step: int, prev_was_sat: bool, results):
+    parts = []
+    if step == 0:
+        parts.append(("base", []))
+        # parts.append(("recipe", [Number(step)]))
+        parts.append(("initial_state", [Number(0)]))
+        parts.append(("initial_room", [Number(0)]))  # (f"room_{first_room}", [Number(0)]))
+        # parts.append(("obs_step", [Number(0)]))  #step==0
+        parts.append(("predict_step", [Number(0)]))
+        parts.append(("check", [Number(step)]))  # step==0
+    else:  # if step > 0:
+
+        if prev_was_sat:
+            for _name in results.newly_discovered_facts:
+                # if _name == "solved_all":
+                #     solved_all = True
+                if _name == "goal1_achieved":
+                    print(f"+++++ _recipe_newly_seen: ADDING #program recipe({step - 1})")
+                    parts.append(("recipe", [Number(step - 1)]))
+                    parts.append(("cooking_step",
+                              [Number(step - 1)]))  # this once will have cooking_step(both step and step-1)
+                elif _name.startswith("r_"):  # have entered a previously unseen room
+                    print(f"ADDING #program room_{_name} ({step - 1}).")
+                    parts.append((f"room_{_name}", [Number(step - 1)]))
+                    parts.append(("obs_step", [Number(step - 1)]))
+                elif _name.startswith("c_"):  # opened a container for the first time
+                    print(f"OBSERVING CONTENTS OF {_name} ({step - 1}).")
+                    # parts.append((f"c_{_name}", [Number(step-1)]))
+                    parts.append(("obs_step", [Number(step - 1)]))
+                else:
+                    print("%%%%% IGNORING FIRST ACQUIRED:", _name)
+
+        for action in results.list_new_actions():
+            print("ENSURE PAST ACTION:", str(action))
+            parts.append(("prev_action", [action, action.arguments[0]]))
+            # prg.assign_external(Function("did_act", [action, action.arguments[0]]), True)
+        results.clear_new_actions()  # only need to add these actions once (even if multiple unsat iterations)
+        # if len(_actions_facts):
+        #     actions_facts_str = "\n".join(_actions_facts)
+        #     actions_facts_str = actions_facts_str.replace("act(", "did_act( ")
+        #     print(f"\n+++++ ADDING prev_actions: +++\n{actions_facts_str}\n----", flush=True)
+        #     print("\t" + "\n\t".join(_actions_facts), flush=True)
+        #     prg.add("prev_actions", [], actions_facts_str)
+        #     parts.append(("prev_actions", []))
+
+        # parts.append(("obs_step", [Number(step)]))
+        parts.append(("predict_step", [Number(step)]))
+        parts.append(("step", [Number(step)]))
+        if results.goal1_has_been_achieved:  # recipe_has_been_read
+            print(f"+ ADDING #program cooking_step({step})")
+            parts.append(("cooking_step", [Number(step)]))
+        parts.append(("check", [Number(step)]))
+
+        #  query(t-1) becomes permanently = False (removed from set of Externals)
+        prg.release_external(Function("query", [Number(step - 1)]))
+        prg.cleanup()
+    prg.ground(parts)
+    prg.assign_external(Function("query", [Number(step)]), True)
+    ret = prg.solve(on_model=lambda model: results.extract_results_from_model(model, step))
+    return ret
