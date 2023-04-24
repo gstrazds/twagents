@@ -3,6 +3,7 @@
 # misc temp files
 foo
 tmp/
+bak/
 tmp_*
 *.hold/
 
