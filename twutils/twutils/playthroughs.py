@@ -15,6 +15,7 @@ from textworld.logic import Proposition  #, Variable, Signature, State
 from .file_helpers import count_iter_items, split_gamename  # , parse_gameid
 from .twlogic import filter_observables, subst_names
 from .feedback_utils import normalize_feedback_vs_obs_description, simplify_feedback, INSTRUCTIONS_TOKEN
+from symbolic.format_desc import END_OF_LIST
 
 from symbolic.knowledge_graph import KnowledgeGraph
 from symbolic.wrappers.gym_wrappers import TWoWrapper, TwAspWrapper
@@ -456,12 +457,23 @@ def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
     return obs, rewards, dones, infos
 
 
+def extract_pathtrace(cmd_history):
+    pathtrace = []
+    for (cmd, locname, ok, _reward_) in reversed(cmd_history):
+        if ok and cmd.startswith("go "):
+            pathtrace.append((cmd, locname))
+        else:
+            break
+    pathtrace.reverse()
+    return pathtrace
+
 def playthrough_step_to_json(cmds: List[str],
                              dones: List[bool],
                              infos, # a dictionary of lists
                              obs: List[Optional[str]],
                              rewards: List[float],
                              step_num: int,
+                             cmd_histories,
                              ) -> List[Any]:
     step_json_list = []
     for idx in range(len(dones)):
@@ -474,6 +486,7 @@ def playthrough_step_to_json(cmds: List[str],
         oracle_stack = infos['tw_o_stack'][idx] if 'tw_o_stack' in infos else "(( )) [[ ]]"
         solver_step_time = infos['solver_step_time'][idx] if 'solver_step_time' in infos else None
         solver_sat = infos['solver_sat'][idx] if 'solver_sat' in infos else None
+        cmd_history = cmd_histories[idx] if cmd_histories else None
         step_json = {
             # step_key: {
                 'reward': rewards[idx],
@@ -498,6 +511,9 @@ def playthrough_step_to_json(cmds: List[str],
             step_json['solver_step_time'] = solver_step_time
         if solver_sat is not None:
             step_json['solver_sat'] = solver_sat
+        if cmd_history is not None:
+            step_json['pathtrace'] = extract_pathtrace(cmd_history)
+
         # if step_num == 0 or dones[0]:  # at start of game or game over
         #     step_json[step_key]['GT_FACTS'] = world_facts_serialized
         step_json_list.append(step_json)
@@ -517,7 +533,11 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
     _rewards = [0] * batch_size
     next_cmds = ['start'] * batch_size
     env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed)
-    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
+    if hasattr(env, "tw_oracle"):
+        cmd_histories = [env.tw_oracle.cmd_history.copy()]  #.copy()
+    else:
+        cmd_histories = None
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, cmd_histories)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
     step_array_list = [playthru_step_data]  # Expecting that every game will always have at least one initial step
@@ -529,7 +549,11 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
         _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds)
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps)
+        if hasattr(env, "tw_oracle"):
+            cmd_histories = [env.tw_oracle.cmd_history.copy()]  # .copy()
+        else:
+            cmd_histories = None
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, cmd_histories)
         append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
     env.close()
@@ -570,7 +594,7 @@ def get_kg_descr(kg_accum, stepdata):
     return kg_descr
 
 
-def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
+def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True, no_kg_info=False):
     feedback = stepdata['feedback']
     prev_action = stepdata['prev_action']
     # for k in stepdata.keys():
@@ -598,6 +622,14 @@ def format_playthrough_step(kg_descr, stepdata, simplify_raw_obs_feedback=True):
         # feedback = feedback.strip()
     pthru += simplify_feedback(feedback) + '\n'
     pthru += kg_descr + '\n'
+    if not no_kg_info and 'pathtrace' in stepdata:
+        pathtrace_data = stepdata['pathtrace']
+        if len(pathtrace_data):
+            pathtrace = []
+            for pathstep in pathtrace_data:
+                pathtrace.append(pathstep[1])  # location name
+                pathtrace.append(pathstep[0][3:]) # go <direction>
+            pthru += f"{PATHTRACE_TOKEN} {' '.join(pathtrace)} {END_OF_LIST}\n"
     # outstr += '\n' + stepdata['obs']
     outstr += '\n' + stepdata['description'] + '\n'
     if 'inventory' in stepdata and stepdata['inventory']:
@@ -705,7 +737,7 @@ def export_playthru(gn, playthru, destdir='.', dry_run=False, rtg=True,
         kg_accum.set_formatting_options(prev_options)
 
         # because saved playthroughs have raw feedback and obs, do what the ConsistentFeedbackWrapper would normally do
-        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True)
+        _, pthru0 = format_playthrough_step(kg_descr_without_oracle, stepdata, simplify_raw_obs_feedback=True, no_kg_info=True)
         if map_names2ids:
             pthru0 = subst_names(pthru0, map_names2ids)
         taskstack = stepdata['tw_o_stack'] if 'tw_o_stack' in stepdata else ''

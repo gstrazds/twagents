@@ -262,7 +262,7 @@ class TextGameAgent:
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
         cmd_ok = not check_cmd_failed(prev_action, new_obs, reward)
         self.dbg(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] {'OK' if cmd_ok else 'FAILED'} Reward: {reward}")
-        self.cmd_history.append((prev_action, player_location, cmd_ok, reward))
+        self.cmd_history.append((prev_action, str(player_location), cmd_ok, reward))
 
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")
