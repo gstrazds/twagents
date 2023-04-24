@@ -11,7 +11,7 @@ from .task_modules.navigation_task import ExploreHereTask
 from .entity import MEAL
 from .action import *
 # from twutils.twlogic import DIRECTION_RELATIONS
-from twutils.twlogic import get_name2idmap
+from twutils.twlogic import get_name2idmap, check_cmd_failed
 
 
 class TextGameAgent:
@@ -43,6 +43,7 @@ class TextGameAgent:
         if env_name:
             self.env_name = env_name
         self._reinitialize_action_generator()
+        self.cmd_history = []
 
     @property
     def last_action(self) -> str:
@@ -65,6 +66,7 @@ class TextGameAgent:
         self._reinitialize_action_generator()
         self.first_step = True
         self.step_num = 0
+        self.cmd_history = []
 
     def set_objective(self, objective : str):
         if objective == 'eat meal':
@@ -235,9 +237,8 @@ class TextGameAgent:
             cmdstr = self.gi.kg.cannonicalize_command(cmdstr)
         return cmdstr
 
-    def observe(self, reward: float, new_obs, done: bool, prev_action:str = Optional[None], idx=None):
-        """ Observe could be used for learning from rewards. """
-#GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
+    def observe(self, reward: float, new_obs, done: bool, prev_action: Optional[str] = None,  idx=None):
+# GVS NOTE 10-25-2020: this is currently not even called for qait , only for ftwc
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
 #        self.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 
@@ -259,7 +260,9 @@ class TextGameAgent:
         # Print out this step.
         player_location = self.gi.kg.player_location
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
-        self.dbg(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Reward: {reward}")
+        cmd_ok = not check_cmd_failed(prev_action, new_obs, reward)
+        self.dbg(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] {'OK' if cmd_ok else 'FAILED'} Reward: {reward}")
+        self.cmd_history.append((prev_action, player_location, cmd_ok, reward))
 
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")

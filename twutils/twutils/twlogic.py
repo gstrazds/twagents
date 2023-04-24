@@ -565,3 +565,41 @@ def parse_ftwc_recipe(recipe_str:str, format='fulltext'):
                     recipe_step = recipe_step.replace(' the ', ' ')
                 directions.append(recipe_step)
     return ingredients, directions
+
+
+def _first_word_of(cmd_str:str):
+    words = cmd_str.split()
+    if words:
+        return words[0]
+    return cmd_str
+
+
+def check_cmd_failed(prev_cmd, feedback, reward):
+    if feedback is None:
+        feedback = ''
+    else:
+        feedback = feedback.lower()
+    if reward > 0:
+        cmd_was_ok = True
+    elif feedback.startswith(f'you {_first_word_of(prev_cmd)} '):
+        cmd_was_ok = True
+    elif feedback.startswith("you can't"):
+        cmd_was_ok = False
+    elif feedback.startswith('you need to'):
+        cmd_was_ok = False
+    elif feedback.startswith('you already'):
+        cmd_was_ok = False
+    elif feedback.startswith("you haven't"):
+        cmd_was_ok = False
+    elif feedback.startswith('i '):
+        cmd_was_ok = False
+    elif feedback.startswith('what do'):
+        cmd_was_ok = False
+    elif feedback.startswith('which do'):
+        cmd_was_ok = False
+    elif feedback.startswith('can only'):
+        cmd_was_ok = False
+    else:
+        cmd_was_ok = True
+    return not cmd_was_ok
+
