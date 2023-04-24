@@ -23,7 +23,7 @@ def build_tokenizer(dir_list, max_vocab=None):
             GATA_PTHRU_DIR + "gata_test/*.pthru",
             GATA_PTHRU_DIR + "gata_100/*.pthru",
             ]
-    special_tokens = ['<PAD>', '<UNK>', '<S>', '</S>', '<bos>', '<eos>', '<NONE>', '<sep>', '<|>', 'pathtrace']
+    special_tokens = ['<PAD>', '<UNK>', '<S>', '</S>', '<bos>', '<eos>', '<NONE>', '<sep>', '<|>']
 
     # '+open', '+closed', '+roasted', '+baked', '+fried', '+raw',
     # '+sliced', '+diced', '+chopped', '++Carrying:', ]
@@ -36,6 +36,7 @@ def build_tokenizer(dir_list, max_vocab=None):
     tokenizer = Tokenizer(model=model)
 
     tokenizer.add_special_tokens(special_tokens)
+    tokenizer.add_tokens(['pathtrace'])
     # tokenizer.add_tokens([ COMMAND_TOKEN,])
     # tokenizer.add_tokens(['frosted-glass'])
     # tokenizer.add_tokens(['[UNK]'])  #'++Carrying:', 'hello', '+how', 'today'])
