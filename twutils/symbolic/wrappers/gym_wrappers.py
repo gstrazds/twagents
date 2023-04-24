@@ -227,12 +227,13 @@ class TWoWrapper(textworld.core.Wrapper):
         # prime the pump
         world_facts = game_state.get('facts', None)
         obstxt = game_state.feedback
-        _actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=None, verbose=False)
-        # _actiontxt, _tasks also get stored into self.next_command, self._tasks by .invoke_oracle
-
         if not hasattr(game_state, 'last_command'):
             print("TWoOracle.reset(): SETTING DEFAULT game_state.last_command = 'start'")
             game_state.last_command = 'start'
+        start_action = game_state.last_command
+        _actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=start_action, verbose=False)
+        # _actiontxt, _tasks also get stored into self.next_command, self._tasks by .invoke_oracle
+
         game_state.next_command = self.next_command   # = _actiontxt
         game_state._tasks = _tasks
         if not hasattr(game_state, 'score'):
@@ -419,6 +420,8 @@ class TwAspWrapper(TWoWrapper):
             self._next_cmd_from_asp = iter(self._commands_from_asp)
 
         game_state = super().reset()
+        # start_command = next(self._next_cmd_from_asp, None)
+        # game_state.last_command = start_command
         original_walkthrough = game_state.get('extra.walkthrough', None)
         print("ORIGINAL WALKTHROUGH:", original_walkthrough)
         if original_walkthrough is not None:
@@ -445,7 +448,7 @@ class TwAspWrapper(TWoWrapper):
             else:
                 elapsed_time = None
                 step_sat = True
-            print(f"TwAspWrapper: [{step_num}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}")
+            self.tw_oracle.dbg(f"TwAspWrapper: [{step_num-1}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}")
 
         self.next_command = actiontxt
         return actiontxt, _tasks

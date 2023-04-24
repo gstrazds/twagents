@@ -251,6 +251,13 @@ class KnowledgeGraph:
         else:
             print("### DEBUG:", msg)
 
+    def info(self, msg):
+        if self._logger:
+            logger = self._logger
+            logger.info(msg)
+        else:
+            print("### INFO:", msg)
+
     def warn(self, msg):
         if self._logger:
             logger = self._logger

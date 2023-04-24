@@ -173,7 +173,7 @@ class TextGameAgent:
                     next_action = self.action_generator.send(observation)
                     if next_action:
                         msg = f"[game_agent] Step:{self.step_num} (generate_next_action): -> |{next_action}|"
-                        self.info(msg)
+                        self.dbg(msg)
                 except StopIteration:
                     # self.consume_event_stream()
                     self.restart_task_exec()
@@ -201,7 +201,7 @@ class TextGameAgent:
         if prev_action and self._last_action:
             if prev_action.lower() != self._last_action.text().lower() and \
                     not self._last_action.text().startswith("answer:"):
-                print(f"WARNING: prev_action:|{prev_action}| != self._last_action: |{self._last_action.text()}|")
+                self.warn(f"WARNING: prev_action:|{prev_action}| != self._last_action: |{self._last_action.text()}|")
                 # assert prev_action == self._last_action.text()
         if not prev_action:
             prev_action = self._last_action
@@ -241,8 +241,6 @@ class TextGameAgent:
 #        p_valid = self._valid_detector.action_valid(action, new_obs)
 #        self.dbg("[VALID] p={:.3f} {}".format(p_valid, clean(new_obs)))
 
-        # NewTransitionEvent unused by current code
-        # self.gi.event_stream.push(NewTransitionEvent(prev_obs, prev_action, score, new_obs, terminal))
         if idx is not None:
             assert idx == self._idx
         else:
@@ -261,7 +259,7 @@ class TextGameAgent:
         # Print out this step.
         player_location = self.gi.kg.player_location
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
-        print(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Reward: {reward}")
+        self.dbg(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}]   Reward: {reward}")
 
     def set_ground_truth(self, gt_facts):
         # print("GROUND TRUTH")

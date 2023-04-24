@@ -31,6 +31,7 @@ DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/gata/playthru_data/'
 
 CMD_START_TOKEN = '>>>['
 CMD_END_TOKEN = ']<<<'
+PATHTRACE_TOKEN = 'pathtrace'
 GAME_START_CMD = 'start'
 JSON_LINE_SEP = ' '         #' <|> '
 JSON_CRLF = ' <|> '   # replaces '\n'* when merging raw text output into JSON for .textds dataset file

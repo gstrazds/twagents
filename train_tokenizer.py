@@ -23,7 +23,7 @@ def build_tokenizer(dir_list, max_vocab=None):
             GATA_PTHRU_DIR + "gata_test/*.pthru",
             GATA_PTHRU_DIR + "gata_100/*.pthru",
             ]
-    special_tokens = ['<PAD>', '<UNK>', '<S>', '</S>', '<bos>', '<eos>', '<NONE>', '<sep>', '<|>', ]
+    special_tokens = ['<PAD>', '<UNK>', '<S>', '</S>', '<bos>', '<eos>', '<NONE>', '<sep>', '<|>', 'pathtrace']
 
     # '+open', '+closed', '+roasted', '+baked', '+fried', '+raw',
     # '+sliced', '+diced', '+chopped', '++Carrying:', ]
