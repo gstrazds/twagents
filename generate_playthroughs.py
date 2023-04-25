@@ -2,7 +2,7 @@ import os
 import os.path
 import json
 from pathlib import Path
-from twutils.playthroughs import generate_playthrus, export_playthru, get_games_dir, retrieve_playthrough_json, GamesIndex
+from twutils.playthroughs import generate_playthrus, export_playthru, retrieve_playthrough_json, GamesIndex
 from twutils.playthroughs import playthrough_id, normalize_path, make_dsfilepath, _list_game_files
 from twutils.twlogic import get_name2idmap
 
@@ -15,7 +15,9 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
                               do_export=True,
                               dry_run=False,  # do everything according to other args, but don't write to disk
                               dataset_name=None,
-                              export_internal_names=False):
+                              export_internal_names=False,
+                              with_pathtrace=False,
+                              ):
 
     assert do_generate or do_export, f"Please select at least one of do_generate({do_generate}), do_export({do_export})"
     if gindex is not None:
@@ -39,7 +41,7 @@ def generate_and_export_pthru(gamename, gamedir, outdir,
     ptid = playthrough_id(objective_name=goal_type, seed=randseed)  # playtrough ID (which of potentially different) for this gamename
 
     if do_generate:
-        step_array_list, games_list = generate_playthrus([_gamefile], randseed=randseed)
+        step_array_list, games_list = generate_playthrus([_gamefile], randseed=randseed, with_pathtrace=with_pathtrace)
         # for step_array in step_array_list:
         step_array = step_array_list[0]
         game = games_list[0]
@@ -196,6 +198,7 @@ if __name__ == "__main__":
                                                   dry_run=dry_run,
                                                   dataset_name=args.which,
                                                   export_internal_names=args.internal_names,
+                                                  with_pathtrace=args.pathtrace,
                                             )
                     total_files += 1
 
@@ -225,6 +228,8 @@ if __name__ == "__main__":
                         help="If not specified, dry run (without writing anything to disk)")
     parser.add_argument("--internal-names", action='store_true',
                         help="Use TextWorld internal ids instead of entity and room names")
+    parser.add_argument("--pathtrace", action='store_true',
+                        help="Add summary of recent navigation steps to context")
     args = parser.parse_args()
     main(args)
 

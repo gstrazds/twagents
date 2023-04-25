@@ -473,8 +473,16 @@ def playthrough_step_to_json(cmds: List[str],
                              obs: List[Optional[str]],
                              rewards: List[float],
                              step_num: int,
-                             cmd_histories,
+                             env=None,
+                             pathtrace=False,
                              ) -> List[Any]:
+    if pathtrace:
+        assert env is not None, "Must pass a TWoWrapper wrapped env for playthough_step_to_json(pathtrace=True)"
+        assert hasattr(env, "tw_oracle")
+        assert len(dones) == 1   # at least for now, this bit of code assumes batch size = 1
+        cmd_histories = [env.tw_oracle.cmd_history.copy()]  # .copy()
+    else:
+        cmd_histories = None
     step_json_list = []
     for idx in range(len(dones)):
         world_facts = infos['facts'][idx]
@@ -520,7 +528,7 @@ def playthrough_step_to_json(cmds: List[str],
     return step_json_list
 
 
-def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
+def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED, with_pathtrace=False):
     def append_step_data(array_list: List[List[Any]], step_list: List[Any]):
         assert len(array_list) == len(step_list), f"Batch size should match {len(array_list)} {len(step_list)}"
         for idx, step_data in enumerate(step_list):   # an entry for each game in the batch (can be None if game is_done)
@@ -533,11 +541,8 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
     _rewards = [0] * batch_size
     next_cmds = ['start'] * batch_size
     env, _obs, _infs = start_twenv_for_playthrough(gamefiles, random_seed=randseed)
-    if hasattr(env, "tw_oracle"):
-        cmd_histories = [env.tw_oracle.cmd_history.copy()]  #.copy()
-    else:
-        cmd_histories = None
-    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, cmd_histories)
+    playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards,
+                                                  num_steps, env=env, pathtrace=with_pathtrace)
     # playthru_step_data is a list of list of json dicts (with data for a single game step),
     #   one entry for each game in the batch
     step_array_list = [playthru_step_data]  # Expecting that every game will always have at least one initial step
@@ -549,11 +554,8 @@ def generate_playthrus(gamefiles: List[str], randseed=DEFAULT_PTHRU_SEED):
         # if _dones[0]:
         #     game_over += 1  # invoke one extra step after the last real step
         _obs, _rewards, _dones, _infs = step_twenv_for_playthrough(env, next_cmds)
-        if hasattr(env, "tw_oracle"):
-            cmd_histories = [env.tw_oracle.cmd_history.copy()]  # .copy()
-        else:
-            cmd_histories = None
-        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards, num_steps, cmd_histories)
+        playthru_step_data = playthrough_step_to_json(next_cmds, _dones, _infs, _obs, _rewards,
+                                                      num_steps, env=env, pathtrace=with_pathtrace)
         append_step_data(step_array_list, playthru_step_data)
         next_cmds = _infs['tw_o_step']
     env.close()
