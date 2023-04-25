@@ -587,9 +587,13 @@ def check_cmd_failed(prev_cmd, feedback, reward):
         cmd_was_ok = False
     elif feedback.startswith('you need to'):
         cmd_was_ok = False
+    elif feedback.startswith('you still'):
+        cmd_was_ok = False
     elif feedback.startswith('you already'):
         cmd_was_ok = False
     elif feedback.startswith("you haven't"):
+        cmd_was_ok = False
+    elif feedback.startswith("that's already"):
         cmd_was_ok = False
     elif feedback.startswith('i '):
         cmd_was_ok = False
@@ -597,7 +601,9 @@ def check_cmd_failed(prev_cmd, feedback, reward):
         cmd_was_ok = False
     elif feedback.startswith('which do'):
         cmd_was_ok = False
-    elif feedback.startswith('can only'):
+    elif 'can only' in feedback:
+        cmd_was_ok = False
+    elif 'carrying too many' in feedback:
         cmd_was_ok = False
     else:
         cmd_was_ok = True
