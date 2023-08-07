@@ -1,7 +1,7 @@
 ulimit -Sn unlimited
 
 # use TWDATA_DIR env variable, assign default value if not set
-: "${TWDATA_DIR:=/ssd2tb/twdata}"
+: "${TWDATA_DIR:=$HOME/work2/twdata}"
 export TWDATA_DIR
 TEXTDS_DIR=${TWDATA_DIR}/data_textds
 MERGED_DIR=${TWDATA_DIR}/data_combined
