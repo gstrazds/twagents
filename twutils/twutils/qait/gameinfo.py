@@ -60,7 +60,7 @@ def ensure_gameinfo_file(gamefile, env_seed=42, save_to_file=True):
             #TODO: object_adjs=True,
             extras=["object_locations", "object_attributes", "uuid"])
 
-        _env = textworld.start(gamefile, infos=request_qait_infos)
+        _env = textworld.start(gamefile, request_infos=request_qait_infos)
         game_state = _env.reset()
 
         # print(game_state.keys())

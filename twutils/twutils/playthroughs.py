@@ -365,7 +365,7 @@ def start_twenv_for_playthrough(gamefiles,
                                    last_action=True, last_command=True, intermediate_reward=True)
     batch_size = len(gamefiles)
     assert batch_size == 1, f"Currently only support batch_size=1 (not:{len(gamefiles)} {gamefiles})"
-    twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], infos=env_infos)
+    twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
     twenv._planner_step_times = step_infos
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
