@@ -79,6 +79,7 @@ if __name__ == "__main__":
     gamesets = {'extra': None, 'none': None,
                 'miniset': 'train',
                 'train': 'train', 'valid': 'valid', 'test': 'test',
+                'train.simpl': 'train.simpler', 'valid.simpl': 'valid.simpler', 'test.simpl': 'test.simpler',
                 'gata_100': 'train_100', 'gata_20': 'train_20', 'gata_1': 'train_1',
                 'gata_train': 'train', 'gata_valid': 'valid', 'gata_test': 'test',
                 }
