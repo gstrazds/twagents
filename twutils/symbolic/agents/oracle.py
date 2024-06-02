@@ -3,7 +3,7 @@
 
 from typing import Optional
 from textworld import Agent, Environment, GameState
-from symbolic.wrappers.gym_wrappers import TWoWrapper, TwAspWrapper
+from symbolic.wrappers.oracle_wrappers import TWoWrapper, TwAspWrapper
 
 
 class WalkthroughDone(NameError):
