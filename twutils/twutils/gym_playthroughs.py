@@ -1,9 +1,9 @@
-from typeing import List
+from typing import List
 import textworld.EnvInfos
 
 from symbolic.wrappers.gym_wrappers import QaitGym
 from symbolic.wrappers.vocab import WordVocab
-from .playthroughs import DEFAULT_PTHRU_SEED
+from .playthroughs import DEFAULT_PTHRU_SEED, MAX_PLAYTHROUGH_STEPS
 
 FTWC_ALL_VOCAB = '~/work2/twdata/ftwc/all-vocab.txt'
 QAIT_VOCAB = '~/work2/twdata/qait/qait_word_vocab.txt'
@@ -13,7 +13,6 @@ QAIT_VOCAB = '~/work2/twdata/qait/qait_word_vocab.txt'
 # (and it would most likely be split during tokenization)
 
 
-MAX_PLAYTHROUGH_STEPS = 150
 def start_gym_for_playthrough(gamefiles,
                                raw_obs_feedback=True,  # don't apply ConsistentFeedbackWrapper
                                passive_oracle_mode=False,  # if True, don't predict next action

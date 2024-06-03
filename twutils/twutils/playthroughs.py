@@ -22,10 +22,10 @@ from symbolic.wrappers.oracle_wrappers import TWoWrapper, TwAspWrapper
 
 
 # default directory paths, usually overriden by env, config or cmd line args
-TW_GAMES_BASEDIR = '/ssd2tb/ftwc/games/'
+TW_GAMES_BASEDIR = '/work2/gstrazds/twdata/ftwc/games_ftwc/'
 TW_TRAINING_DIR = TW_GAMES_BASEDIR + 'train/'
-DEFAULT_FTWC_PTHRU_BASE = '/work2/gstrazds/ftwc/playthru_data/'
-DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/gata/playthru_data/'
+DEFAULT_FTWC_PTHRU_BASE = '/work2/gstrazds/twdata/ftwc/playthru_data/'
+DEFAULT_GATA_PTHRU_BASE = '/work2/gstrazds/twdata/gata/playthru_data/'
 
 # TW_VALIDATION_DIR = TW_GAMES_BASEDIR + 'valid/'
 # TW_TEST_DIR = TW_GAMES_BASEDIR + 'test/'
@@ -38,6 +38,8 @@ JSON_LINE_SEP = ' '         #' <|> '
 JSON_CRLF = ' <|> '   # replaces '\n'* when merging raw text output into JSON for .textds dataset file
 
 DEFAULT_PTHRU_SEED = 42
+MAX_PLAYTHROUGH_STEPS = 150
+
 GOAL_MEAL = 'eatmeal'
 GOAL_ANSWER_WHERE = 'whereis'
 GOAL_ANSWER_EXISTS = 'exists'
@@ -185,6 +187,21 @@ class GamesIndex:
                 game_names_ = [s.split('.')[0] for s in game_files]
         self.add_games_to_index(dirpath, game_names_)
         return game_names_
+
+    def get_gamefile(self, game_name, suffix=None):
+        if not suffix:
+            suffixes = ['.z8', '.ulx', ]  #'.json']
+        else:
+            suffixes = [suffix]
+        gamedir = self.get_dir_for_game(game_name)
+        if not gamedir:
+            assert False, f"Directory is not indexed for game {game_name}"
+            return None
+        for suffix in suffixes:
+            if os.path.exists(os.path.join(gamedir, game_name+suffix)):
+                gamefile = os.path.join(gamedir, game_name+suffix)
+                return gamefile
+        return None
 
     def count_and_index_pthrus(self, which, dirpath):
         suffixes = ['.pthru']

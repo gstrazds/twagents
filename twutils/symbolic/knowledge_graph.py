@@ -698,7 +698,7 @@ class KnowledgeGraph:
                     if loc1 not in maybe_new_entities:
                         maybe_new_entities.append(loc1)
                     door = None  # will add info about doors later
-                    self.add_connection(loc1, fact.name, loc0, doorway=door, assume_inverse=True)
+                    self._connections.add_connection(loc1, fact.name, loc0, door=door, assume_inverse=True)
                       # add_connection does nothing if this connection is already present
                 elif (a0.type == 'd' or a0.type == 'e') and a1.type == 'r':
                     # print("\t\tdoor fact -- ", fact)
