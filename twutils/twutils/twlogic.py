@@ -331,9 +331,8 @@ def _find_info(game, info_key):  # match EntityInfo.id or EntityInfo.name
 def lookup_internal_info(game, arg) -> Tuple[str, str]:
     info_id = arg.name
     info = _find_info(game, info_id)
-    if not info:
-        print("lookup_internal_info failed for arg.name:", info_id)
-        # info = _find_info(game, arg.name)
+    # if not info:
+    #     print("lookup_internal_info failed for arg.name:", info_id)
     if info:
         _name = info.id  # if info.id else info.type
         _type = info.type
@@ -343,7 +342,7 @@ def lookup_internal_info(game, arg) -> Tuple[str, str]:
         if type and '_' in _type:
             print(f"!!!UNEXPECTED lookup_internal_info({info_id}) splitting pseudo arg.type:{_type}")
             _type = _type.split('_')[0]
-    print(f"lookup_internal_info: {arg} -> name:{_name}, type:{_type}")
+    # print(f"lookup_internal_info: {arg} -> name:{_name}, type:{_type}")
     return _name, _type
 
 
@@ -382,7 +381,10 @@ def print_variable(game, arg):
         outname = 'Player'
     else:
         outname = _name
-    print("'{}'[{}]".format(outname, obj_id), end='')
+    if arg.name and arg.name != outname:
+        print(f"{arg.name} '{outname}'[{obj_id}]", end='')
+    else:
+        print("'{}'[{}]".format(outname, obj_id), end='')
 
 
 def print_fact(game, fact):

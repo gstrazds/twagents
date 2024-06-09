@@ -655,7 +655,8 @@ class KnowledgeGraph:
             print("REMAPPING", observed_facts)
             obstxt, obs_facts = remap_observation_and_facts(obstxt, observed_facts, self._names2ids)
         else:
-            print("NOT REMAPPING", self.use_ids_as_names, self._names2ids)
+            if self._debug:
+                print("NOT REMAPPING", self.use_ids_as_names, self._names2ids)
             obs_facts = observed_facts
         if self._debug:
             print(f"*********** {'GROUND TRUTH' if self.is_groundtruth else 'observed'} FACTS *********** ")
@@ -858,7 +859,8 @@ class KnowledgeGraph:
             or predicate.startswith('ingredient_') \
             or predicate == 'free' \
             or predicate == 'base' \
-            or predicate == 'out':
+            or predicate == 'out' :
+            #or predicate == 'used':
                 continue
 
             a0 = fact.arguments[0]
@@ -880,7 +882,7 @@ class KnowledgeGraph:
             else:
                 if predicate == 'edible' and a0.name == 'meal':
                     continue
-                self.warn(f"add_attributes_for_predicate {predicate}, didnt find an entity corresponding to {a0}")
+                self.warn(f"add_attributes_for_predicate '{predicate}' -- didn't find an entity corresponding to {a0}")
         if prev_action:
             self.special_openclose_oven(prev_action)
         for obj in maybe_new_entities:
