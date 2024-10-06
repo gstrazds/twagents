@@ -319,6 +319,77 @@ def remove_prewords(item):
     return item2, indent
 
 
+def start_twenv(gamefile,
+                # max_episode_steps=MAX_PLAYTHROUGH_STEPS,
+                # random_seed=DEFAULT_PTHRU_SEED,
+                pthru_cmds=None,
+                step_infos=None,
+                ):
+    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
+                                   last_action=True, last_command=True, intermediate_reward=True)
+    twenv = textworld.start(gamefile, wrappers=[TwAspWrapper], request_infos=env_infos)
+    twenv.pthru_cmds = pthru_cmds
+    twenv._planner_step_times = step_infos
+    # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
+    # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
+    twenv.use_internal_names = False   #use_internal_names
+    game_state = twenv.reset()
+    # game_state = twenv.get_initial_state()
+    print(game_state.keys())
+    reward = game_state.reward
+    done = False
+    start_cmd = 'start'
+    step_time = (0,True)
+    ## names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
+    #obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
+    feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time)  #,names2ids
+    return twenv, feedback, infos
+
+def step_twenv(twenv, cmd_str:str):
+    if not cmd_str:
+        print("WARNING - step_twenv_for_playthrough: EMPTY command! substituting 'do nothing'")
+        cmd = 'do nothing'
+    else:
+        cmd = cmd_str
+    game_state, reward, done = twenv.step(cmd)
+    # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
+    step_time = twenv.get_twenv_step_time_info()
+    if step_time is None:
+        step_time = (0,True)
+    feedback, infos = gather_twstep_info(game_state, done, cmd, step_time)  #,names2ids
+    return game_state, feedback, reward, done, infos, step_time
+
+
+def gather_twstep_info(gs: textworld.GameState,
+                                  done: bool,
+                                  cmd: str,
+                                  step_time: Optional[tuple],  #Tuple
+                                  ):
+    infos = {}
+    if done and gs.last_command == 'do nothing':   # stop appending to infos for finished games
+        feedback = None
+    else:
+        feedback = gs.feedback if gs.feedback else ''
+        # ------- standard TextWorld
+        infos['game'] = gs.game
+        infos['facts'] = gs.facts
+        infos['feedback'] = gs.feedback if gs.feedback else ''
+        infos['description'] = gs.description if gs.description else ''
+        infos['inventory'] = gs.inventory if gs.inventory else ''
+        infos['prev_action'] = gs.last_command
+        infos['admissible_commands'] = gs.admissible_commands   # sorted(set(gs["_valid_commands"])))
+        # ------- custom from TWoWrapper
+        infos['reward'] = gs.reward
+        infos['game_score'] = gs.score
+        infos['tw_o_step'] = gs.next_command
+        infos['done'] = done
+        if hasattr(gs, '_tasks'):
+            infos['tw_o_stack'] = gs._tasks
+        if step_time is not None:
+            infos['solver_step_time'] = step_time[0]
+            infos['solver_sat'] = step_time[1]
+    return feedback, infos
+
 def start_twenv_for_playthrough(gamefiles,
                                 max_episode_steps=MAX_PLAYTHROUGH_STEPS,
                                 random_seed=DEFAULT_PTHRU_SEED,
@@ -338,87 +409,54 @@ def start_twenv_for_playthrough(gamefiles,
     game_state = twenv.reset()
     # game_state = twenv.get_initial_state()
     print(game_state.keys())
-    rewards = [game_state.reward]
+    game_states = [game_state]
+    rewards = [gs.reward for gs in game_states]
     dones = [False] * batch_size
     start_cmds = ['start'] * batch_size
     step_times = [(0,True) for _ in range(batch_size)]
-    # names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
-    obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
-    return twenv, obs, infos
-
+    ## names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
+    #obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
+    feedback, infos = gather_twstep_info(game_state, dones[0], start_cmds[0], step_times[0])  #,names2ids
+    feedbacks = [feedback]
+    all_infos = merge_infos_for_playthroughs([infos])  #,names2ids
+    return twenv, feedbacks, all_infos
 
 def step_twenv_for_playthrough(twenv, step_cmds:List[str]):
     assert len(step_cmds) == 1, f"Currently, only support batch_size=1 {step_cmds}"
-    if not step_cmds[0]:
-        print("WARNING - step_twenv_for_playthrough: EMPTY command! substituting 'do nothing'")
-        step_cmds[0] = 'do nothing'
-    game_state, reward, done = twenv.step(step_cmds[0])
-    game_states = [game_state]
+    game_state, feedback, reward, done, infos, step_time = step_twenv(twenv, step_cmds[0])
+    # game_states = [game_state]
+    feedbacks = [feedback]
     rewards = [reward]
     dones = [done]
-    # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
-    step_time = twenv.get_twenv_step_time_info()
-    if step_time is None:
-        step_time = (0,True)
-    obs, rewards, dones, infos = gather_infos_for_playthroughs(game_states, rewards, dones, step_cmds, [step_time])  #,names2ids
-    return obs, rewards, dones, infos
+   # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
+    all_infos = merge_infos_for_playthroughs([infos])  #,names2ids
+    return feedbacks, rewards, dones, all_infos
 
-
-def gather_infos_for_playthroughs(game_states: List[textworld.GameState],
-                                  rewards: List[float],
-                                  dones: List[bool],
-                                  step_cmds: List[str],
-                                  step_times,  #:List(Tuple)
-                                  ):
-    infos = {
+def merge_infos_for_playthroughs(array_of_infos):
+    required_info_keys = [
         # ------- standard TextWorld
-        'game': [],
-        'facts': [],
-        'feedback': [],
-        'description': [],
-        'inventory': [],
-        'prev_action': [],
-        'admissible_commands': [],
+         'game',
+        'facts',
+        'feedback',
+        'description',
+        'inventory',
+        'prev_action',
+        'admissible_commands',
         # ------- custom from TWoWrapper
-        'reward': [],
-        'game_score': [],
-        'done': [],
-        'tw_o_step': [],
-        # 'admissible_commands': [],
-    }
-    if game_states and hasattr(game_states[0], '_tasks'):
-        infos['tw_o_stack'] = []
-    if step_times is not None:
-        infos['solver_step_time'] = []
-        infos['solver_sat'] = []
-    obs = []
-    for idx, gs in enumerate(game_states):
-        if dones[idx] and gs.last_command == 'do nothing':   # stop appending to infos for finished games
-            obs.append(None)
-            # rewards.append(0.0)
-        else:
-            # ------- standard TextWorld
-            infos['game'].append(gs.game)
-            infos['facts'].append(gs.facts)
-            infos['feedback'].append(gs.feedback if gs.feedback else '')
-            infos['description'].append(gs.description if gs.description else '')
-            infos['inventory'].append(gs.inventory if gs.inventory else '')
-            infos['prev_action'].append(gs.last_command)
-            infos['admissible_commands'].append(gs.admissible_commands)   # sorted(set(gs["_valid_commands"])))
-            # ------- custom from TWoWrapper
-            infos['reward'].append(gs.reward)
-            infos['game_score'].append(gs.score)
-            infos['tw_o_step'].append(gs.next_command)
-            if hasattr(gs, '_tasks'):
-                infos['tw_o_stack'].append(gs._tasks)
-            if step_times is not None:
-                infos['solver_step_time'].append(step_times[0][0])
-                infos['solver_sat'].append(step_times[0][1])
-            obs.append(gs.feedback if gs.feedback else '')
-            # rewards.append(gs.reward)
-    # if oracle_stack:
-    #     infos['tw_o_stack'] = []
-    return obs, rewards, dones, infos
+        'reward',
+        'game_score',
+        'done',
+        #'tw_o_step',
+        #'solver_step_time',
+        #'solver_sat',
+    ]
+    all_infos = {key: [] for key in array_of_infos[0].keys()}
+    for idx, infos in enumerate(array_of_infos):
+        for key in required_info_keys:
+            assert key in infos, f"key '{key}' missing from array_of_infos[{idx}]: {infos.keys()}"
+        for key in infos.keys():
+            all_infos[key].append(infos[key])
+    return all_infos
 
 
 def extract_pathtrace(cmd_history):
