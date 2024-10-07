@@ -325,6 +325,7 @@ def start_twenv(gamefile,
                 pthru_cmds=None,
                 step_infos=None,
                 env_infos=None,
+                invoke_oracle=True,
                 ):
     if not env_infos:
         env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
@@ -332,6 +333,7 @@ def start_twenv(gamefile,
     twenv = textworld.start(gamefile, wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
     twenv._planner_step_times = step_infos
+    twenv._invoke_oracle = invoke_oracle
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
@@ -344,7 +346,7 @@ def start_twenv(gamefile,
     step_time = (0,True)
     ## names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
     #obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
-    feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time)  #,names2ids
+    feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time, include_oracle_info=invoke_oracle)  #,names2ids
     return twenv, feedback, infos
 
 def step_twenv(twenv, cmd_str:str):
@@ -353,19 +355,23 @@ def step_twenv(twenv, cmd_str:str):
         cmd = 'do nothing'
     else:
         cmd = cmd_str
+    invoke_oracle = twenv._invoke_oracle
     game_state, reward, done = twenv.step(cmd)
     # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
-    step_time = twenv.get_twenv_step_time_info()
-    if step_time is None:
-        step_time = (0,True)
-    feedback, infos = gather_twstep_info(game_state, done, cmd, step_time)  #,names2ids
+    if invoke_oracle:
+        step_time = twenv.get_twenv_step_time_info()
+        if step_time is None:
+            step_time = (0,True)
+    else:
+        step_time = None
+    feedback, infos = gather_twstep_info(game_state, done, cmd, step_time, include_oracle_info=invoke_oracle)
     return game_state, feedback, reward, done, infos, step_time
-
 
 def gather_twstep_info(gs: textworld.GameState,
                                   done: bool,
                                   cmd: str,
                                   step_time: Optional[tuple],  #Tuple
+                                  include_oracle_info=True,
                                   ):
     infos = {}
     if done and gs.last_command == 'do nothing':   # stop appending to infos for finished games
@@ -383,13 +389,14 @@ def gather_twstep_info(gs: textworld.GameState,
         # ------- custom from TWoWrapper
         infos['reward'] = gs.reward
         infos['game_score'] = gs.score
-        infos['tw_o_step'] = gs.next_command
         infos['done'] = done
-        if hasattr(gs, '_tasks'):
-            infos['tw_o_stack'] = gs._tasks
-        if step_time is not None:
-            infos['solver_step_time'] = step_time[0]
-            infos['solver_sat'] = step_time[1]
+        if include_oracle_info:
+            infos['tw_o_step'] = gs.next_command
+            if hasattr(gs, '_tasks'):
+                infos['tw_o_stack'] = gs._tasks
+            if step_time is not None:
+                infos['solver_step_time'] = step_time[0]
+                infos['solver_sat'] = step_time[1]
     return feedback, infos
 
 def start_twenv_for_playthrough(gamefiles,

@@ -90,10 +90,11 @@ class TWoWrapper(textworld.core.Wrapper):
             game_state.last_command = 'start'
         start_action = game_state.last_command
         _actiontxt, _tasks = self.invoke_oracle(obstxt, world_facts, is_done=False, prev_action=start_action, verbose=False)
-        # _actiontxt, _tasks also get stored into self.next_command, self._tasks by .invoke_oracle
 
+        # NOTE: _actiontxt and _tasks get stored into self.next_command, self._tasks by .invoke_oracle
         game_state.next_command = self.next_command   # = _actiontxt
         game_state._tasks = _tasks
+
         if not hasattr(game_state, 'score'):
             game_state.score = 0.0
         game_state.reward = game_state.score
@@ -166,15 +167,6 @@ class TWoWrapper(textworld.core.Wrapper):
             tw_o.set_objective(objective)
 
     def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
-        _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
-        self._tasks = _tasks   # remember (only used for export to pthru data files)
-        # simplify the observation text if it includes notification about incremented score
-        # print(f"--- current step: {tw_oracle.step_num} -- QGYM[{idx}]: observation=[{obstxt}]")
-        # if 'inventory' in infos:
-        #     print("\tINVENTORY:", infos['inventory'][idx])
-        # if 'game_id' in infos:
-        #     print("infos[game_id]=", infos['game_id'][idx])
-
         if world_facts:
             # TODO:DONE remove ground_truth -- no longer used (but might still be useful for debugging)
             self.tw_oracle.set_ground_truth(world_facts)
@@ -187,25 +179,33 @@ class TWoWrapper(textworld.core.Wrapper):
                 # print_fact(game, fact)
         else:
             observable_facts = None
+
         if prev_action != "do nothing":
             # if prev_action=None -> uses oracle._last_action from oracle.observe()
             obstxt = self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
         if self.passive_oracle_mode:
             msg = f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode"
-            print(msg)
-            # return None, _tasks
+            self.tw_oracle.dbg(msg)
             actiontxt = None
-        elif is_done:
-            print(f"--- current step: {self.tw_oracle.step_num} is_done=True: ", _tasks)
+            _tasks = ''
+        else:
+            actiontxt, _tasks = self.get_next_oracle_action(obstxt, is_done)
+
+        self._tasks = _tasks   # remember (used for export to pthru data files)
+        self.next_command = actiontxt
+        return actiontxt, _tasks
+
+    def get_next_oracle_action(self, obstxt, is_done):
+        _tasks = self.tw_oracle.task_exec.tasks_repr()  # a snapshot of oracle state *before* taking next step
+        if is_done:
+            self.tw_oracle.dbg(f"--- current step: {self.tw_oracle.step_num} is_done=True tasks=[{_tasks}]")
             actiontxt = "do nothing"
         else:
             actiontxt = self.tw_oracle.select_next_action(obstxt, external_next_action=None)
-            # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
-            print(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] choose_next_action -> {actiontxt}")
-
-        self.next_command = actiontxt
-        return actiontxt, _tasks
+                # actiontxt = tw_oracle.choose_next_action(obstxt, observable_facts=observable_facts)
+            self.tw_oracle.dbg(f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] choose_next_action -> {actiontxt}")
+        return actiontxt,_tasks
 
     #-------------------------------------
     # def step(self, command: str) -> Tuple[GameState, float, bool]:
@@ -247,7 +247,7 @@ from twutils.tw_asp_runner import plan_commands_for_game
 
 class TwAspWrapper(TWoWrapper):
 
-    def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = True, idx: int = 0, **kwargs):
+    def __init__(self, *args, random_seed: int = None, passive_oracle_mode: bool = False, idx: int = 0, **kwargs):
         super().__init__(*args, random_seed=random_seed, passive_oracle_mode=passive_oracle_mode, **kwargs)
         self._gamepath = None
         self._commands_from_asp = None
@@ -289,27 +289,50 @@ class TwAspWrapper(TWoWrapper):
 
         return game_state
 
-    def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
-        actiontxt, _tasks = super().invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
-        assert self.passive_oracle_mode
-        if self.passive_oracle_mode:
+    def get_next_oracle_action(self, obstxt, is_done):
+        _tasks = ''  # a snapshot of oracle state *before* taking next step
+        if is_done:
+            self.tw_oracle.dbg(f"--- current step (TwAsp): {self.tw_oracle.step_num} is_done=True tasks=[{_tasks}]")
+            actiontxt = "do nothing"
+        else:
             if self.pthru_cmds:
                 actiontxt = next(self._next_cmd_from_asp, None)
                 step_num = self.tw_oracle.step_num
                 step_time = self.get_twenv_step_time_info(step_num)
+                if step_time:
+                    print(step_time)
+                    elapsed_time = str(timedelta(microseconds=step_time[0]))
+                    step_sat = step_time[1]
+                else:
+                    elapsed_time = None
+                    step_sat = True
+                log_msg = f"TwAspWrapper: [{step_num-1}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}"
+                self.tw_oracle.dbg(log_msg)
             else:
-                assert False, "NOT YET IMPLEMENTED"
-            if step_time:
-                print(step_time)
-                elapsed_time = str(timedelta(microseconds=step_time[0]))
-                step_sat = step_time[1]
-            else:
-                elapsed_time = None
-                step_sat = True
-            self.tw_oracle.dbg(f"TwAspWrapper: [{step_num-1}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}")
-
-        self.next_command = actiontxt
+                actiontxt = 'do something'
         return actiontxt, _tasks
+
+    # def invoke_oracle(self, obstxt, world_facts, is_done, prev_action=None, verbose=False) -> str:
+    #     actiontxt, _tasks = super().invoke_oracle(obstxt, world_facts, is_done, prev_action=prev_action, verbose=verbose)
+    #     assert self.passive_oracle_mode
+    #     if self.passive_oracle_mode:
+    #         if self.pthru_cmds:
+    #             actiontxt = next(self._next_cmd_from_asp, None)
+    #             step_num = self.tw_oracle.step_num
+    #             step_time = self.get_twenv_step_time_info(step_num)
+    #             if step_time:
+    #                 print(step_time)
+    #                 elapsed_time = str(timedelta(microseconds=step_time[0]))
+    #                 step_sat = step_time[1]
+    #             else:
+    #                 elapsed_time = None
+    #                 step_sat = True
+    #             self.tw_oracle.dbg(f"TwAspWrapper: [{step_num-1}] _next_cmd_from_asp: >[ {actiontxt} ]<  solver: {elapsed_time} sat={step_sat}")
+    #         else:
+    #             actiontxt = None
+
+    #     self.next_command = actiontxt
+    #     return actiontxt, _tasks
 
     def get_twenv_step_time_info(self, step_num=None):
         if step_num is None:
