@@ -12,16 +12,16 @@ mkdir -p ${MERGED_DIR}/
 mkdir -p ${TEXTDS_DIR}/
 
 
-#python generate_playthroughs.py  gata_1 --internal-names --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-#python generate_playthroughs.py  gata_20 --internal-names --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-#python generate_playthroughs.py  gata_100 --internal-names --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
-python generate_playthroughs.py  gata_valid --internal-names --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
-python generate_playthroughs.py  gata_test --internal-names --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
-python generate_playthroughs.py  gata_train --internal-names --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
+#python generate_playthroughs.py  gata_1 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+#python generate_playthroughs.py  gata_20 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+#python generate_playthroughs.py  gata_100 --output-dir ${TWDATA_DIR}/gata/playthru_data/ --do-write --overwrite
+python generate_playthroughs.py  gata_valid --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
+python generate_playthroughs.py  gata_test --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
+python generate_playthroughs.py  gata_train --flat-gata --input-dir ${TWDATA_DIR}/gata/games_gata/ --output-dir ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/ --do-write --overwrite
 
-python generate_playthroughs.py  valid --internal-names --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
-python generate_playthroughs.py  test --internal-names --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
-python generate_playthroughs.py  train --internal-names --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
+python generate_playthroughs.py  valid --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
+python generate_playthroughs.py  test --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
+python generate_playthroughs.py  train --input-dir ${TWDATA_DIR}/ftwc/games_ftwc/ --output-dir ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/ --do-write --overwrite
 
 cp -a ${TWDATA_DIR}/gata/${PTHRU_SUBDIR}/*.textds ${TEXTDS_DIR}/
 cp -a ${TWDATA_DIR}/ftwc/${PTHRU_SUBDIR}/*.textds ${TEXTDS_DIR}/

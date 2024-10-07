@@ -412,7 +412,8 @@ def start_twenv_for_playthrough(gamefiles,
     twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
     twenv._planner_step_times = step_infos
-    # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
+    twenv._invoke_oracle = True
+   # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
     game_state = twenv.reset()
