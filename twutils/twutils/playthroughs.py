@@ -324,8 +324,10 @@ def start_twenv(gamefile,
                 # random_seed=DEFAULT_PTHRU_SEED,
                 pthru_cmds=None,
                 step_infos=None,
+                env_infos=None,
                 ):
-    env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
+    if not env_infos:
+        env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
                                    last_action=True, last_command=True, intermediate_reward=True)
     twenv = textworld.start(gamefile, wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
