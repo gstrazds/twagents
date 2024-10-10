@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import List, Dict, Mapping, Optional, Any
 
 import textworld
-import textworld.gym
 from textworld.logic import Proposition  #, Variable, Signature, State
 
 from .file_helpers import count_iter_items, split_gamename  # , parse_gameid
