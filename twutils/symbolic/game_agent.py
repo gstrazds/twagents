@@ -100,7 +100,7 @@ class TextGameAgent:
         # for handler in logging.root.handlers[:]:
         #     handler.close()
         #     logging.root.removeHandler(handler)
-        logdir = os.path.join(output_subdir, 'nail_logs')
+        logdir = os.path.join(output_subdir, 'twa_logs')
         if not os.path.exists(logdir):
             os.mkdir(logdir)
         # self.kgs_dir_path = os.path.join(output_subdir, 'kgs')

@@ -35,16 +35,16 @@ def text_similarity(str1: str, str2: str, substring_match=False):
 # This list covers the common paterns. However, some games like
 # loose.z5 and lostpig.z8 write custom responses that aren't included.
 REGEXPS = [
-    ".*That's not a verb I recognise.*",
-    ".*I don't know the word \"(\w+)\.?\".*",
-    ".*You used the word \"(\w+)\" in a way that I don't understand.*",
-    ".*This story doesn't know the word \"(\w+)\.?\".*",
-    ".*This story doesn't recognize the word \"(\w+)\.?\".*",
-    ".*The word \"(\w+)\" isn't in the vocabulary that you can use.*",
-    ".*You don't need to use the word \"(\w+)\" to finish this story.*",
-    ".*You don't need to use the word \"(\w+)\" to complete this story.*",
-    ".*Sorry, but the word \"(\w+)\" is not in the vocabulary you can use.*",
-    ".*Sorry, but this story doesn't recognize the word \"(\w+)\.?\".*",
+    r".*That's not a verb I recognise.*",
+    r".*I don't know the word \"(\w+)\.?\".*",
+    r".*You used the word \"(\w+)\" in a way that I don't understand.*",
+    r".*This story doesn't know the word \"(\w+)\.?\".*",
+    r".*This story doesn't recognize the word \"(\w+)\.?\".*",
+    r".*The word \"(\w+)\" isn't in the vocabulary that you can use.*",
+    r".*You don't need to use the word \"(\w+)\" to finish this story.*",
+    r".*You don't need to use the word \"(\w+)\" to complete this story.*",
+    r".*Sorry, but the word \"(\w+)\" is not in the vocabulary you can use.*",
+    r".*Sorry, but this story doesn't recognize the word \"(\w+)\.?\".*",
 ]
 COMPILED_UNRECOGNIZED_REGEXPS = [re.compile(regexp) for regexp in REGEXPS]
 
