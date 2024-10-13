@@ -93,13 +93,16 @@ class TextGameAgent:
 
     def setup_logging(self, game_id, idx, output_subdir="."):
         """ Configure the logging facilities. """
-        logging.basicConfig(format='%(message)s',
-                            level=logging.DEBUG, filemode='a')
+
         env_name = f"{game_id}_{idx:02}"
         print("setup_logging:", env_name)
         # for handler in logging.root.handlers[:]:
         #     handler.close()
         #     logging.root.removeHandler(handler)
+        self._logger_name = env_name
+
+        logging.basicConfig(format='%(message)s',
+                            level=logging.DEBUG, filemode='a')
         logdir = os.path.join(output_subdir, 'twa_logs')
         if not os.path.exists(logdir):
             os.mkdir(logdir)
@@ -109,7 +112,6 @@ class TextGameAgent:
         self.logpath = os.path.join(logdir, env_name)
         # logging.basicConfig(format='%(message)s', filename=self.logpath+'.log',
         #                     level=logging.DEBUG, filemode='w')
-        self._logger_name = env_name
         logger = self.get_logger()
         logger.setLevel(logging.DEBUG)
         print("setup_logging - logger = ", logger)
@@ -261,7 +263,11 @@ class TextGameAgent:
         player_location = self.gi.kg.player_location
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
         cmd_ok = not check_cmd_failed(prev_action, new_obs, reward)
-        self.dbg(f"**observe: <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] {'OK' if cmd_ok else 'FAILED'} Reward: {reward}")
+        self.dbg(f"**observe(results): <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] {'OK' if cmd_ok else 'FAILED'} Reward: {reward}")
+        cleaned_obs = new_obs.strip().replace('\n\n', '\n') if new_obs else None
+        if cleaned_obs:
+            cleaned_obs = "\n >>>\t".join(cleaned_obs.split('\n'))
+        self.dbg(f"**observe(new_obs): <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] \n >>>\t{cleaned_obs}")
         self.cmd_history.append((prev_action, str(player_location), cmd_ok, reward))
 
     def set_ground_truth(self, gt_facts):
