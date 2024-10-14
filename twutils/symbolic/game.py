@@ -16,15 +16,16 @@ def get_unrecognized(action, response):
 
     """
     # if isinstance(action, Action):
-    if hasattr(action, "text"):
-        action = action.text()
-    for p in util.COMPILED_UNRECOGNIZED_REGEXPS:
-        match = p.match(response)
-        if match:
-            if match.groups():
-                return match.group(1)
-            else:
-                return action.split(' ')[0]
+    if action and response:  # protect against None
+        if hasattr(action, "text"):
+            action = action.text()
+        for p in util.COMPILED_UNRECOGNIZED_REGEXPS:
+            match = p.match(response)
+            if match:
+                if match.groups():
+                    return match.group(1)
+                else:
+                    return action.split(' ')[0]
     return ''
 
 

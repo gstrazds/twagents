@@ -122,6 +122,13 @@ class TWoWrapper(textworld.core.Wrapper):
             obstxt = get_recipe(self.tw_oracle._game)
         if obstxt is None:
             obstxt = ''
+
+        #??TODO: IS THE FOLLOWING WORKING properly in all cases?
+        # ?? Might need to apply ConsistentFeedbackWrapper logic somewhere at a lower level
+        new_feedback = normalize_feedback_vs_obs_description(command, obstxt, gs.feedback, gs.description)
+        if new_feedback:
+            gs.feedback = new_feedback
+        obstxt = f"{gs.feedback}\n{gs.inventory if hasattr(gs, 'inventory') else ''}\n{gs.description}"
         if not self.tw_oracle:
             actiontxt = "do something"
             _tasks = ''

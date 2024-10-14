@@ -257,12 +257,11 @@ class TextGameAgent:
                 self._last_action = StandaloneAction(prev_action)
         if not prev_action and self._last_action:
             prev_action = self._last_action.text()
-        if prev_action:
-            self.gi.action_recognized(prev_action, new_obs)  # Updates the unrecognized words
+        self.gi.action_recognized(prev_action, new_obs)  # Updates the unrecognized words
+        cmd_ok = not check_cmd_failed(prev_action, new_obs, reward)
         # Print out this step.
         player_location = self.gi.kg.player_location
         _env_name = self.env_name if hasattr(self, 'env_name') else ''
-        cmd_ok = not check_cmd_failed(prev_action, new_obs, reward)
         self.dbg(f"**observe(results): <Step {self.step_num}> [{idx}]{_env_name}  {player_location}: [{prev_action}] {'OK' if cmd_ok else 'FAILED'} Reward: {reward}")
         cleaned_obs = new_obs.strip().replace('\n\n', '\n') if new_obs else None
         if cleaned_obs:

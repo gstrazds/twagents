@@ -348,7 +348,7 @@ def start_twenv(gamefile,
     feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time, include_oracle_info=invoke_oracle)  #,names2ids
     return twenv, feedback, infos
 
-def step_twenv(twenv, cmd_str:str):
+def step_twenv(twenv, cmd_str:str): #, normalize_feedback=False):
     if not cmd_str:
         print("WARNING - step_twenv_for_playthrough: EMPTY command! substituting 'do nothing'")
         cmd = 'do nothing'
@@ -356,6 +356,11 @@ def step_twenv(twenv, cmd_str:str):
         cmd = cmd_str
     invoke_oracle = twenv._invoke_oracle
     game_state, reward, done = twenv.step(cmd)
+    # if normalize_feedback:
+    #     new_feedback = normalize_feedback_vs_obs_description(cmd, game_state.feedback, game_state.feedback, game_state.description)
+    #     if new_feedback:
+    #         game_state.feedback = new_feedback
+
     # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
     if invoke_oracle:
         step_time = twenv.get_twenv_step_time_info()
