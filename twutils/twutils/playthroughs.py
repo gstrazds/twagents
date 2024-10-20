@@ -324,7 +324,7 @@ def start_twenv(gamefile,
                 pthru_cmds=None,
                 step_infos=None,
                 env_infos=None,
-                invoke_oracle=True,
+                with_oracle=True,
                 ):
     if not env_infos:
         env_infos = textworld.EnvInfos(game=True, facts=True, feedback=True, description=True, inventory=True, location=True,
@@ -332,7 +332,7 @@ def start_twenv(gamefile,
     twenv = textworld.start(gamefile, wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
     twenv._planner_step_times = step_infos
-    twenv._invoke_oracle = invoke_oracle
+    twenv._use_oracle = with_oracle
     # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names
@@ -345,7 +345,7 @@ def start_twenv(gamefile,
     step_time = (0,True)
     ## names2ids = twenv.tw_oracle.map_names2ids if use_internal_names else None
     #obs, rewards, dones, infos = gather_infos_for_playthroughs([game_state], rewards, dones, start_cmds, step_times)
-    feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time, include_oracle_info=invoke_oracle)  #,names2ids
+    feedback, infos = gather_twstep_info(game_state, done, start_cmd, step_time, include_oracle_info=with_oracle)  #,names2ids
     return twenv, feedback, infos
 
 def step_twenv(twenv, cmd_str:str): #, normalize_feedback=False):
@@ -354,7 +354,7 @@ def step_twenv(twenv, cmd_str:str): #, normalize_feedback=False):
         cmd = 'do nothing'
     else:
         cmd = cmd_str
-    invoke_oracle = twenv._invoke_oracle
+    with_oracle = twenv._use_oracle
     game_state, reward, done = twenv.step(cmd)
     # if normalize_feedback:
     #     new_feedback = normalize_feedback_vs_obs_description(cmd, game_state.feedback, game_state.feedback, game_state.description)
@@ -362,13 +362,13 @@ def step_twenv(twenv, cmd_str:str): #, normalize_feedback=False):
     #         game_state.feedback = new_feedback
 
     # names2ids = twenv.tw_oracle.map_names2ids if export_internal_names else None
-    if invoke_oracle:
+    if with_oracle:
         step_time = twenv.get_twenv_step_time_info()
         if step_time is None:
             step_time = (0,True)
     else:
         step_time = None
-    feedback, infos = gather_twstep_info(game_state, done, cmd, step_time, include_oracle_info=invoke_oracle)
+    feedback, infos = gather_twstep_info(game_state, done, cmd, step_time, include_oracle_info=with_oracle)
     return game_state, feedback, reward, done, infos, step_time
 
 def gather_twstep_info(gs: textworld.GameState,
@@ -416,7 +416,7 @@ def start_twenv_for_playthrough(gamefiles,
     twenv = textworld.start(gamefiles[0], wrappers=[TwAspWrapper], request_infos=env_infos)
     twenv.pthru_cmds = pthru_cmds
     twenv._planner_step_times = step_infos
-    twenv._invoke_oracle = True
+    twenv._use_oracle = True
    # even if use_internal_names is True, currently works only if the oracle internally uses human readable names
     # (names get remapped to internal ids in export_playthru( remap_names=names2ids )
     twenv.use_internal_names = False   #use_internal_names

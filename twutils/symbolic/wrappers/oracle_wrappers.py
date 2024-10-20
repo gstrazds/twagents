@@ -191,7 +191,7 @@ class TWoWrapper(textworld.core.Wrapper):
             # if prev_action=None -> uses oracle._last_action from oracle.observe()
             obstxt = self.tw_oracle.update_kg(obstxt, observable_facts=observable_facts, prev_action=prev_action)
 
-        if self.passive_oracle_mode:
+        if self.passive_oracle_mode or hasattr(self, '_use_oracle') and not self._use_oracle:
             msg = f"--- current step: {self.tw_oracle.step_num} -- TWoWrapper[{self.idx}] passive oracle mode"
             self.tw_oracle.dbg(msg)
             actiontxt = None
@@ -277,7 +277,11 @@ class TwAspWrapper(TWoWrapper):
         print(f"@@@@@@@@@@@ TwAspWrapper({self}).reset(env={self._wrapped_env} use_internal_names={self.use_internal_names}")
 
         if not self.pthru_cmds:
-            self._commands_from_asp, self._planner_step_times = plan_commands_for_game(self._gamepath)
+            if self._use_oracle:
+                self._commands_from_asp, self._planner_step_times = plan_commands_for_game(self._gamepath)
+            else:
+                self._commands_from_asp = []
+                self._planner_step_times = None
             self.pthru_cmds = self._commands_from_asp.copy()
             self._next_cmd_from_asp = iter(self._commands_from_asp)
         else:
