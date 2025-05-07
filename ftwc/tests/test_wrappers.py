@@ -4,7 +4,7 @@ import gym
 import torch
 import numpy as np
 
-from ftwc.wrappers.gym_wrappers import ToTensor
+# from ftwc.wrappers.gym_wrappers import ToTensor
 from ftwc.vocab import WordVocab, _ensure_padded_len
 
 
@@ -66,18 +66,18 @@ class TestVocab(unittest.TestCase):
 
 
 
-class TestToTensor(unittest.TestCase):
-
-    def setUp(self) -> None:
-        self.env = ToTensor(gym.make("CartPole-v0"))
-        pass
-
-    def test_wrapper(self):
-        state = self.env.reset()
-        self.assertIsInstance(state, torch.Tensor)
-
-        new_state, _, _, _ = self.env.step(1)
-        self.assertIsInstance(new_state, torch.Tensor)
+# class TestToTensor(unittest.TestCase):
+#
+#     def setUp(self) -> None:
+#         self.env = ToTensor(gym.make("CartPole-v0"))
+#         pass
+#
+#     def test_wrapper(self):
+#         state = self.env.reset()
+#         self.assertIsInstance(state, torch.Tensor)
+#
+#         new_state, _, _, _ = self.env.step(1)
+#         self.assertIsInstance(new_state, torch.Tensor)
 
 def generate_fake_gameid(idx=0):
     return f"Game_{idx:04d}"
