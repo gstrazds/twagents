@@ -1,7 +1,6 @@
 from typing import List, Dict, Optional, Tuple, Mapping, Any
 from datetime import timedelta
 import numpy as np
-import torch
 
 import textworld
 
